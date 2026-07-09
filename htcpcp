@@ -16,13 +16,13 @@ Usage:
   htcpcp brew|pour [coffee|tea] [add]    Start brewing
   htcpcp when                            Stop pouring
   htcpcp info                            Pot metadata (PROPFIND)
-  htcpcp   418                             Trigger 418 (brew coffee on teapot)
+  htcpcp 418                            Trigger 418 (brew coffee on teapot)
   htcpcp 418-alcohol                     Trigger 418 (alcohol on teapot)
-   htcpcp additions                       List supported additions
-   htcpcp config                          Show full node configuration
-   htcpcp stats                           Show all status at a glance
-   htcpcp version                         Show server version
-   htcpcp whoami|id                       Show local node identity
+  htcpcp additions                       List supported additions
+  htcpcp config                          Show full node configuration
+  htcpcp stats                           Show all status at a glance
+  htcpcp version                         Show server version
+  htcpcp whoami|id                       Show local node identity
 
   # Mesh commands
   htcpcp mesh status                     Mesh network status (incl. ECC, port hop)
@@ -30,13 +30,13 @@ Usage:
   htcpcp mesh inbox                      Read received messages
   htcpcp mesh send <pot|addr> <msg>      Send message via mesh (E2EE by default)
   htcpcp mesh send-raw <pot> <msg>       Send without E2EE encryption
-   htcpcp mesh broadcast <msg>            Broadcast to all peers
-   htcpcp mesh scan                       Scan for peers
-   htcpcp mesh routes                     Show routing table
-   htcpcp mesh queued                     Show store-and-forward queue
-   htcpcp mesh sat                        Satellite mesh status
-   htcpcp mesh radio                      Radio / LoRa / packet-radio status
-   htcpcp mesh mobile                     4G/5G / LTE / WWAN status
+  htcpcp mesh broadcast <msg>            Broadcast to all peers
+  htcpcp mesh scan                       Scan for peers
+  htcpcp mesh routes                     Show routing table
+  htcpcp mesh queued                     Show store-and-forward queue
+  htcpcp mesh sat                        Satellite mesh status
+  htcpcp mesh radio                      Radio / LoRa / packet-radio status
+  htcpcp mesh mobile                     4G/5G / LTE / WWAN status
 
   # ECC / Address Book
   htcpcp ecc status                      ECC engine + address book status
@@ -55,19 +55,15 @@ Usage:
   htcpcp covert status                   Covert channel status
 
   # Defenses
-   htcpcp defense status                  418 defense status
+  htcpcp defense status                  418 defense status
 
-   # ITF (In The Face) — active network defense
-   htcpcp itf status                       Full defense posture
-   htcpcp itf blacklist                    List blacklisted IPs
-   htcpcp itf whitelist <addr>             Remove an IP from blacklist
-   htcpcp itf clear                        Clear entire blacklist
-   htcpcp itf stealth                      Show stealth mode status
-   htcpcp itf probe <addr>                 Check if an IP is blacklisted
-
-   # Dead-drop / Thermos
-  htcpcp deaddrop list                   List dead-drop messages held by this node
-  htcpcp deaddrop claim <id>             Claim a dead-drop message
+  # ITF (In The Face) — active network defense
+  htcpcp itf status                       Full defense posture
+  htcpcp itf blacklist                    List blacklisted IPs
+  htcpcp itf whitelist <addr>             Remove an IP from blacklist
+  htcpcp itf clear                        Clear entire blacklist
+  htcpcp itf stealth                      Show stealth mode status
+  htcpcp itf probe <addr>                 Check if an IP is blacklisted
 
 Environment:
   HTCPCP_HOST   Server hostname (default: localhost)
