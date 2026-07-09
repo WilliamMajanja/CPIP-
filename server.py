@@ -2996,6 +2996,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_radio()
         elif path == "/cpip/mesh/mobile":
             self._handle_mesh_mobile()
+        elif path == "/cpip/defense":
+            self._handle_defense_get()
         elif path == "/cpip/mesh/deaddrop":
             self._handle_mesh_deaddrop()
         elif path == "/cpip/mesh/propfind":
@@ -3122,6 +3124,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_covert_encode()
         elif path == "/cpip/mesh/decode":
             self._handle_covert_decode()
+        elif path == "/cpip/defense":
+            self._handle_defense_post()
         elif path == "/cpip/mesh/deaddrop":
             self._handle_mesh_deaddrop()
         elif path == "/cpip/mesh/deaddrop/claim":
@@ -3772,6 +3776,37 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _handle_mesh_mobile(self):
         self._send_json(200, "OK", MeshNode.get_mobile_status())
+
+    def _handle_defense_get(self):
+        with TEAPOT_BLACKLIST_LOCK:
+            blacklist = sorted(TEAPOT_BLACKLIST)
+        self._send_json(200, "OK", {
+            "418_teapot": MESH_ENABLED,
+            "stealth": MESH_STEALTH,
+            "port_hopping": MESH_STEALTH,
+            "latent_ports": MESH_LATENT_PORTS,
+            "blacklisted_addrs": len(blacklist),
+            "blacklist": blacklist,
+            "hop_interval": MESH_HOP_INTERVAL,
+        })
+
+    def _handle_defense_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "whitelist":
+            addr = body.get("addr", "")
+            if addr:
+                with TEAPOT_BLACKLIST_LOCK:
+                    TEAPOT_BLACKLIST.discard(addr)
+                self._send_json(200, "OK", {"status": "whitelisted", "addr": addr})
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'addr'"})
+        elif action == "clear":
+            with TEAPOT_BLACKLIST_LOCK:
+                TEAPOT_BLACKLIST.clear()
+            self._send_json(200, "OK", {"status": "blacklist_cleared"})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
     def _handle_mesh_deaddrop(self):
         """Handle dead-drop listing and claiming."""
@@ -4668,6 +4703,7 @@ def main():
     print(f"   MOBILE:               /cpip/mesh/mobile (4G/5G / LTE / WWAN status)", flush=True)
     print(f"   COVERT (ECC):         /cpip/mesh/encode, /cpip/mesh/decode", flush=True)
     print(f"   DEADDROP:             /cpip/mesh/deaddrop?action=list|claim&id= (dead-drop query)", flush=True)
+    print(f"   DEFENSE:              /cpip/defense (418 blacklist + stealth status)", flush=True)
     print(f"   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print(f"   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)

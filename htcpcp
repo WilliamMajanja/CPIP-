@@ -55,9 +55,17 @@ Usage:
   htcpcp covert status                   Covert channel status
 
   # Defenses
-  htcpcp defense status                  418 defense status
+   htcpcp defense status                  418 defense status
 
-  # Dead-drop / Thermos
+   # ITF (In The Face) — active network defense
+   htcpcp itf status                       Full defense posture
+   htcpcp itf blacklist                    List blacklisted IPs
+   htcpcp itf whitelist <addr>             Remove an IP from blacklist
+   htcpcp itf clear                        Clear entire blacklist
+   htcpcp itf stealth                      Show stealth mode status
+   htcpcp itf probe <addr>                 Check if an IP is blacklisted
+
+   # Dead-drop / Thermos
   htcpcp deaddrop list                   List dead-drop messages held by this node
   htcpcp deaddrop claim <id>             Claim a dead-drop message
 
@@ -551,6 +559,86 @@ print(f'Keep warm:      {d.get(\"keep_warm\")}')
                 ;;
             *)
                 die "Unknown defense command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── ITF (In The Face) — active network defense ────────────────────
+    itf)
+        case "${2:-status}" in
+            status)
+                echo "ITF Defense Posture:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'418 Teapot:    {\"ACTIVE\" if d.get(\"418_teapot\") else \"disabled\"}')
+print(f'Stealth:       {\"ON\" if d.get(\"stealth\") else \"OFF\"}')
+print(f'Port hop:      {\"ON\" if d.get(\"port_hopping\") else \"OFF\"}')
+print(f'Hop interval:  {d.get(\"hop_interval\",0)}s')
+print(f'Latent ports:  {d.get(\"latent_ports\",[])}')
+print(f'Blacklisted:   {d.get(\"blacklisted_addrs\",0)} address(es)')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            blacklist)
+                echo "Blacklisted addresses:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+bl = d.get('blacklist', [])
+if bl:
+    for addr in bl:
+        print(f'  {addr}')
+else:
+    print('(empty — no addresses blacklisted)')
+print(f'Total: {len(bl)}')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            whitelist)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp itf whitelist <ip_address>"
+                fi
+                addr="$3"
+                echo "Removing ${addr} from blacklist..."
+                echo "---"
+                api POST "/cpip/defense" "{\"action\":\"whitelist\",\"addr\":\"${addr}\"}"
+                ;;
+            clear)
+                echo "Clearing entire blacklist..."
+                echo "---"
+                api POST "/cpip/defense" "{\"action\":\"clear\"}"
+                ;;
+            stealth)
+                echo "Stealth mode status:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Stealth: {\"ON (no broadcast heartbeats)\" if d.get(\"stealth\") else \"OFF (broadcast enabled)\"}')
+print(f'Port hop: {\"ON\" if d.get(\"port_hopping\") else \"OFF\"}')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            probe)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp itf probe <ip_address>"
+                fi
+                addr="$3"
+                echo "Checking ${addr}:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+target = '$addr'
+bl = d.get('blacklist', [])
+if target in bl:
+    print(f'  {target} → BLACKLISTED (418 teapot response)')
+else:
+    print(f'  {target} → NOT blacklisted (allowed)')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            *)
+                die "Unknown itf command: $2\nSee 'htcpcp help' for usage."
                 ;;
         esac
         ;;
