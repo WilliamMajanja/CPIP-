@@ -1885,13 +1885,20 @@ class MeshNode:
 
     @classmethod
     def _mobile_get_signal(cls) -> dict:
-        """Read cellular signal strength via modem AT commands or sysfs."""
-        result = {"rssi": None, "rsrp": None, "sinr": None, "mcc": None}
-        for path in ["/sys/class/net/" + MOBILE_INTERFACE + "/statistics/rx_signal",
-                     "/sys/class/net/wwan0/statistics/rssi"]:
+        """Read cellular signal strength. Tries multiple methods."""
+        result = {"rssi": None, "rsrp": None, "sinr": None, "mcc": None, "interface": MOBILE_INTERFACE}
+        iface = MOBILE_INTERFACE
+        if not os.path.isdir("/sys/class/net/" + iface):
+            alt = [n for n in os.listdir("/sys/class/net/")
+                   if n.startswith(("wwan", "usb", "eth")) and n != "lo"]
+            if alt:
+                iface = alt[0]
+                result["interface"] = iface
+        for suffix, key in [("rssi", "rssi"), ("signal", "rssi"), ("rsrp", "rsrp"), ("sinr", "sinr")]:
+            p = f"/sys/class/net/{iface}/statistics/{suffix}"
             try:
-                with open(path) as f:
-                    result["rssi"] = int(f.read().strip())
+                with open(p) as f:
+                    result[key] = int(f.read().strip())
             except Exception:
                 pass
         try:
@@ -3778,8 +3785,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", MeshNode.get_mobile_status())
 
     def _handle_defense_get(self):
+        now = time.time()
         with TEAPOT_BLACKLIST_LOCK:
-            blacklist = sorted(TEAPOT_BLACKLIST)
+            active = {k: v for k, v in TEAPOT_BLACKLIST.items() if v.get("expires", 0) > now}
+            blacklist = sorted(active.keys())
         self._send_json(200, "OK", {
             "418_teapot": MESH_ENABLED,
             "stealth": MESH_STEALTH,
@@ -3788,6 +3797,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "blacklisted_addrs": len(blacklist),
             "blacklist": blacklist,
             "hop_interval": MESH_HOP_INTERVAL,
+            "rate_limit": {"max": DEFENSE_RATE_LIMIT, "window": DEFENSE_RATE_WINDOW},
+            "blacklist_ttl": DEFENSE_BLACKLIST_TTL,
         })
 
     def _handle_defense_post(self):
@@ -3797,13 +3808,15 @@ class CPIPHandler(BaseHTTPRequestHandler):
             addr = body.get("addr", "")
             if addr:
                 with TEAPOT_BLACKLIST_LOCK:
-                    TEAPOT_BLACKLIST.discard(addr)
+                    TEAPOT_BLACKLIST.pop(addr, None)
+                    TEAPOT_PROBE_COUNT.pop(addr, None)
                 self._send_json(200, "OK", {"status": "whitelisted", "addr": addr})
             else:
                 self._send_json(400, "Bad Request", {"error": "Missing 'addr'"})
         elif action == "clear":
             with TEAPOT_BLACKLIST_LOCK:
                 TEAPOT_BLACKLIST.clear()
+                TEAPOT_PROBE_COUNT.clear()
             self._send_json(200, "OK", {"status": "blacklist_cleared"})
         else:
             self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
@@ -4600,30 +4613,52 @@ def start_pitail():
 # Rejects unauthorized/unauthenticated probes with HTCPCP's most
 # famous status code. Makes network mapping and brute-force attacks
 # indistinguishable from a joke.
-TEAPOT_BLACKLIST = set()
+TEAPOT_BLACKLIST = {}
 TEAPOT_BLACKLIST_LOCK = threading.Lock()
+TEAPOT_PROBE_COUNT = {}
+DEFENSE_RATE_LIMIT = int(os.environ.get("CPIP_DEFENSE_RATE_LIMIT", "10"))
+DEFENSE_RATE_WINDOW = int(os.environ.get("CPIP_DEFENSE_RATE_WINDOW", "60"))
+DEFENSE_BLACKLIST_TTL = int(os.environ.get("CPIP_DEFENSE_BLACKLIST_TTL", "3600"))
+DEFENSE_MAX_BLACKLIST = int(os.environ.get("CPIP_DEFENSE_MAX_BLACKLIST", "1000"))
 
 def teapot_defense(addr):
-    """Check if an address should be greeted with 418.
-    
-    Returns True if the address is blacklisted (already seen probing).
-    Localhost and RFC 1918 addresses are never blacklisted.
-    """
+    """Check if an address should be greeted with 418."""
     if addr in ("127.0.0.1", "::1", "localhost"):
         return False
     with TEAPOT_BLACKLIST_LOCK:
-        if addr in TEAPOT_BLACKLIST:
-            return True
+        entry = TEAPOT_BLACKLIST.get(addr)
+        if entry:
+            if time.time() < entry.get("expires", 0):
+                return True
+            del TEAPOT_BLACKLIST[addr]
         return False
 
 def teapot_blacklist_addr(addr):
-    """Add an address to the 418 blacklist after confirmed probe."""
+    """Add an address to the 418 blacklist. Tracks probe rate.
+    Repeated probes within the rate window double the ban duration."""
     if addr in ("127.0.0.1", "::1", "localhost"):
         return
+    now = time.time()
     with TEAPOT_BLACKLIST_LOCK:
-        TEAPOT_BLACKLIST.add(addr)
-        if len(TEAPOT_BLACKLIST) > 1000:
-            TEAPOT_BLACKLIST.clear()
+        # Rate tracking
+        hits = TEAPOT_PROBE_COUNT.get(addr, [])
+        hits = [t for t in hits if now - t < DEFENSE_RATE_WINDOW]
+        hits.append(now)
+        TEAPOT_PROBE_COUNT[addr] = hits
+
+        entry = TEAPOT_BLACKLIST.get(addr)
+        base_ttl = DEFENSE_BLACKLIST_TTL
+        if entry:
+            base_ttl = entry.get("ttl", base_ttl)
+        if len(hits) > DEFENSE_RATE_LIMIT:
+            base_ttl = min(base_ttl * 2, 86400)
+        TEAPOT_BLACKLIST[addr] = {"expires": now + base_ttl, "ttl": base_ttl}
+        if len(TEAPOT_BLACKLIST) > DEFENSE_MAX_BLACKLIST:
+            oldest = sorted(TEAPOT_BLACKLIST.items(),
+                           key=lambda x: x[1].get("expires", 0))[:len(TEAPOT_BLACKLIST)//2]
+            for k, _ in oldest:
+                del TEAPOT_BLACKLIST[k]
+                TEAPOT_PROBE_COUNT.pop(k, None)
 
 def teapot_probe_check(headers, addr, path, method):
     """Determine if a request looks like hostile probing vs legitimate HTCPCP.

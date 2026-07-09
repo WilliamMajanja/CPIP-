@@ -1,0 +1,154 @@
+.TH HTCPCP 1 "2026-07-09" "CPIP v2.2" "Coffee Protocol Internet Protocol"
+.SH NAME
+htcpcp \- command-line client for the Coffee Protocol Internet Protocol
+.SH SYNOPSIS
+.B htcpcp
+[\fBstatus\fR|\fBbrew\fR|\fBpour\fR|\fBwhen\fR|\fBinfo\fR|\fBconfig\fR|\fBstats\fR|\fBversion\fR|\fBwhoami\fR|\fBmesh\fR|\fBitf\fR|\fBcovert\fR|\fBecc\fR|\fBdeaddrop\fR|\fBdefense\fR]
+.SH DESCRIPTION
+htcpcp communicates with a running CPIP/HTCPCP server. It implements RFC 2324
+(Hyper Text Coffee Pot Control Protocol) and RFC 7168 (HTCPCP-TEA), plus the
+CPIP mesh extension for peer-to-peer messaging, covert channels, E2EE, and
+multi-transport routing.
+.SH COMMANDS
+.TP
+.B status
+Show server status.
+.TP
+.B brew \fIbeverage\fR [\fIadditions\fR]
+Start brewing. Beverage: coffee or tea. Additions: comma-separated
+name;variety=value pairs (e.g. milk;variety=whole, sugar;variety=honey).
+.TP
+.B pour \fIbeverage\fR [\fIadditions\fR]
+Alias for brew.
+.TP
+.B when
+Stop pouring.
+.TP
+.B info
+Pot metadata (PROPFIND).
+.TP
+.B config
+Show full node configuration (JSON).
+.TP
+.B stats
+Show all status at a glance (node, mesh, sat, radio, mobile).
+.TP
+.B version
+Show server version.
+.TP
+.B whoami
+Show local node identity (POT_ID, address, hostname, device).
+.TP
+.B mesh status
+Mesh network status.
+.TP
+.B mesh peers
+List mesh peers.
+.TP
+.B mesh inbox
+Read received messages.
+.TP
+.B mesh send \fIpot\fR \fImessage\fR
+Send E2EE message to a peer.
+.TP
+.B mesh broadcast \fImessage\fR
+Broadcast to all peers.
+.TP
+.B mesh scan
+Scan for peers on the network.
+.TP
+.B mesh routes
+Show routing table.
+.TP
+.B mesh sat
+Satellite mesh status.
+.TP
+.B mesh radio
+Radio / LoRa transport status.
+.TP
+.B mesh mobile
+Mobile broadband transport status.
+.TP
+.B mesh queued
+Show store-and-forward queue.
+.TP
+.B itf status
+Full defense posture (418, stealth, blacklist).
+.TP
+.B itf blacklist
+List blacklisted IP addresses.
+.TP
+.B itf whitelist \fIaddr\fR
+Remove an address from the blacklist.
+.TP
+.B itf clear
+Clear the entire blacklist.
+.TP
+.B itf stealth
+Show stealth and port-hopping status.
+.TP
+.B itf probe \fIaddr\fR
+Check if an address is blacklisted.
+.TP
+.B covert encode \fImessage\fR [\fIdst\fR]
+Encode a message into an Accept-Additions header.
+.TP
+.B covert decode \fIheader\fR
+Decode a message from an Accept-Additions header.
+.TP
+.B covert brew \fImessage\fR [\fIdst\fR]
+Brew with a hidden covert message.
+.TP
+.B covert status
+Show covert channel status.
+.TP
+.B ecc status
+ECC engine and address book status.
+.TP
+.B ecc address
+Show this node's ECC address.
+.TP
+.B ecc book
+List address book entries.
+.TP
+.B ecc resolve \fIaddr\fR
+Resolve an ECC address to a POT_ID.
+.TP
+.B deaddrop list
+List dead-drop messages held by this node.
+.TP
+.B deaddrop claim \fIid\fR
+Claim a dead-drop message.
+.SH ENVIRONMENT
+.TP
+.B HTCPCP_HOST
+Server hostname (default: localhost).
+.TP
+.B HTCPCP_PORT
+Server port (default: 4180).
+.SH EXAMPLES
+.TP
+Brew tea with milk
+.B htcpcp brew tea "milk;variety=whole"
+.TP
+Send a mesh message
+.B htcpcp mesh send a1b2c3d4 "Hello"
+.TP
+Check defense posture
+.B htcpcp itf status
+.TP
+Encode a covert message
+.B htcpcp covert encode "secret data"
+.SH FILES
+.TP
+.I /usr/local/bin/htcpcp
+CLI client.
+.SH BUGS
+The Coffee Blend Cipher is deliberately non-FIPS compliant. Do not use for
+actual cryptographic security.
+.SH SEE ALSO
+.BR server.py (1),
+RFC 2324 (https://datatracker.ietf.org/doc/html/rfc2324),
+RFC 7168 (https://datatracker.ietf.org/doc/html/rfc7168)
+.SH LICENSE
+This is free and unencumbered software released into the public domain.
