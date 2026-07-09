@@ -1,15 +1,14 @@
-☕ CPIP — Coffee Protocol Internet Protocol
-============================================
+# ☕ CPIP — Coffee Protocol Internet Protocol
 
-*RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Mesh Extension*
+> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport
 
 ```
      ( (
       ) )
-  .........         A coffee pot is always listening.
+  .........
   :       :
-  :   o   :         Even when nobody is brewing.
-  :       :
+  :   o   :     "A coffee pot is always listening.
+  :       :      Even when nobody is brewing."
   :.......:
   \#######/
    \###/
@@ -17,164 +16,89 @@
      V
 ```
 
-What is this?
--------------
-CPIP is the next-generation evolution of the Hyper Text Coffee Pot Control
-Protocol. It transforms the classic April Fools' RFC into a real, functional
-IoT coffee control system for Raspberry Pi.
+CPIP is a fully functional implementation of the Hyper Text Coffee Pot Control
+Protocol that runs on Raspberry Pi. Beneath the HTCPCP brew requests runs a
+peer-to-peer mesh network with four transport layers — LAN, satellite,
+radio (LoRa/TNC), and mobile broadband — plus covert channels, Ed25519 E2EE,
+store-and-forward messaging, and a full CLI client.
 
-But that is not all it does.
+---
 
-The Coffee Protocol is a cover. Beneath the innocent `Accept-Additions`
-headers and `BREW` methods runs a full peer-to-peer mesh communications
-network that requires zero internet infrastructure. It is designed for
-Raspberry Pi Zero mesh networks where traditional internet access is
-unavailable, unreliable, or undesired.
+## Table of Contents
 
-Your coffee pot is a mesh node. Every brew request is a potential message.
-Every `WHEN` response carries data. The protocol looks like coffee.
+- [What is this?](#what-is-this)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [Multi-Transport Architecture](#multi-transport-architecture)
+- [Covert Channel](#covert-channel)
+- [Cryptography Notes](#cryptography-notes)
+- [Deployment](#deployment)
+- [Environment Variables](#environment-variables)
+- [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+
+---
+
+## What is this?
+
+The Hyper Text Coffee Pot Control Protocol (HTCPCP) was published as
+[RFC 2324](https://datatracker.ietf.org/doc/html/rfc2324) on April 1, 1998 — an
+April Fools' Day joke. It defined the now-famous HTTP 418 "I'm a teapot"
+status code and specified how to control coffee pots over the internet.
+[RFC 7168](https://datatracker.ietf.org/doc/html/rfc7168) extended it for tea
+in 2014 (also April 1).
+
+CPIP takes the joke seriously. It implements the full protocol and extends it
+into a multi-transport mesh communication system. The coffee theme provides
+perfect cover traffic. Every brew request can carry encrypted data.
+Every `WHEN` response is a potential message. The protocol looks like coffee.
 It is not coffee.
 
-Features
---------
-- **HTCPCP/HTCPCP-TEA compatibility** — Full RFC 2324 + RFC 7168 support
-- **Web dashboard** — Real-time brew control, mesh management, covert channel tools
-- **GPIO control** — Physical relay control for actual coffee makers (Raspberry Pi)
-- **mDNS advertising** — Zero-config network discovery via Avahi
-- **Pot discovery** — UDP broadcast for finding peers on LAN/mesh
-- **Brew scheduling** — Set timed brews with automatic stop
-- **SSE events** — Real-time server-sent events for live monitoring
-- **Prometheus metrics** — Export metrics at `/cpip/metrics`
-- **Webhook notifications** — POST to URLs when brew completes
-- **Satellite mesh (LEO/Starlink)** — Internet-wide mesh relay via UDP port 4195
-- **Radio transport (LoRa)** — SX1276 SPI + KISS TNC serial + RTL-SDR stub
-- **Mobile broadband (4G/5G)** — WWAN mesh transport with signal telemetry
-- **CLI client** — Full-featured `htcpcp` bash CLI with mesh, covert, sat, radio, mobile commands
-- **Cross-transport routing** — Messages automatically forwarded between radio, satellite, mobile, and local mesh
+**Your coffee pot is a mesh node.**
 
-Mesh Network
-------------
-```
-  ┌─────────┐     ┌─────────┐     ┌─────────┐
-  │  Pot A  │────▶│  Pot B  │────▶│  Pot C  │
-  │ Pi Zero │     │ Pi Zero │     │ Pi Zero │
-  └─────────┘     └─────────┘     └─────────┘
-       │               │               │
-       │               ▼               │
-       │          ┌─────────┐          │
-       └─────────▶│  Pot D  │◀─────────┘
-                  │ Pi Zero │
-                  └─────────┘
-```
+---
 
-Each CPIP instance is a mesh node. Nodes discover each other automatically
-via UDP heartbeat broadcasts on port 4191. Messages are routed through the
-mesh using store-and-forward delivery. If a destination node is offline,
-the message is queued and delivered when the node reconnects.
+## Features
 
-**No internet connection required.** CPIP works entirely over:
-- Local Ethernet (wired)
-- WiFi (infrastructure mode)
-- WiFi Direct (ad-hoc/P2P)
-- Any IP-based mesh network
+- **HTCPCP/HTCPCP-TEA** — Full RFC 2324 + RFC 7168 (BREW, WHEN, PROPFIND, OPTIONS)
+- **Web dashboard** — Real-time brew control, mesh management, covert channel UI
+- **GPIO relay control** — Physical coffee maker control on Raspberry Pi
+- **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, E2EE
+- **4 transport layers** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G
+- **Cross-transport routing** — Messages automatically forwarded between all transports
+- **Covert channel** — Data hidden inside `Accept-Additions` brew headers
+- **Coffee Blend Cipher** — Custom stream cipher (deliberately non-FIPS)
+- **Ed25519 ECC** — End-to-end encryption, address book, port hopping
+- **CLI client** — Full-featured `htcpcp` bash CLI
+- **mDNS advertising** — Zero-config discovery via Avahi
+- **Brew scheduling** — Timed brews with automatic stop
+- **SSE events** — Real-time server-sent events
+- **Prometheus metrics** — Export at `/cpip/metrics`
+- **Webhook notifications** — POST to URLs on brew completion
+- **418 defense** — Unauthorized probes replied to with "I'm a teapot"
+- **Pi-Apps support** — One-click install on Raspberry Pi
 
-### Multi-Transport Architecture
+---
 
-CPIP supports four mesh transports that forward messages between each other automatically:
+## Quick Start
 
-| Transport | Env Flag | Port | Description |
-|-----------|----------|------|-------------|
-| **LAN Mesh** | `CPIP_MESH=1` | 4191 | UDP heartbeat mesh (default) |
-| **Satellite** | `CPIP_SAT=1` | 4195 | UDP satellite/Starlink relay with GPS coords |
-| **Radio** | `CPIP_RADIO=1` | Unix socket | LoRa SPI, KISS TNC serial, or simulation |
-| **Mobile** | `CPIP_MOBILE=1` | 4196 | 4G/5G WWAN mesh with signal telemetry |
-
-### Satellite Mesh (LEO / Starlink)
-Internet-wide mesh relay using UDP port 4195. Nodes broadcast GPS coordinates (lat/lon/alt), bootstrap from seed nodes, and automatically route messages across the internet. Dual env var naming (`CPIP_SAT_*` / `CPIP_STARLINK_*`) for backward compatibility.
-
-### Radio Transport (LoRa / TNC)
-C-based radio interface (`radio/radio_if.c`) compiled with `gcc -O2 -Wall -pthread` — zero external dependencies. Supports:
-- **SX1276/SX1278 LoRa** via SPI (full register map)
-- **KISS TNC** serial (AX.25 over serial via termios)
-- **RTL-SDR** stub (experimental)
-- **Simulation mode** — synthetic mesh heartbeats for testing
-- Duty cycle enforcement and listen-before-talk
-
-Python bridge in `radio/radio_protocol.py` communicates with the C binary over a Unix domain socket (`/tmp/cpip-radio.sock`).
-
-### Mobile Broadband (4G/5G / LTE / WWAN)
-UDP-based mesh transport over cellular data interfaces. Includes automatic signal quality reading via ModemManager (`mmcli`) and sysfs. Bootstrap seed nodes enable internet-wide peer discovery.
-
-Covert Channel
---------------
-Messages can be hidden inside legitimate HTCPCP brew requests. The
-`Accept-Additions` header carries encrypted data disguised as coffee
-customization options:
-
-```
-Accept-Additions: milk;variety=48656c6c, syrup;variety=6f20576f, sugar;variety=726c6421
-```
-
-To a casual observer this looks like a coffee order with milk, syrup, and
-sugar. In reality it has passed unencrypted "Hello World" traffic. With
-the Coffee Cipher enabled, all payloads appear as random hex data.
-
-The system generates cover traffic (random brew requests) at intervals
-to obscure which requests carry real messages.
-
-Coffee Blend Cipher (Non-FIPS)
-------------------------------
-**This software deliberately does NOT comply with FIPS 140-2/3 or any
-federal information processing standards.**
-
-CPIP uses a custom stream cipher called the Coffee Blend Cipher:
-
-- **Key derivation** uses MD4-derived mixing (not SHA-2) with coffee
-  recipe names as key material
-- **S-box substitution** uses the five addition types (milk, syrup,
-  sugar, spice, alcohol) as substitution tables
-- **Keystream** is XOR-based with no initialization vector
-- **No padding oracle resistance** — the cipher is deliberately weak
-  by modern standards
-
-This is intentional. The cipher is designed to be:
-- Non-trivial to casual inspection
-- Obviously non-standard (not a known government standard)
-- Sufficient for obscuring traffic on a mesh network
-- Replaceable — you can swap in any encryption you trust
-
-The default key is `CHANGE_ME_COFFEE_BLEND_2024`. Set `CPIP_COVERT_KEY`
-environment variable to your own passphrase.
-
-Quick Start
------------
 ```bash
-# Start the server
+# Start the server (defaults: hyper-text device, mesh enabled)
 ./server.py
 
-# Web dashboard is at:
-# http://localhost:4180/dashboard
+# Web dashboard: http://localhost:4180/dashboard
 
-# Or use the CLI client
-./htcpcp status
-./htcpcp brew coffee
-./htcpcp mesh sat           # Satellite status
-./htcpcp mesh radio          # Radio status
-./htcpcp mesh mobile         # Mobile status
-./htcpcp stats               # Full status snapshot
-./htcpcp config              # Node configuration
-
-# Build the radio interface (optional, for LoRa hardware)
-make -C radio
-
-# Enable transports via env vars
-CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
-
-# Brew some coffee (HTCPCP)
+# Brew some coffee
 curl -X BREW http://localhost:4180/coffee
 
 # Brew tea with additions
-curl -X BREW -H "Accept-Additions: milk;variety=whole, sugar;variety=honey" \
+curl -X BREW \
+  -H "Accept-Additions: milk;variety=whole, sugar;variety=honey" \
   http://localhost:4180/tea
 
 # Stop brewing
@@ -184,82 +108,221 @@ curl -X WHEN http://localhost:4180/
 curl http://localhost:4180/
 ```
 
-Mesh Commands
--------------
+### With extra transports
+
 ```bash
-# Check mesh status
-curl http://localhost:4180/cpip/mesh/status
+# Build the optional radio interface (requires gcc)
+make -C radio
 
-# List mesh peers
-curl http://localhost:4180/cpip/mesh/peers
-
-# Check inbox
-curl http://localhost:4180/cpip/mesh/inbox
-
-# Send a message through the mesh
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"dst":"<pot_id>", "data":"Hello via coffee protocol"}' \
-  http://localhost:4180/cpip/mesh/send
-
-# Broadcast to all peers
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"data":"Attention all coffee pots"}' \
-  http://localhost:4180/cpip/mesh/broadcast
-
-# Encode a covert message
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"message":"Secret data", "dst":"<pot_id>"}' \
-  http://localhost:4180/cpip/mesh/encode
-
-# Decode a covert message from a header
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"accept_additions":"milk;variety=48656c6c6f"}' \
-  http://localhost:4180/cpip/mesh/decode
+# Enable all transports
+CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 ```
 
-Prometheus Metrics
-------------------
+### Using the CLI
+
 ```bash
-curl http://localhost:4180/cpip/metrics
+./htcpcp status
+./htcpcp brew coffee
+./htcpcp mesh peers
+./htcpcp mesh sat
+./htcpcp mesh radio
+./htcpcp mesh mobile
+./htcpcp stats
 ```
 
-Exports: `cpip_brewing`, `cpip_brew_total`, `cpip_mesh_peers`,
-`cpip_mesh_inbox`, `cpip_mesh_queued`, `cpip_gpio_state`,
-`cpip_uptime_seconds`, `cpip_sse_clients`, `cpip_scheduled_brews`
+---
 
-Deployment on Raspberry Pi Zero
--------------------------------
+## CLI Reference
+
+The `htcpcp` command-line client communicates with a running CPIP server.
+
+| Command | Description |
+|---------|-------------|
+| `htcpcp status` | Server status |
+| `htcpcp version` | Server version |
+| `htcpcp whoami` | Local node identity (POT_ID, address, hostname, device) |
+| `htcpcp config` | Full node configuration (JSON) |
+| `htcpcp stats` | All status at a glance (node, mesh, sat, radio, mobile) |
+| `htcpcp brew coffee` | Brew coffee |
+| `htcpcp brew tea` | Brew tea |
+| `htcpcp brew tea "milk;variety=whole, sugar;variety=honey"` | Brew with additions |
+| `htcpcp when` | Stop brewing |
+| `htcpcp info` | Pot metadata (PROPFIND) |
+| `htcpcp 418` | Trigger 418 (brew coffee on a teapot) |
+| `htcpcp 418-alcohol` | Trigger 418 (alcohol on a teapot) |
+| `htcpcp additions` | List supported addition types |
+| `htcpcp mesh status` | Mesh network status |
+| `htcpcp mesh peers` | List mesh peers |
+| `htcpcp mesh inbox` | Received messages |
+| `htcpcp mesh send <pot> <msg>` | Send E2EE message |
+| `htcpcp mesh broadcast <msg>` | Broadcast to all peers |
+| `htcpcp mesh scan` | Discover peers |
+| `htcpcp mesh routes` | Routing table |
+| `htcpcp mesh sat` | Satellite mesh status |
+| `htcpcp mesh radio` | Radio / LoRa status |
+| `htcpcp mesh mobile` | Mobile broadband status |
+| `htcpcp mesh queued` | Store-and-forward queue |
+| `htcpcp covert encode <msg>` | Encode covert message |
+| `htcpcp covert decode <header>` | Decode covert message |
+| `htcpcp covert brew <msg>` | Brew with hidden message |
+| `htcpcp covert status` | Covert channel status |
+| `htcpcp ecc status` | ECC engine status |
+| `htcpcp ecc address` | Show this node's ECC address |
+| `htcpcp ecc book` | List address book |
+| `htcpcp ecc resolve <addr>` | Resolve ECC address |
+| `htcpcp deaddrop list` | List dead-drop messages |
+| `htcpcp deaddrop claim <id>` | Claim a dead-drop message |
+| `htcpcp defense status` | 418 defense status |
+
+---
+
+## Multi-Transport Architecture
+
+CPIP supports four mesh transports that forward messages between each other
+automatically. Messages received on any transport are relayed to all others
+(routing loops are prevented).
+
+| Transport | Env Flag | Port | Description |
+|-----------|----------|------|-------------|
+| **LAN Mesh** | `CPIP_MESH=1` | 4191 | UDP heartbeat mesh on local network |
+| **Satellite** | `CPIP_SAT=1` | 4195 | Internet-wide UDP relay with GPS coords |
+| **Radio** | `CPIP_RADIO=1` | Unix socket | LoRa SPI, KISS TNC serial, or simulation |
+| **Mobile** | `CPIP_MOBILE=1` | 4196 | 4G/5G WWAN mesh with signal telemetry |
+
+### LAN Mesh (default)
+
+Nodes discover each other via UDP heartbeats on port 4191. Messages use
+store-and-forward delivery. E2EE with Ed25519 is default. Port hopping and
+stealth mode are supported.
+
+**No internet connection required.** Works over:
+- Local Ethernet (wired)
+- WiFi infrastructure mode
+- WiFi Direct (ad-hoc/P2P)
+- Any IP-based network
+
+### Satellite Mesh (LEO / Starlink)
+
+Internet-wide mesh relay using UDP port 4195. Designed for satellite
+links with high latency. Features:
+- GPS coordinate broadcasting (lat/lon/alt)
+- Bootstrap seed nodes for peer discovery
+- Configurable timeouts for high-latency links
+- Dual env var naming (`CPIP_SAT_*` / `CPIP_STARLINK_*`) for backward compatibility
+
+### Radio Transport (LoRa / TNC)
+
+C-based radio interface with zero external dependencies. Built with
+`gcc -O2 -Wall -pthread`. Supports:
+- **SX1276/SX1278 LoRa** via SPI (full register map)
+- **KISS TNC** serial (AX.25 over serial via termios)
+- **RTL-SDR** stub (experimental)
+- **Simulation mode** — synthetic mesh heartbeats for testing without hardware
+- Duty cycle enforcement and listen-before-talk
+
+The Python bridge (`radio/radio_protocol.py`) communicates with the C binary
+over a Unix domain socket (`/tmp/cpip-radio.sock`).
+
+### Mobile Broadband (4G/5G / LTE / WWAN)
+
+UDP-based mesh transport over cellular data interfaces. Features:
+- Automatic signal quality reading via ModemManager (`mmcli`) and sysfs
+- Bootstrap seed nodes for internet-wide peer discovery
+- TCP keepalive-compatible heartbeat intervals
+- RSRP/RSSI/SINR telemetry
+
+---
+
+## Covert Channel
+
+Messages can be hidden inside legitimate HTCPCP brew requests. The
+`Accept-Additions` header carries encrypted data disguised as coffee
+customization:
+
+```
+Accept-Additions: milk;variety=48656c6c, syrup;variety=6f20576f, sugar;variety=726c6421
+```
+
+To a casual observer this looks like a coffee order. In reality it has passed
+"Hello World" traffic. With the Coffee Blend Cipher enabled, all payloads
+appear as random hex data.
+
+The system generates cover traffic (random brew requests at configurable
+intervals) to obscure which requests carry real messages.
+
+---
+
+## Cryptography Notes
+
+### Ed25519 ECC
+
+- Key exchange: Curve25519 Diffie-Hellman
+- Signatures: Ed25519
+- Pure Python implementation (not constant-time)
+- Default port hopping and latent ports for traffic obfuscation
+
+### Coffee Blend Cipher
+
+**This software deliberately does NOT comply with FIPS 140-2/3 or any federal
+information processing standards.**
+
+CPIP uses a custom stream cipher called the Coffee Blend Cipher:
+
+- **Key derivation** uses MD4-derived mixing (not SHA-2) with coffee recipe
+  names as key material
+- **S-box substitution** uses the five addition types (milk, syrup, sugar,
+  spice, alcohol) as substitution tables
+- **Keystream** is XOR-based with no initialization vector
+- **No padding oracle resistance** — the cipher is deliberately weak
+
+This is intentional. The cipher is designed to be non-trivial to casual
+inspection, obviously non-standard, sufficient for obscuring mesh traffic,
+and trivially replaceable with any encryption you trust.
+
+Set `CPIP_COVERT_KEY` to your own passphrase. The default is
+`CHANGE_ME_COFFEE_BLEND_2024`.
+
+---
+
+## Deployment
+
+### Raspberry Pi Zero
+
 ```bash
-# Deploy with the included script (run as root)
+# Full deploy (run as root)
 sudo ./deploy.sh
 
-# Or install manually
+# Manual install
 sudo mkdir -p /opt/cpip
 sudo cp server.py /opt/cpip/
 sudo chmod +x /opt/cpip/server.py
 ```
 
-### Pi-Apps Installation
-If you have Pi-Apps installed, copy the `pi-apps/` directory to
-`~/.local/share/pi-apps/apps/Coffee-Protocol/` and it will appear
-in the Pi-Apps catalog.
+The deploy script installs:
+- Server to `/opt/cpip/server.py`
+- CLI to `/usr/local/bin/htcpcp`
+- Systemd service (`cpip.service`)
+- Pi-Apps package (if `pi-apps/` directory is present)
+
+### Pi-Apps
+
+Copy the `pi-apps/` directory to
+`~/.local/share/pi-apps/apps/Coffee-Protocol/` and it will appear in the
+Pi-Apps catalog for one-click install.
 
 ### Systemd Service
-Deploy script creates a systemd service. Alternatively:
 
 ```ini
 [Unit]
-Description=CPIP Coffee Protocol Internet Protocol
+Description=CPIP v2.2 — Coffee Protocol Internet Protocol
 After=network.target
 
 [Service]
 Type=simple
 Environment=CPIP_DEVICE=hyper-text
-Environment=CPIP_COVERT_KEY=your_secret_key_here
 Environment=CPIP_MESH=1
-Environment=CPIP_SAT=1
-Environment=CPIP_RADIO=0
-Environment=CPIP_MOBILE=0
+Environment=CPIP_COVERT=1
+Environment=CPIP_COVERT_KEY=your_secret_key_here
 ExecStart=/usr/bin/python3 /opt/cpip/server.py
 Restart=on-failure
 RestartSec=5
@@ -268,69 +331,122 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Radio Interface (C)
--------------------
-The radio transport requires building the C binary:
+### Radio Interface Build
 
 ```bash
 cd radio
 make
 ```
 
-This produces `radio_if` — a standalone binary with zero external dependencies:
-- LoRa SX1276/SX1278 SPI driver (full register map)
-- KISS TNC serial (AX.25 over termios)
-- RTL-SDR stub (experimental)
-- Simulation mode (no hardware needed)
-- Duty cycle enforcement + listen-before-talk
+Produces `radio_if` — standalone binary, zero external dependencies.
 
-Environment Variables
----------------------
+---
+
+## Environment Variables
+
+All configuration is via environment variables. No config files needed.
+
+### Core
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CPIP_DEVICE` | `hyper-text` | Device type: teapot, coffee-pot, hyper-text |
-| `CPIP_BIND` | `0.0.0.0` | Bind address |
+| `CPIP_DEVICE` | `hyper-text` | Device type: `teapot`, `coffee-pot`, `hyper-text` |
+| `CPIP_BIND` | `0.0.0.0` | HTTP bind address |
 | `CPIP_PORT` | `4180` | HTTP port |
-| `CPIP_GPIO` | `0` | Enable GPIO (set to `1`) |
-| `CPIP_GPIO_PIN` | `17` | GPIO pin for relay |
+| `CPIP_GPIO` | `0` | Enable GPIO relay control |
+| `CPIP_GPIO_PIN` | `17` | GPIO pin number |
 | `CPIP_AVAHI` | `1` | Enable mDNS advertising |
+
+### Mesh Network
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `CPIP_MESH` | `1` | Enable mesh networking |
-| `CPIP_MESH_PORT` | `4191` | Mesh UDP port |
-| `CPIP_MESH_TTL` | `5` | Mesh message time-to-live |
-| `CPIP_MESH_HEARTBEAT` | `30` | Mesh heartbeat interval (s) |
+| `CPIP_MESH_PORT` | `4191` | Mesh UDP heartbeat port |
+| `CPIP_MESH_TTL` | `5` | Message time-to-live (hops) |
+| `CPIP_MESH_HEARTBEAT` | `30` | Heartbeat interval (seconds) |
+| `CPIP_MESH_STEALTH` | `0` | Stealth mode (no broadcast heartbeats) |
+| `CPIP_MESH_LATENT_PORTS` | `4192,4193,4194` | Port-knocking latent ports |
+| `CPIP_MESH_HOP_INTERVAL` | `3600` | Port hop interval (seconds) |
+| `CPIP_MESH_PERSIST_DIR` | `/tmp/cpip` | Message persistence directory |
+
+### Covert Channel
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `CPIP_COVERT` | `1` | Enable covert channel |
-| `CPIP_COVERT_KEY` | `CHANGE_ME...` | Encryption key |
-| `CPIP_COVER_TRAFFIC` | `1` | Generate cover traffic |
-| `CPIP_DISCOVERY_PORT` | `4190` | UDP discovery port |
-| `CPIP_WEB_DIR` | `./web` | Web static files directory |
+| `CPIP_COVERT_KEY` | `CHANGE_ME...` | Encryption passphrase |
+| `CPIP_COVER_TRAFFIC` | `1` | Generate random cover traffic |
+
+### Satellite Mesh
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `CPIP_SAT` | `0` | Enable satellite mesh |
-| `CPIP_SAT_PORT` | `4195` | Satellite mesh UDP port |
-| `CPIP_SAT_BOOTSTRAP` | — | Satellite seed nodes (comma-separated `host:port`) |
-| `CPIP_SAT_LAT` | `0` | Node latitude for satellite mesh |
-| `CPIP_SAT_LON` | `0` | Node longitude for satellite mesh |
-| `CPIP_SAT_ALT` | `0` | Node altitude (m) for satellite mesh |
-| `CPIP_STARLINK_*` | — | Backward-compat alias for `CPIP_SAT_*` |
+| `CPIP_SAT_PORT` | `4195` | UDP port |
+| `CPIP_SAT_BOOTSTRAP` | — | Seed nodes (`host:port,host:port`) |
+| `CPIP_SAT_LAT` | `0` | Node latitude |
+| `CPIP_SAT_LON` | `0` | Node longitude |
+| `CPIP_SAT_ALT` | `0` | Node altitude (meters) |
+| `CPIP_SAT_RELAY` | `0` | Relay mode (forward traffic) |
+| `CPIP_SAT_TIMEOUT` | `10` | Peer timeout (seconds) |
+| `CPIP_SAT_HEARTBEAT` | `60` | Heartbeat interval (seconds) |
+
+`CPIP_STARLINK_*` env vars are accepted as backward-compatible aliases.
+
+### Radio Transport
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `CPIP_RADIO` | `0` | Enable radio transport |
-| `CPIP_RADIO_MODE` | `sim` | Radio mode: `sim`, `lora`, `tnc`, `rtlsdr` |
-| `CPIP_RADIO_FREQ` | `915000000` | LoRa frequency (Hz) |
+| `CPIP_RADIO_MODE` | `sim` | Mode: `sim`, `lora`, `tnc`, `rtlsdr` |
+| `CPIP_RADIO_FREQ` | `915000000` | Frequency (Hz) |
 | `CPIP_RADIO_SF` | `9` | LoRa spreading factor |
 | `CPIP_RADIO_BW` | `125000` | LoRa bandwidth (Hz) |
 | `CPIP_RADIO_POWER` | `17` | Transmit power (dBm) |
 | `CPIP_RADIO_DEVICE` | `/dev/ttyUSB0` | TNC serial device |
 | `CPIP_RADIO_BAUD` | `115200` | TNC serial baud rate |
-| `CPIP_MOBILE` | `0` | Enable mobile broadband mesh |
-| `CPIP_MOBILE_PORT` | `4196` | Mobile mesh UDP port |
-| `CPIP_MOBILE_IFACE` | `wwan0` | WWAN network interface |
-| `CPIP_MOBILE_APN` | — | Cellular APN |
-| `CPIP_MOBILE_BOOTSTRAP` | — | Mobile seed nodes (comma-separated `host:port`) |
-| `CPIP_MOBILE_HEARTBEAT` | `120` | Mobile heartbeat interval (s) |
-| `CPIP_MOBILE_KEEPALIVE` | `30` | Mobile keepalive interval (s) |
-| `CPIP_CELLULAR_*` | — | Backward-compat alias for `CPIP_MOBILE_*` |
 
-API Endpoints
--------------
+### Mobile Broadband
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_MOBILE` | `0` | Enable mobile transport |
+| `CPIP_MOBILE_PORT` | `4196` | UDP port |
+| `CPIP_MOBILE_IFACE` | `wwan0` | Network interface |
+| `CPIP_MOBILE_APN` | — | Cellular APN |
+| `CPIP_MOBILE_BOOTSTRAP` | — | Seed nodes (`host:port,host:port`) |
+| `CPIP_MOBILE_HEARTBEAT` | `120` | Heartbeat interval (seconds) |
+| `CPIP_MOBILE_KEEPALIVE` | `30` | Keepalive interval (seconds) |
+
+`CPIP_CELLULAR_*` env vars are accepted as backward-compatible aliases.
+
+### USB Gadget (Pi-Tail)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_PITAIL` | `0` | Enable USB gadget mode |
+| `CPIP_PITAIL_ADDR` | `10.0.0.1` | USB gadget IP address |
+| `CPIP_PITAIL_NETMASK` | `255.255.255.0` | USB gadget netmask |
+| `CPIP_PITAIL_GADGET_DIR` | `/sys/kernel/config/usb_gadget` | Configfs path |
+
+### Other
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_NTP` | `1` | Enable NTP sync |
+| `CPIP_NTP_SERVER` | `pool.ntp.org` | NTP server |
+| `CPIP_DISCOVERY_PORT` | `4190` | UDP pot discovery port |
+| `CPIP_WEB_DIR` | `./web` | Web dashboard static files |
+| `CPIP_THERMOS` | `0` | Enable dead-drop aggregator |
+| `CPIP_THERMOS_MAX` | `1000000` | Max dead-drop storage (bytes) |
+
+---
+
+## API Reference
 
 ### HTCPCP (RFC 2324 + RFC 7168)
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/` | Server status |
@@ -342,47 +458,52 @@ API Endpoints
 | `PROPFIND` | `/` | Pot metadata |
 | `OPTIONS` | `/` | Protocol capabilities |
 
-### CPIP (Coffee Protocol Internet Protocol)
+### CPIP REST API
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/cpip/status` | Full system status |
-| `GET` | `/cpip/config` | Configuration |
+| `GET` | `/cpip/config` | Node configuration |
 | `PUT` | `/cpip/config` | Update configuration |
 | `POST` | `/cpip/brew` | Brew via JSON API |
 | `GET` | `/cpip/history` | Brew history |
-| `GET` | `/cpip/schedules` | List schedules |
+| `GET` | `/cpip/schedules` | Scheduled brews |
 | `POST` | `/cpip/schedule` | Create schedule |
 | `DELETE` | `/cpip/schedules/:id` | Delete schedule |
-| `GET` | `/cpip/pots` | List pots (local + discovered) |
+| `GET` | `/cpip/pots` | Discovered pots |
 | `GET` | `/cpip/metrics` | Prometheus metrics |
-| `GET` | `/cpip/events` | Server-Sent Events (SSE) |
+| `GET` | `/cpip/events` | SSE event stream |
 | `POST` | `/cpip/webhooks` | Add webhook |
 | `DELETE` | `/cpip/webhooks` | Clear webhooks |
 
-### Mesh Network
+### Mesh Network API
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/cpip/mesh/status` | Mesh network status |
-| `GET` | `/cpip/mesh/peers` | List mesh peers |
+| `GET` | `/cpip/mesh/status` | Mesh status (peers, inbox, ECC, defense) |
+| `GET` | `/cpip/mesh/peers` | Peer list |
 | `GET` | `/cpip/mesh/inbox` | Received messages |
 | `GET` | `/cpip/mesh/routes` | Routing table |
-| `POST` | `/cpip/mesh/send` | Send message to node |
-| `POST` | `/cpip/mesh/broadcast` | Broadcast to all nodes |
+| `POST` | `/cpip/mesh/send` | Send E2EE message |
+| `POST` | `/cpip/mesh/broadcast` | Broadcast to all peers |
 | `POST` | `/cpip/mesh/encode` | Encode covert message |
 | `POST` | `/cpip/mesh/decode` | Decode covert message |
-| `GET` | `/cpip/mesh/sat` | Satellite mesh status |
-| `GET` | `/cpip/mesh/radio` | Radio/LoRa status |
-| `GET` | `/cpip/mesh/mobile` | Mobile broadband status |
+| `GET` | `/cpip/mesh/sat` | Satellite transport status |
+| `GET` | `/cpip/mesh/radio` | Radio transport status |
+| `GET` | `/cpip/mesh/mobile` | Mobile transport status |
 | `GET` | `/cpip/mesh/deaddrop` | List/claim dead drops |
 
 ### Web Interface
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/dashboard` | Web dashboard |
-| `GET` | `/static/*` | Static files |
+| `GET` | `/static/*` | Static assets |
 
-Architecture
-------------
+---
+
+## Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     CPIP Server                             │
@@ -415,33 +536,64 @@ Architecture
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Why "Coffee Protocol"?
-----------------------
-The Hyper Text Coffee Pot Control Protocol (HTCPCP) was published as
-RFC 2324 on April 1, 1998 — an April Fools' Day joke. It defined the
-now-famous HTTP 418 "I'm a teapot" status code and specified how to
-control coffee pots over the internet.
+---
 
-RFC 7168 extended it for tea in 2014 (also April 1).
+## Project Structure
 
-CPIP takes the joke seriously. It implements the full protocol spec
-and extends it into a real mesh communication system. The coffee theme
-provides perfect cover traffic — who suspects a coffee pot of running
-a mesh network?
+```
+├── server.py              # Main server (~4700 lines, zero deps)
+├── htcpcp                 # CLI client (bash script)
+├── deploy.sh              # Raspberry Pi deployment script
+├── deploy_htcpcp.sh       # Minimal HTCPCP-only deployment
+├── .gitignore
+├── README.md
+├── LICENSE
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── CODE_OF_CONDUCT.md
+├── radio/
+│   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, sim)
+│   ├── radio_if.h         # C header (structs, enums, protocol)
+│   ├── radio_protocol.py  # Python bridge to C binary
+│   └── Makefile           # gcc build (zero deps)
+└── pi-apps/
+    ├── install
+    ├── uninstall
+    ├── credits
+    ├── description
+    └── icon-64.png
+```
 
-License
--------
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+See [SECURITY.md](SECURITY.md).
+
+## Code of Conduct
+
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+---
+
+## License
+
 This is free and unencumbered software released into the public domain.
+See [LICENSE](LICENSE) for details.
 
-The Coffee Blend Cipher is deliberately non-FIPS compliant and should
-not be used for any purpose requiring actual cryptographic security.
+The Coffee Blend Cipher is deliberately non-FIPS compliant and should not
+be used for any purpose requiring actual cryptographic security.
 
 ```
      ☕     ☕     ☕
-       ☕  ☕  ☕
-          ☕☕
-       ☕  ☕  ☕
-     ☕     ☕     ☕
+        ☕  ☕  ☕
+           ☕☕
+        ☕  ☕  ☕
+      ☕     ☕     ☕
 
   Brew responsibly.
   Mesh securely.
