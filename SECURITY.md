@@ -39,6 +39,17 @@ Given the deliberately non-FIPS cryptographic design, most "vulnerabilities"
 are by design. If you find something that breaks the intended functionality
 (rather than the intended weakness), please report it.
 
+## 418 ITF Defense (In The Face)
+
+The ITF defense system automatically detects and blocks hostile probes:
+- **Scanner paths**: Requests to /admin, /wp-, /shell, etc. are blocked with 418
+- **Unknown URI schemes**: Non-coffee URIs trigger defense
+- **Pentest tool detection**: Burp Suite, Nmap, SQLMap, Nikto, Gobuster, Dirb, FFUF, WFuzz, OpenVAS, Nessus, Masscan, ZAP, Arachni, w3af, Metasploit, Acunetix are detected by User-Agent fingerprinting and blocked with 418
+- **Rate limiting**: Repeated probes double the blacklist duration (up to 24h)
+- **Blacklist**: Up to 1000 entries with configurable TTL
+
+View defense status via `htcpcp itf status` or the dashboard ITF tab.
+
 ## Responsible Use
 
 - Always change `CPIP_COVERT_KEY` from its default value

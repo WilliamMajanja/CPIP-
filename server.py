@@ -2955,6 +2955,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             })
             return
 
+        teapot_tool_check(self.headers, self.client_address[0])
+
         if teapot_probe_check(self.headers, self.client_address[0], path, "GET"):
             teapot_blacklist_addr(self.client_address[0])
             self._send_json(418, "I'm a teapot", {
@@ -3098,6 +3100,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "device": DEVICE_TYPE,
             })
             return
+        teapot_tool_check(self.headers, self.client_address[0])
         if teapot_probe_check(self.headers, self.client_address[0],
                               urlparse(self.path).path, "BREW"):
             teapot_blacklist_addr(self.client_address[0])
@@ -3119,6 +3122,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "error": "I'm a teapot", "status": 418,
             })
             return
+        teapot_tool_check(self.headers, self.client_address[0])
         if teapot_probe_check(self.headers, self.client_address[0], path, "POST"):
             teapot_blacklist_addr(self.client_address[0])
             self._send_json(418, "I'm a teapot", {
@@ -3872,6 +3876,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
         with TEAPOT_BLACKLIST_LOCK:
             active = {k: v for k, v in TEAPOT_BLACKLIST.items() if v.get("expires", 0) > now}
             blacklist = sorted(active.keys())
+        with TEAPOT_TOOL_LOCK:
+            tools = {}
+            for tool, info in TEAPOT_TOOL_HITS.items():
+                tools[tool] = {
+                    "count": info["count"],
+                    "last_seen": info["last_seen"],
+                    "addrs": sorted(info["addrs"])[:20],
+                }
         self._send_json(200, "OK", {
             "418_teapot": MESH_ENABLED,
             "stealth": MESH_STEALTH,
@@ -3882,6 +3894,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "hop_interval": MESH_HOP_INTERVAL,
             "rate_limit": {"max": DEFENSE_RATE_LIMIT, "window": DEFENSE_RATE_WINDOW},
             "blacklist_ttl": DEFENSE_BLACKLIST_TTL,
+            "tools_detected": tools,
+            "tools_total": len(tools),
         })
 
     def _handle_defense_post(self):
@@ -4207,6 +4221,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <span id="gpioBadge" class="badge {gpio_class}">{gpio_status}</span>
     <span id="meshBadge" class="badge {mesh_class}">{mesh_status}</span>
     <span id="covertBadge" class="badge {covert_class}">{covert_status}</span>
+    <span id="itfBadge" class="badge idle">ITF</span>
     <span id="ntpBadge" class="badge enabled">NTP</span>
     <span id="sseBadge" class="badge idle">SSE: ?</span>
     <span style="flex:1"></span>
@@ -4220,6 +4235,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="tab active" data-tab="brew" onclick="switchTab('brew')">☕ Brew</div>
     <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">📡 Mesh</div>
     <div class="tab" data-tab="covert" onclick="switchTab('covert')">🔒 Covert</div>
+    <div class="tab" data-tab="itf" onclick="switchTab('itf')">🛡 ITF</div>
     <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
   </div>
@@ -4238,6 +4254,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <select id="brewSugar"><option value="">No sugar</option><option value="sugar;variety=white">White</option><option value="sugar;variety=brown">Brown</option><option value="sugar;variety=honey">Honey</option></select>
         <select id="brewSyrup"><option value="">No syrup</option><option value="syrup;variety=vanilla">Vanilla</option><option value="syrup;variety=caramel">Caramel</option><option value="syrup;variety=hazelnut">Hazelnut</option></select>
         <select id="brewSpice"><option value="">No spice</option><option value="spice;variety=cinnamon">Cinnamon</option><option value="spice;variety=cardamom">Cardamom</option><option value="spice;variety=nutmeg">Nutmeg</option></select>
+        <select id="brewAlcohol"><option value="">No alcohol</option><option value="alcohol;variety=whiskey">Whiskey</option><option value="alcohol;variety=rum">Rum</option><option value="alcohol;variety=vodka">Vodka</option><option value="alcohol;variety=baileys">Baileys</option><option value="alcohol;variety=kahlua">Kahlua</option><option value="alcohol;variety=amaretto">Amaretto</option></select>
         <button class="btn" onclick="brewCustom()">Brew with additions</button>
       </div>
     </div>
@@ -4254,6 +4271,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <h2>Satellite <span id="satBadge" class="badge idle">OFF</span></h2>
         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
           <span id="satCoords">—</span>
+          <span id="satPort" style="display:none"></span>
+          <span id="satRelay" style="display:none"></span>
           <span id="satPeersCount">0 sat-peers</span>
           <span id="satBootstrap">—</span>
         </div>
@@ -4263,8 +4282,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <h2>Mobile <span id="mobBadge" class="badge idle">OFF</span></h2>
         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
           <span id="mobIface">—</span>
+          <span id="mobPort" style="display:none"></span>
+          <span id="mobTelemetry" style="display:none"></span>
           <span id="mobPeersCount">0 mobile-peers</span>
           <span id="mobSignal">—</span>
+          <span id="mobSignalDetail" style="display:none"></span>
           <span id="mobBootstrap" style="font-size:0.7rem">—</span>
         </div>
         <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
@@ -4316,6 +4338,47 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
         <div id="decodeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
       </div>
+    </div>
+  </div>
+
+  <div id="panel-itf" class="panel">
+    <div class="grid">
+      <div class="card"><h2>418 Teapot</h2><div class="value" id="itf418">—</div><div class="label">Defense posture</div></div>
+      <div class="card"><h2>Stealth</h2><div class="value" id="itfStealth">—</div><div class="label">Stealth mode</div></div>
+      <div class="card"><h2>Port Hop</h2><div class="value" id="itfHop">—</div><div class="label"><span id="itfHopInterval"></span></div></div>
+      <div class="card"><h2>Latent Ports</h2><div class="value" id="itfLatent">—</div><div class="label">Backup listener ports</div></div>
+      <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Blacklist</h2>
+      <div id="itfBlacklist"><div style="color:var(--muted)">No addresses blacklisted</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Whitelist Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfWhitelistAddr" placeholder="IP address" style="flex:1">
+          <button class="btn secondary" onclick="whitelistAddr()">Remove</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Probe Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfProbeAddr" placeholder="IP address" style="flex:1">
+          <button class="btn secondary" onclick="probeAddr()">Probe</button>
+        </div>
+        <div id="itfProbeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Clear All</h2>
+        <div class="form-row">
+          <button class="btn outline" onclick="clearBlacklist()">Clear Blacklist</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Detected Tools <span id="itfToolsCount" style="color:var(--muted);font-weight:400">(0)</span></h2>
+      <div id="itfTools"><div style="color:var(--muted)">No tools detected yet</div></div>
     </div>
   </div>
 
@@ -4377,6 +4440,7 @@ function switchTab(name) {{
   if (name === 'mesh') {{ refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); }}
   if (name === 'history') {{ refreshHistory(); }}
   if (name === 'schedule') {{ refreshSchedules(); }}
+  if (name === 'itf') {{ refreshItf(); }}
 }}
 
 async function refresh() {{
@@ -4454,19 +4518,28 @@ async function refreshSat() {{
     document.getElementById('satBadge').textContent = 'OFF';
     document.getElementById('satBadge').className = 'badge idle';
     document.getElementById('satCoords').textContent = 'Satellite disabled';
+    document.getElementById('satPort').style.display = 'none';
+    document.getElementById('satRelay').style.display = 'none';
     return;
   }}
   document.getElementById('satBadge').textContent = 'ON';
   document.getElementById('satBadge').className = 'badge enabled';
-  document.getElementById('satCoords').textContent = `${{s.coords?.lat||'?'}}°, ${{s.coords?.lon||'?'}}°${{s.coords?.alt ? ' alt='+s.coords.alt+'m' : ''}}`;
+  document.getElementById('satCoords').textContent = `${{s.coords?.lat||'?'}}°, ${{s.coords?.lon||'?'}}°${{s.coords?.alt ? ' '+s.coords.alt+'m' : ''}}`;
+  const portEl = document.getElementById('satPort');
+  portEl.textContent = `port: ${{s.port}}`;
+  portEl.style.display = 'inline';
+  const relayEl = document.getElementById('satRelay');
+  relayEl.textContent = s.relay ? 'relay: ON' : 'relay: OFF';
+  relayEl.style.display = 'inline';
+  relayEl.style.color = s.relay ? '#00ff88' : 'var(--muted)';
   document.getElementById('satPeersCount').textContent = `${{s.peers_known||0}} sat-peer(s)`;
   document.getElementById('satBootstrap').textContent = s.bootstrap?.length ? `bootstrap: ${{s.bootstrap.join(', ')}}` : 'no bootstrap';
   const el = document.getElementById('satPeerList');
   if (!s.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No satellite peers yet</div>'; return; }}
-  let html = '<table><tr><th>Pot</th><th>Host</th><th>Coords</th><th>RTT</th></tr>';
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Coords</th><th>RTT</th><th>Seen</th></tr>';
   for (const p of s.peers) {{
     const t = p.last_seen ? Math.floor((Date.now()/1000 - p.last_seen)) + 's ago' : '—';
-    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed(1)+','+(p.lon||'?').toFixed(1))}}</td><td>${{esc(p.rtt||'?')}}ms</td></tr>`;
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed(1)+','+(p.lon||'?').toFixed(1))}}</td><td>${{esc(p.rtt||'?')}}ms</td><td>${{esc(t)}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -4477,14 +4550,37 @@ async function refreshMobile() {{
     document.getElementById('mobBadge').textContent = 'OFF';
     document.getElementById('mobBadge').className = 'badge idle';
     document.getElementById('mobIface').textContent = 'Mobile disabled';
+    document.getElementById('mobPort').style.display = 'none';
+    document.getElementById('mobTelemetry').style.display = 'none';
+    document.getElementById('mobSignalDetail').style.display = 'none';
     return;
   }}
   document.getElementById('mobBadge').textContent = 'ON';
   document.getElementById('mobBadge').className = 'badge enabled';
   document.getElementById('mobIface').textContent = m.interface || '?';
+  const portEl = document.getElementById('mobPort');
+  portEl.textContent = `port: ${{m.port}}`;
+  portEl.style.display = 'inline';
+  const telEl = document.getElementById('mobTelemetry');
+  telEl.textContent = m.telemetry ? 'telemetry: ON' : 'telemetry: OFF';
+  telEl.style.display = 'inline';
+  telEl.style.color = m.telemetry ? '#00ff88' : 'var(--muted)';
   document.getElementById('mobPeersCount').textContent = `${{m.peers_known||0}} mobile-peer(s)`;
   const sig = m.signal || {{}};
-  document.getElementById('mobSignal').textContent = sig.rssi != null ? `RSSI: ${{sig.rssi}}` : (sig.rsrp != null ? `RSRP: ${{sig.rsrp}}` : '—');
+  let sigStr = '—';
+  if (sig.rssi != null) sigStr = `RSSI: ${{sig.rssi}}`;
+  else if (sig.rsrp != null) sigStr = `RSRP: ${{sig.rsrp}}`;
+  document.getElementById('mobSignal').textContent = sigStr;
+  const detEl = document.getElementById('mobSignalDetail');
+  const sinr = sig.sinr != null ? `SINR: ${{sig.sinr}}` : null;
+  const mcc = sig.mcc != null ? `MCC: ${{sig.mcc}}` : null;
+  const detParts = [sinr, mcc].filter(Boolean);
+  if (detParts.length) {{
+    detEl.textContent = detParts.join(' | ');
+    detEl.style.display = 'inline';
+  }} else {{
+    detEl.style.display = 'none';
+  }}
   document.getElementById('mobBootstrap').textContent = m.bootstrap?.length ? `seed: ${{m.bootstrap.join(', ')}}` : 'no bootstrap';
   const el = document.getElementById('mobPeerList');
   if (!m.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No mobile peers yet</div>'; return; }}
@@ -4522,6 +4618,7 @@ async function brewCustom() {{
     document.getElementById('brewSugar').value,
     document.getElementById('brewSyrup').value,
     document.getElementById('brewSpice').value,
+    document.getElementById('brewAlcohol').value,
   ].filter(p => p);
   const additions = parts.map(p => {{ const [n,...r] = p.split(';'); const v = r.find(x => x.startsWith('variety=')); return {{ name: n, variety: v ? v.split('=')[1] : null }}; }});
   const r = await api('POST', '/cpip/brew', {{ beverage: type, additions }});
@@ -4616,6 +4713,77 @@ async function decodeCovert() {{
     : `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem;color:var(--muted)">${{esc(r.message)}}</div>`;
 }}
 
+async function refreshItf() {{
+  const d = await api('GET', '/cpip/defense');
+  if (!d || d.error) return;
+  const badge = document.getElementById('itfBadge');
+  if (d.stealth) {{
+    badge.textContent = 'ITF: STEALTH'; badge.className = 'badge enabled';
+  }} else {{
+    badge.textContent = 'ITF'; badge.className = 'badge idle';
+  }}
+  document.getElementById('itf418').textContent = d['418_teapot'] ? 'ACTIVE' : 'INACTIVE';
+  document.getElementById('itf418').style.color = d['418_teapot'] ? 'var(--accent)' : 'var(--muted)';
+  document.getElementById('itfStealth').textContent = d.stealth ? 'ON' : 'OFF';
+  document.getElementById('itfStealth').style.color = d.stealth ? '#00ff88' : 'var(--muted)';
+  document.getElementById('itfHop').textContent = d.port_hopping ? 'ON' : 'OFF';
+  document.getElementById('itfHop').style.color = d.port_hopping ? '#00ff88' : 'var(--muted)';
+  document.getElementById('itfHopInterval').textContent = d.port_hopping ? d.hop_interval + 's interval' : '';
+  document.getElementById('itfLatent').textContent = d.latent_ports?.length ? d.latent_ports.join(', ') : 'None';
+  document.getElementById('itfBlackCount').textContent = d.blacklisted_addrs || 0;
+  const el = document.getElementById('itfBlacklist');
+  if (!d.blacklist?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No addresses blacklisted</div>'; return; }}
+  let html = '<table><tr><th>IP Address</th><th></th></tr>';
+  for (const addr of d.blacklist) {{
+    html += `<tr><td class="mono">${{esc(addr)}}</td><td><button class="btn outline small" onclick="whitelistAddr('${{esc(addr)}}')">Whitelist</button></td></tr>`;
+  }}
+  el.innerHTML = html;
+  const tcEl = document.getElementById('itfTools');
+  const tcCount = document.getElementById('itfToolsCount');
+  if (!d.tools_detected || !Object.keys(d.tools_detected).length) {{
+    tcCount.textContent = '(0)';
+    tcEl.innerHTML = '<div style="color:var(--muted)">No tools detected yet</div>';
+    return;
+  }}
+  tcCount.textContent = `(${{Object.keys(d.tools_detected).length}})`;
+  let thtml = '<table><tr><th>Tool</th><th>Hits</th><th>Last Seen</th><th>Sources</th></tr>';
+  const sorted = Object.entries(d.tools_detected).sort((a, b) => b[1].count - a[1].count);
+  for (const [tool, info] of sorted) {{
+    const ls = info.last_seen ? new Date(info.last_seen * 1000).toLocaleTimeString() : '—';
+    const addrs = info.addrs?.join(', ') || '—';
+    thtml += `<tr><td>${{esc(tool)}}</td><td>${{info.count}}</td><td>${{esc(ls)}}</td><td style="font-size:0.7rem" class="mono">${{esc(addrs)}}</td></tr>`;
+  }}
+  thtml += '</table>'; tcEl.innerHTML = thtml;
+}}
+
+async function whitelistAddr(addr) {{
+  addr = addr || document.getElementById('itfWhitelistAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const r = await api('POST', '/cpip/defense', {{ action: 'whitelist', addr }});
+  if (r && r.status === 'whitelisted') showToast('Whitelisted ' + addr);
+  document.getElementById('itfWhitelistAddr').value = '';
+  refreshItf();
+}}
+
+async function clearBlacklist() {{
+  const r = await api('POST', '/cpip/defense', {{ action: 'clear' }});
+  if (r && r.status === 'blacklist_cleared') showToast('Blacklist cleared');
+  refreshItf();
+}}
+
+async function probeAddr() {{
+  const addr = document.getElementById('itfProbeAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const r = await api('POST', '/cpip/defense', {{ action: 'probe', addr }});
+  const el = document.getElementById('itfProbeResult');
+  if (!r || r.status !== 'probed') {{ el.innerHTML = '<div style="color:var(--muted)">Probe failed</div>'; return; }}
+  const bl = r.blacklisted ? '<span style="color:var(--accent)">BLACKLISTED</span>' : '<span style="color:#00ff88">CLEAN</span>';
+  el.innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;font-size:0.75rem">
+    <div>${{esc(r.addr)}} — ${{bl}}</div>
+    <div style="color:var(--muted);margin-top:0.2rem">Probes: ${{r.probe_count}} | Remaining: ${{r.remaining_seconds}}s</div>
+  </div>`;
+}}
+
 function connectSSE() {{
   const badge = document.getElementById('sseBadge');
   const log = document.getElementById('eventLog');
@@ -4639,7 +4807,7 @@ function connectSSE() {{
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
-refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile();
+refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf();
 setInterval(refresh, 5000);
 setInterval(refreshHistory, 15000);
 setInterval(refreshSchedules, 15000);
@@ -4647,6 +4815,7 @@ setInterval(refreshMesh, 30000);
 setInterval(refreshInbox, 10000);
 setInterval(refreshSat, 30000);
 setInterval(refreshMobile, 30000);
+setInterval(refreshItf, 15000);
 connectSSE();
 </script>
 </body>
@@ -4728,6 +4897,38 @@ DEFENSE_RATE_WINDOW = int(os.environ.get("CPIP_DEFENSE_RATE_WINDOW", "60"))
 DEFENSE_BLACKLIST_TTL = int(os.environ.get("CPIP_DEFENSE_BLACKLIST_TTL", "3600"))
 DEFENSE_MAX_BLACKLIST = int(os.environ.get("CPIP_DEFENSE_MAX_BLACKLIST", "1000"))
 
+# Tool fingerprint tracking
+TEAPOT_TOOL_HITS = {}  # {tool_name: {"count": int, "last_seen": float, "addrs": set}}
+TEAPOT_TOOL_LOCK = threading.Lock()
+
+PENTEST_TOOLS = [
+    ("Burp Suite", ["burp", "burpsuite"], ["x-burp", "x-requested-by: burp"]),
+    ("Nmap", ["nmap"], []),
+    ("SQLMap", ["sqlmap", "sql map"], []),
+    ("Nikto", ["nikto"], []),
+    ("Gobuster", ["gobuster"], []),
+    ("Dirb", ["dirb", "dirbuster"], []),
+    ("FFUF", ["ffuf", "fuzz faster u fool"], []),
+    ("WFuzz", ["wfuzz"], []),
+    ("OpenVAS", ["openvas", "open vas"], []),
+    ("Nessus", ["nessus"], []),
+    ("Masscan", ["masscan"], []),
+    ("ZAP", ["zap", "zed attack proxy"], []),
+    ("Arachni", ["arachni"], []),
+    ("w3af", ["w3af"], []),
+    ("Metasploit", ["metasploit", "msf"], []),
+    ("Acunetix", ["acunetix"], []),
+]
+
+INFO_TOOLS = [
+    ("cURL", ["curl"], []),
+    ("Wget", ["wget", "gnu wget"], []),
+    ("Python", ["python-requests", "python-urllib", "aiohttp"], []),
+    ("Go-http", ["go-http-client"], []),
+]
+
+ALL_TOOLS = PENTEST_TOOLS + INFO_TOOLS
+
 def teapot_defense(addr):
     """Check if an address should be greeted with 418."""
     if addr in ("127.0.0.1", "::1", "localhost"):
@@ -4775,6 +4976,7 @@ def teapot_probe_check(headers, addr, path, method):
     - PROPFIND without proper host → probe
     - Multiple schema variants in rapid succession → probe
     - Requests to /admin, /config, /wp-content, etc. → probe
+    - Known pentest tool User-Agents → probe (Burp Suite, Nmap, SQLMap, etc.)
     """
     probe_indicators = 0
     # Check for common scanner paths
@@ -4794,9 +4996,45 @@ def teapot_probe_check(headers, addr, path, method):
         probe_indicators += 2
     # Rapid requests from same IP
     # (tracked via teapot_defense above)
+    # Known pentest tool detection (Burp Suite, Nmap, SQLMap, etc.)
+    tool_matches = teapot_tool_check(headers, addr, pentest_only=True)
+    if tool_matches:
+        probe_indicators += 2
     if probe_indicators >= 2:
         return True
     return False
+
+
+def teapot_tool_check(headers, addr, pentest_only=False):
+    """Identify known pentest/scan tools from User-Agent and request headers.
+    Updates TEAPOT_TOOL_HITS with detected tool usage.
+    If pentest_only=True, only returns pentest/attack tools (not generic HTTP clients)."""
+    ua = (headers.get("User-Agent") or headers.get("user-agent") or "").lower()
+    all_headers = " ".join(f"{k.lower()}:{v.lower()}" for k, v in headers.items())
+    detected = []
+    signatures = PENTEST_TOOLS if pentest_only else ALL_TOOLS
+    for tool_name, ua_keywords, hdr_keywords in signatures:
+        matched = False
+        for kw in ua_keywords:
+            if kw in ua:
+                matched = True
+                break
+        if not matched:
+            for kw in hdr_keywords:
+                if kw in all_headers:
+                    matched = True
+                    break
+        if matched:
+            detected.append(tool_name)
+    if detected:
+        with TEAPOT_TOOL_LOCK:
+            for tool in detected:
+                if tool not in TEAPOT_TOOL_HITS:
+                    TEAPOT_TOOL_HITS[tool] = {"count": 0, "last_seen": 0, "addrs": set()}
+                TEAPOT_TOOL_HITS[tool]["count"] += 1
+                TEAPOT_TOOL_HITS[tool]["last_seen"] = time.time()
+                TEAPOT_TOOL_HITS[tool]["addrs"].add(addr)
+    return detected
 
 
 # ── Main ──────────────────────────────────────────────────────────────
