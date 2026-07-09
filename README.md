@@ -1,4 +1,4 @@
-# ☕ CPIP — Coffee Protocol Internet Protocol
+# ☕ CPIP — Coffee Pot Internet Protocol
 
 > RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport + ITF Defense
 
