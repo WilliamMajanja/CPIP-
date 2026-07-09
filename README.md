@@ -1,6 +1,6 @@
 # ☕ CPIP — Coffee Protocol Internet Protocol
 
-> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport
+> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport + ITF Defense
 
 ```
      ( (
@@ -20,7 +20,8 @@ CPIP is a fully functional implementation of the Hyper Text Coffee Pot Control
 Protocol that runs on Raspberry Pi. Beneath the HTCPCP brew requests runs a
 peer-to-peer mesh network with four transport layers — LAN, satellite,
 radio (LoRa/TNC), and mobile broadband — plus covert channels, Ed25519 E2EE,
-store-and-forward messaging, and a full CLI client.
+store-and-forward messaging, ITF (In The Face) active defense, pentest tool
+detection, and a full CLI client.
 
 ---
 
@@ -30,6 +31,8 @@ store-and-forward messaging, and a full CLI client.
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [CLI Reference](#cli-reference)
+- [Web Dashboard](#web-dashboard)
+- [ITF Defense System](#itf-defense-system)
 - [Multi-Transport Architecture](#multi-transport-architecture)
 - [Covert Channel](#covert-channel)
 - [Cryptography Notes](#cryptography-notes)
@@ -54,33 +57,43 @@ status code and specified how to control coffee pots over the internet.
 in 2014 (also April 1).
 
 CPIP takes the joke seriously. It implements the full protocol and extends it
-into a multi-transport mesh communication system. The coffee theme provides
-perfect cover traffic. Every brew request can carry encrypted data.
-Every `WHEN` response is a potential message. The protocol looks like coffee.
-It is not coffee.
+into a multi-transport mesh communication system with active network defense.
+The coffee theme provides perfect cover traffic. Every brew request can carry
+encrypted data. Every `WHEN` response is a potential message. The protocol
+looks like coffee. It is not coffee.
 
-**Your coffee pot is a mesh node.**
+**Your coffee pot is a mesh node. Your teapot fights back.**
 
 ---
 
 ## Features
 
 - **HTCPCP/HTCPCP-TEA** — Full RFC 2324 + RFC 7168 (BREW, WHEN, PROPFIND, OPTIONS)
-- **Web dashboard** — Real-time brew control, mesh management, covert channel UI
+- **Web dashboard** — 6-tab SPA: Brew, Mesh, Covert, ITF Defense, Schedule, History
 - **GPIO relay control** — Physical coffee maker control on Raspberry Pi
 - **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, E2EE
 - **4 transport layers** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G
+- **Runtime transport toggles** — Enable/disable satellite and mobile at runtime via API
 - **Cross-transport routing** — Messages automatically forwarded between all transports
 - **Covert channel** — Data hidden inside `Accept-Additions` brew headers
+- **Covert history** — LocalStorage-backed message history with copy-to-clipboard
+- **ITF (In The Face) defense** — Active probe blocking with 418 responses
+- **Pentest tool detection** — Burp Suite, Nmap, SQLMap, Nikto & 12 more tools fingerprinted and blocked
+- **Runtime stealth toggle** — Enable/disable stealth mode without restart
+- **Blacklist management** — IP blacklist with rate-limited exponential ban duration
 - **Coffee Blend Cipher** — Custom stream cipher (deliberately non-FIPS)
 - **Ed25519 ECC** — End-to-end encryption, address book, port hopping
 - **CLI client** — Full-featured `htcpcp` bash CLI
 - **mDNS advertising** — Zero-config discovery via Avahi
-- **Brew scheduling** — Timed brews with automatic stop
+- **Brew scheduling** — Timed brews with daily recurring option
 - **SSE events** — Real-time server-sent events
 - **Prometheus metrics** — Export at `/cpip/metrics`
 - **Webhook notifications** — POST to URLs on brew completion
 - **418 defense** — Unauthorized probes replied to with "I'm a teapot"
+- **9 beverage types** — Coffee, tea, espresso, latte, cappuccino, americano, cold brew, mocha, matcha
+- **Temperature control** — Hot/iced toggle
+- **Addition types** — Milk (5 kinds), sugar (3 kinds), syrup (3 kinds), spice (3 kinds), alcohol (6 kinds)
+- **Radio status** — Live LoRa/TNC mode, frequency, bandwidth display
 - **Pi-Apps support** — One-click install on Raspberry Pi
 
 ---
@@ -127,6 +140,7 @@ CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 ./htcpcp mesh sat
 ./htcpcp mesh radio
 ./htcpcp mesh mobile
+./htcpcp itf status
 ./htcpcp stats
 ```
 
@@ -172,7 +186,6 @@ The `htcpcp` command-line client communicates with a running CPIP server.
 | `htcpcp ecc resolve <addr>` | Resolve ECC address |
 | `htcpcp deaddrop list` | List dead-drop messages |
 | `htcpcp deaddrop claim <id>` | Claim a dead-drop message |
-| `htcpcp defense status` | 418 defense status |
 | `htcpcp itf status` | Full defense posture |
 | `htcpcp itf blacklist` | List blacklisted IPs |
 | `htcpcp itf whitelist <addr>` | Remove IP from blacklist |
@@ -182,18 +195,82 @@ The `htcpcp` command-line client communicates with a running CPIP server.
 
 ---
 
+## Web Dashboard
+
+CPIP includes a full single-page application dashboard served at `/dashboard`.
+Six tabs provide real-time control and monitoring:
+
+| Tab | Features |
+|-----|----------|
+| **☕ Brew** | Device info, brew state, total count, quick brew with 9 beverage types, hot/iced toggle, milk (5 kinds), sugar, syrup, spice, alcohol (6 kinds) |
+| **📡 Mesh** | Peer count, inbox, store-and-forward queue, satellite status (coords, port, relay, peers), mobile status (interface, signal, telemetry), radio status (mode, freq, bandwidth), send/broadcast messages, peer table, inbox table |
+| **🔒 Covert** | Encode messages into Accept-Additions headers, decode headers back to plaintext, copy-to-clipboard, persistent message history (localStorage) |
+| **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
+| **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
+| **📜 History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
+
+The status bar shows live badges for: brewing state, GPIO, mesh, covert, ITF stealth status, NTP, and SSE connection. A live event log at the bottom shows real-time brew start/stop and mesh message events via Server-Sent Events.
+
+---
+
+## ITF Defense System
+
+The ITF (In The Face) module is CPIP's active network defense. It identifies
+and blocks hostile probes using multiple detection heuristics, all answered
+with HTTP 418 "I'm a teapot" — making network mapping and brute-force attacks
+indistinguishable from a joke.
+
+### Detection Methods
+
+| Method | Description |
+|--------|-------------|
+| **Scanner paths** | Requests to /admin, /wp-, /.env, /phpmyadmin, /shell, /cmd, /exec, /backdoor, /login, /setup, /install, /manager, /console → +3 probe score |
+| **Missing headers** | BREW without Accept-Additions on non-standard paths → +1 probe score |
+| **Unknown URI schemes** | Non-coffee URIs → +2 probe score |
+| **Pentest tool fingerprinting** | User-Agent and header inspection for 16 security tools → +2 probe score |
+| **Rate limiting** | Repeated probes double the ban duration (up to 24h) |
+
+Threshold: probe score ≥ 2 → 418 response + IP blacklisted.
+
+### Detected Tools
+
+The following security tools are automatically fingerprinted by User-Agent:
+Burp Suite, Nmap, SQLMap, Nikto, Gobuster, Dirb, FFUF, WFuzz, OpenVAS,
+Nessus, Masscan, ZAP, Arachni, w3af, Metasploit, Acunetix.
+
+Informational tools (cURL, Wget, Python, Go-http) are tracked in the
+dashboard but do not trigger 418 blocking.
+
+### Runtime Controls
+
+- **Stealth mode** — Toggle via `POST /cpip/defense {"action":"stealth","enabled":true}` or dashboard button
+- **Blacklist** — Whitelist individual IPs, clear entire blacklist, probe any IP
+- **Satellite/mobile** — Enable or disable transports at runtime via `POST /cpip/mesh/sat` and `POST /cpip/mesh/mobile`
+
+### Blacklist Behavior
+
+- Base TTL: 1 hour (`CPIP_DEFENSE_BLACKLIST_TTL`)
+- Rate limit: 10 probes within 60s doubles the ban duration
+- Max blacklist: 1000 entries (oldest half pruned)
+- Localhost (127.0.0.1, ::1) is never blacklisted
+
+---
+
 ## Multi-Transport Architecture
 
 CPIP supports four mesh transports that forward messages between each other
 automatically. Messages received on any transport are relayed to all others
 (routing loops are prevented).
 
-| Transport | Env Flag | Port | Description |
-|-----------|----------|------|-------------|
-| **LAN Mesh** | `CPIP_MESH=1` | 4191 | UDP heartbeat mesh on local network |
-| **Satellite** | `CPIP_SAT=1` | 4195 | Internet-wide UDP relay with GPS coords |
-| **Radio** | `CPIP_RADIO=1` | Unix socket | LoRa SPI, KISS TNC serial, or simulation |
-| **Mobile** | `CPIP_MOBILE=1` | 4196 | 4G/5G WWAN mesh with signal telemetry |
+| Transport | Env Flag | Port | Runtime Toggle | Description |
+|-----------|----------|------|----------------|-------------|
+| **LAN Mesh** | `CPIP_MESH=1` | 4191 | — | UDP heartbeat mesh on local network |
+| **Satellite** | `CPIP_SAT=1` | 4195 | `POST /cpip/mesh/sat` | Internet-wide UDP relay with GPS coords |
+| **Radio** | `CPIP_RADIO=1` | Unix socket | — | LoRa SPI, KISS TNC serial, or simulation |
+| **Mobile** | `CPIP_MOBILE=1` | 4196 | `POST /cpip/mesh/mobile` | 4G/5G WWAN mesh with signal telemetry |
+
+Satellite and mobile transports can be enabled or disabled at runtime
+without restarting the server using the API or dashboard buttons.
 
 ### LAN Mesh (default)
 
@@ -256,6 +333,11 @@ appear as random hex data.
 The system generates cover traffic (random brew requests at configurable
 intervals) to obscure which requests carry real messages.
 
+The dashboard Covert tab provides:
+- **Encode** — Enter a message, choose a recipe, get the Accept-Additions header
+- **Decode** — Paste a header, decode back to plaintext
+- **History** — Previously encoded messages saved to browser localStorage with copy-to-clipboard
+
 ---
 
 ## Cryptography Notes
@@ -307,6 +389,7 @@ sudo chmod +x /opt/cpip/server.py
 The deploy script installs:
 - Server to `/opt/cpip/server.py`
 - CLI to `/usr/local/bin/htcpcp`
+- Web dashboard to `/opt/cpip/web/`
 - Systemd service (`cpip.service`)
 - Pi-Apps package (if `pi-apps/` directory is present)
 
@@ -329,6 +412,7 @@ Environment=CPIP_DEVICE=hyper-text
 Environment=CPIP_MESH=1
 Environment=CPIP_COVERT=1
 Environment=CPIP_COVERT_KEY=your_secret_key_here
+Environment=CPIP_MESH_STEALTH=0
 ExecStart=/usr/bin/python3 /opt/cpip/server.py
 Restart=on-failure
 RestartSec=5
@@ -371,7 +455,7 @@ All configuration is via environment variables. No config files needed.
 | `CPIP_MESH_PORT` | `4191` | Mesh UDP heartbeat port |
 | `CPIP_MESH_TTL` | `5` | Message time-to-live (hops) |
 | `CPIP_MESH_HEARTBEAT` | `30` | Heartbeat interval (seconds) |
-| `CPIP_MESH_STEALTH` | `0` | Stealth mode (no broadcast heartbeats) |
+| `CPIP_MESH_STEALTH` | `0` | Stealth mode (togglable at runtime) |
 | `CPIP_MESH_LATENT_PORTS` | `4192,4193,4194` | Port-knocking latent ports |
 | `CPIP_MESH_HOP_INTERVAL` | `3600` | Port hop interval (seconds) |
 | `CPIP_MESH_PERSIST_DIR` | `/tmp/cpip` | Message persistence directory |
@@ -388,7 +472,7 @@ All configuration is via environment variables. No config files needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CPIP_SAT` | `0` | Enable satellite mesh |
+| `CPIP_SAT` | `0` | Enable satellite mesh (togglable at runtime) |
 | `CPIP_SAT_PORT` | `4195` | UDP port |
 | `CPIP_SAT_BOOTSTRAP` | — | Seed nodes (`host:port,host:port`) |
 | `CPIP_SAT_LAT` | `0` | Node latitude |
@@ -417,7 +501,7 @@ All configuration is via environment variables. No config files needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CPIP_MOBILE` | `0` | Enable mobile transport |
+| `CPIP_MOBILE` | `0` | Enable mobile transport (togglable at runtime) |
 | `CPIP_MOBILE_PORT` | `4196` | UDP port |
 | `CPIP_MOBILE_IFACE` | `wwan0` | Network interface |
 | `CPIP_MOBILE_APN` | — | Cellular APN |
@@ -426,6 +510,15 @@ All configuration is via environment variables. No config files needed.
 | `CPIP_MOBILE_KEEPALIVE` | `30` | Keepalive interval (seconds) |
 
 `CPIP_CELLULAR_*` env vars are accepted as backward-compatible aliases.
+
+### 418 ITF Defense
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_DEFENSE_RATE_LIMIT` | `10` | Max probes before ban duration doubles |
+| `CPIP_DEFENSE_RATE_WINDOW` | `60` | Rate tracking window (seconds) |
+| `CPIP_DEFENSE_BLACKLIST_TTL` | `3600` | Base ban duration (seconds) |
+| `CPIP_DEFENSE_MAX_BLACKLIST` | `1000` | Max blacklist entries |
 
 ### USB Gadget (Pi-Tail)
 
@@ -473,6 +566,7 @@ All configuration is via environment variables. No config files needed.
 | `PUT` | `/cpip/config` | Update configuration |
 | `POST` | `/cpip/brew` | Brew via JSON API |
 | `GET` | `/cpip/history` | Brew history |
+| `DELETE` | `/cpip/history` | Clear brew history |
 | `GET` | `/cpip/schedules` | Scheduled brews |
 | `POST` | `/cpip/schedule` | Create schedule |
 | `DELETE` | `/cpip/schedules/:id` | Delete schedule |
@@ -495,11 +589,22 @@ All configuration is via environment variables. No config files needed.
 | `POST` | `/cpip/mesh/encode` | Encode covert message |
 | `POST` | `/cpip/mesh/decode` | Decode covert message |
 | `GET` | `/cpip/mesh/sat` | Satellite transport status |
+| `POST` | `/cpip/mesh/sat` | Enable/disable satellite (`{"action":"enable"}` / `{"action":"disable"}`) |
 | `GET` | `/cpip/mesh/radio` | Radio transport status |
 | `GET` | `/cpip/mesh/mobile` | Mobile transport status |
+| `POST` | `/cpip/mesh/mobile` | Enable/disable mobile (`{"action":"enable"}` / `{"action":"disable"}`) |
 | `GET` | `/cpip/mesh/deaddrop` | List/claim dead drops |
-| `GET` | `/cpip/defense` | Defense posture (418, stealth, blacklist) |
-| `POST` | `/cpip/defense` | Defense actions (whitelist, clear) |
+| `GET` | `/cpip/defense` | Defense posture (418, stealth, blacklist, tools) |
+| `POST` | `/cpip/defense` | Defense actions |
+
+### Defense API Actions
+
+| Action | Payload | Description |
+|--------|---------|-------------|
+| `whitelist` | `{"action":"whitelist","addr":"1.2.3.4"}` | Remove IP from blacklist |
+| `clear` | `{"action":"clear"}` | Clear entire blacklist |
+| `probe` | `{"action":"probe","addr":"1.2.3.4"}` | Check if IP is blacklisted |
+| `stealth` | `{"action":"stealth","enabled":true}` | Toggle stealth mode |
 
 ### Web Interface
 
@@ -517,15 +622,15 @@ All configuration is via environment variables. No config files needed.
 │                     CPIP Server                             │
 │                                                             │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────┐             │
-│  │  HTCPCP  │  │  CPIP    │  │  Covert      │             │
-│  │  Handler │  │  REST API│  │  Channel     │             │
-│  │(RFC2324) │  │(/cpip/*) │  │(Accept-Add)  │             │
-│  └────┬─────┘  └────┬─────┘  └──────┬───────┘             │
-│       │              │               │                     │
-│  ┌────▼──────────────▼───────────────▼───────┐             │
-│  │           PotState Engine                 │             │
-│  │  (state machine, history, scheduling)     │             │
-│  └────────────────┬─────────────────────────┘             │
+│  │  HTCPCP  │  │  CPIP    │  │  Covert      │  ┌────────┐ │
+│  │  Handler │  │  REST API│  │  Channel     │  │  ITF   │ │
+│  │(RFC2324) │  │(/cpip/*) │  │(Accept-Add)  │  │Defense │ │
+│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  └───┬────┘ │
+│       │              │               │              │      │
+│  ┌────▼──────────────▼───────────────▼──────────────▼───┐  │
+│  │           PotState Engine + Defense Engine            │  │
+│  │  (state machine, history, scheduling, probe check)    │  │
+│  └────────────────┬─────────────────────────────────────┘  │
 │                   │                                        │
 │  ┌────────────────▼─────────────────────────────────────┐  │
 │  │                 Mesh Node Layer                       │  │
@@ -549,7 +654,7 @@ All configuration is via environment variables. No config files needed.
 ## Project Structure
 
 ```
-├── server.py              # Main server (~4700 lines, zero deps)
+├── server.py              # Main server (~5100 lines, zero deps)
 ├── htcpcp                 # CLI client (bash script)
 ├── deploy.sh              # Raspberry Pi deployment script
 ├── deploy_htcpcp.sh       # Minimal HTCPCP-only deployment
@@ -559,6 +664,8 @@ All configuration is via environment variables. No config files needed.
 ├── CONTRIBUTING.md
 ├── SECURITY.md
 ├── CODE_OF_CONDUCT.md
+├── web/
+│   └── index.html         # Web dashboard SPA
 ├── radio/
 │   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, sim)
 │   ├── radio_if.h         # C header (structs, enums, protocol)
