@@ -59,7 +59,19 @@ DISCOVERY_PORT = int(os.environ.get("CPIP_DISCOVERY_PORT", "4190"))
 HISTORY_MAX = 100
 SCHEDULE_CHECK_INTERVAL = 15
 
-COVERT_KEY = os.environ.get("CPIP_COVERT_KEY", "CHANGE_ME_COFFEE_BLEND_2024").encode()
+_raw_key = os.environ.get("CPIP_COVERT_KEY", "")
+if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
+    if not _raw_key:
+        _raw_key = base64.b64encode(hashlib.sha256(os.urandom(32)).digest()[:24]).decode()
+        COVERT_KEY = _raw_key.encode()
+        print(f"   ⚠ COVERT_KEY not set — auto-generated: {_raw_key}", flush=True)
+        print(f"   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
+    else:
+        COVERT_KEY = _raw_key.encode()
+        print(f"   ⚠ WARNING: Using default COVERT_KEY (CHANGE_ME_COFFEE_BLEND_2024)", flush=True)
+        print(f"   ⚠ Set CPIP_COVERT_KEY to a custom value for production.", flush=True)
+else:
+    COVERT_KEY = _raw_key.encode()
 COVERT_ENABLED = os.environ.get("CPIP_COVERT", "1") == "1"
 MESH_ENABLED = os.environ.get("CPIP_MESH", "1") == "1"
 MESH_PORT = int(os.environ.get("CPIP_MESH_PORT", "4191"))
@@ -3007,6 +3019,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_defense_get()
         elif path == "/cpip/mesh/deaddrop":
             self._handle_mesh_deaddrop()
+        elif path == "/cpip/mesh/queued":
+            self._handle_mesh_queued()
+        elif path == "/cpip/mesh/ecc/address":
+            self._handle_mesh_ecc_address()
+        elif path == "/cpip/mesh/ecc/book":
+            self._handle_mesh_ecc_book()
+        elif path == "/cpip/mesh/covert_status":
+            self._handle_covert_status()
         elif path == "/cpip/mesh/propfind":
             params = parse_qs(parsed.query)
             action = params.get("action", ["list"])[0]
@@ -3131,6 +3151,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_covert_encode()
         elif path == "/cpip/mesh/decode":
             self._handle_covert_decode()
+        elif path == "/cpip/mesh/brew_covert":
+            self._handle_covert_brew()
         elif path == "/cpip/defense":
             self._handle_defense_post()
         elif path == "/cpip/mesh/deaddrop":
@@ -3462,6 +3484,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "webhooks": len(PotState.webhooks),
             "discovery_port": DISCOVERY_PORT,
             "sse_clients": len(PotState.sse_clients),
+            "ntp": {"enabled": NTP_SYNC, "server": NTP_SERVER} if NTP_SYNC else {"enabled": False},
         })
 
     def _handle_cpip_config_get(self):
@@ -3784,6 +3807,66 @@ class CPIPHandler(BaseHTTPRequestHandler):
     def _handle_mesh_mobile(self):
         self._send_json(200, "OK", MeshNode.get_mobile_status())
 
+    def _handle_mesh_queued(self):
+        self._send_json(200, "OK", {
+            "queued": len(MeshNode.message_store),
+            "messages": list(MeshNode.message_store)[:20],
+        })
+
+    def _handle_mesh_ecc_address(self):
+        self._send_json(200, "OK", {
+            "address": MeshNode.node_address,
+            "pubkey": base64.b64encode(MeshNode.node_pubkey).decode() if MeshNode.node_pubkey else None,
+        })
+
+    def _handle_mesh_ecc_book(self):
+        with MeshNode.peers_lock:
+            entries = []
+            for pid, info in MeshNode.peers.items():
+                pk_b64 = info.get("pubkey", "")
+                addr = Ed25519.pubkey_to_address(base64.b64decode(pk_b64)) if pk_b64 else None
+                entries.append({
+                    "pot_id": pid,
+                    "hostname": info.get("hostname", ""),
+                    "pubkey": pk_b64[:20] + "..." if len(pk_b64) > 20 else pk_b64,
+                    "ecc_address": addr,
+                })
+        self._send_json(200, "OK", {"count": len(entries), "entries": entries})
+
+    def _handle_covert_brew(self):
+        body = self._read_json_body()
+        message = body.get("message", "")
+        dst = body.get("dst", "")
+        if not message:
+            self._send_json(400, "Bad Request", {"error": "Missing 'message' text"})
+            return
+        dst_pubkey = None
+        if dst:
+            with MeshNode.peers_lock:
+                info = MeshNode.peers.get(dst, {})
+                pk_b64 = info.get("pubkey", "")
+                if pk_b64:
+                    try:
+                        dst_pubkey = base64.b64decode(pk_b64)
+                    except Exception:
+                        pass
+        encoded = CovertChannel.encode(
+            message.encode(), dst, "espresso",
+            dst_pubkey=dst_pubkey,
+            our_seed=MeshNode.node_seed if dst_pubkey else None,
+        )
+        result = MeshNode.send_message(dst, f"covert_brew:{message}") if dst else {"status": "encoded"}
+        result["covert_additions"] = encoded["additions"]
+        self._send_json(200, "OK", result)
+
+    def _handle_covert_status(self):
+        self._send_json(200, "OK", {
+            "enabled": COVERT_ENABLED,
+            "cover_traffic": COVER_TRAFFIC,
+            "cipher": "Coffee Blend Cipher v1",
+            "ecc_available": MeshNode.node_pubkey is not None,
+        })
+
     def _handle_defense_get(self):
         now = time.time()
         with TEAPOT_BLACKLIST_LOCK:
@@ -3818,6 +3901,22 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 TEAPOT_BLACKLIST.clear()
                 TEAPOT_PROBE_COUNT.clear()
             self._send_json(200, "OK", {"status": "blacklist_cleared"})
+        elif action == "probe":
+            addr = body.get("addr", "")
+            if not addr:
+                self._send_json(400, "Bad Request", {"error": "Missing 'addr'"})
+                return
+            blacklisted = teapot_defense(addr)
+            now = time.time()
+            with TEAPOT_BLACKLIST_LOCK:
+                entry = TEAPOT_BLACKLIST.get(addr)
+                remaining = max(0, int(entry.get("expires", 0) - now)) if entry else 0
+            self._send_json(200, "OK", {
+                "status": "probed", "addr": addr,
+                "blacklisted": blacklisted,
+                "remaining_seconds": remaining,
+                "probe_count": len(TEAPOT_PROBE_COUNT.get(addr, [])),
+            })
         else:
             self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
@@ -3996,7 +4095,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "human": s.get("human", ""),
         } for s in PotState.schedules])
 
-        self._send_html(200, DASHBOARD_HTML.format(
+        fmt = dict(
             device=html.escape(DEVICE_TYPE),
             pot_id=html.escape(POT_ID),
             hostname=html.escape(HOSTNAME),
@@ -4010,7 +4109,15 @@ class CPIPHandler(BaseHTTPRequestHandler):
             covert_class="enabled" if COVERT_ENABLED else "disabled",
             pot_json=json.dumps({"pot": POT_ID, "hostname": HOSTNAME, "device": DEVICE_TYPE, "port": BIND_PORT}),
             schedules_json=schedule_list,
-        ))
+        )
+        html_str = DASHBOARD_HTML
+        index_file = WEB_DIR / "index.html"
+        if index_file.is_file():
+            try:
+                html_str = index_file.read_text(encoding="utf-8")
+            except Exception:
+                pass
+        self._send_html(200, html_str.format(**fmt))
 
 
 # ── Embedded Dashboard HTML ───────────────────────────────────────────

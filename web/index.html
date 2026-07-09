@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPIP — {hostname} Coffee Protocol</title>
+<style>
+  :root {{
+    --bg: #0a0a1a; --surface: #111128; --accent: #e94560;
+    --green: #0a2840; --text: #d0d0e0; --muted: #6666aa;
+    --card: #18183a; --border: #2a2a5c; --mesh: #00cc88;
+  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: 'Courier New', monospace;
+          background: var(--bg); color: var(--text); min-height: 100vh; }}
+  .header {{ background: linear-gradient(135deg, var(--surface), #0a0a2a);
+            padding: 1rem 2rem; border-bottom: 3px solid var(--accent); }}
+  .header h1 {{ font-size: 1.4rem; font-weight: 700; }}
+  .header .sub {{ color: var(--muted); font-size: 0.8rem; }}
+  .container {{ max-width: 1400px; margin: 0 auto; padding: 1.5rem; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }}
+  .card {{ background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+           padding: 1.2rem; }}
+  .card h2 {{ font-size: 0.8rem; color: var(--muted); text-transform: uppercase;
+              letter-spacing: 0.1em; margin-bottom: 0.8rem; }}
+  .value {{ font-size: 1.8rem; font-weight: 700; font-family: inherit; }}
+  .label {{ color: var(--muted); font-size: 0.75rem; margin-top: 0.2rem; }}
+  .badge {{ display: inline-block; padding: 0.2rem 0.6rem; border-radius: 3px;
+            font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }}
+  .badge.brewing {{ background: var(--accent); color: #fff; animation: pulse 1s infinite; }}
+  .badge.idle {{ background: #1a3a5c; color: #88ccff; }}
+  .badge.enabled {{ background: #003322; color: #00ff88; }}
+  .badge.disabled {{ background: #332200; color: #ff8800; }}
+  .badge.physical {{ background: #004433; color: #00ffaa; }}
+  @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
+  .btn {{ background: var(--accent); color: #fff; border: none; padding: 0.5rem 1rem;
+          border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+          font-family: inherit; transition: all 0.2s; }}
+  .btn:hover {{ background: #d13850; }}
+  .btn.secondary {{ background: #1a3a6c; }}
+  .btn.secondary:hover {{ background: #2a4a8c; }}
+  .btn.outline {{ background: transparent; border: 1px solid var(--accent); color: var(--accent); }}
+  .btn.small {{ padding: 0.3rem 0.6rem; font-size: 0.7rem; }}
+  .btn.mesh {{ background: #005533; }}
+  .btn.mesh:hover {{ background: #007744; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }}
+  th, td {{ padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }}
+  th {{ color: var(--muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; }}
+  .event-log {{ max-height: 150px; overflow-y: auto; font-size: 0.75rem; }}
+  .event-log div {{ padding: 0.2rem 0; border-bottom: 1px solid var(--border); }}
+  .ev-start {{ color: #88ff88; }}
+  .ev-stop {{ color: #ff8888; }}
+  .ev-mesh {{ color: #88ffff; }}
+  input, select {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                  padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-family: inherit; }}
+  input:focus, select:focus {{ outline: none; border-color: var(--accent); }}
+  .form-row {{ display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; }}
+  textarea {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
+              padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; width: 100%;
+              font-family: inherit; resize: vertical; }}
+  .toast {{ position: fixed; bottom: 1rem; right: 1rem; background: #003322; color: #00ff88;
+            padding: 0.8rem 1.2rem; border-radius: 4px; opacity: 0; transform: translateY(10px);
+            transition: all 0.3s; z-index: 100; font-size: 0.8rem; }}
+  .toast.show {{ opacity: 1; transform: translateY(0); }}
+  .inline-code {{ background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.75rem; }}
+  .mono {{ font-family: monospace; }}
+  .tab-bar {{ display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }}
+  .tab {{ padding: 0.5rem 1rem; cursor: pointer; color: var(--muted); font-size: 0.8rem;
+          border-bottom: 2px solid transparent; }}
+  .tab.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+  .tab:hover {{ color: var(--text); }}
+  .panel {{ display: none; }}
+  .panel.active {{ display: block; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>☕ CPIP — {hostname} <span style="color:var(--muted);font-weight:400">| {pot_id}</span></h1>
+  <div class="sub">{version} — Internet Coffee Protocol + Mesh Comms</div>
+</div>
+<div class="container">
+  <div class="status-bar" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+    <span id="brewBadge" class="badge idle">—</span>
+    <span id="gpioBadge" class="badge {gpio_class}">{gpio_status}</span>
+    <span id="meshBadge" class="badge {mesh_class}">{mesh_status}</span>
+    <span id="covertBadge" class="badge {covert_class}">{covert_status}</span>
+    <span id="ntpBadge" class="badge enabled">NTP</span>
+    <span id="sseBadge" class="badge idle">SSE: ?</span>
+    <span style="flex:1"></span>
+    <button class="btn secondary" onclick="brew('coffee')">☕ Brew</button>
+    <button class="btn secondary" onclick="brew('tea')">🍵 Tea</button>
+    <button class="btn outline" onclick="stopBrew()">⏹ Stop</button>
+    <button class="btn mesh" onclick="scanMesh()">📡 Scan</button>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab active" data-tab="brew" onclick="switchTab('brew')">☕ Brew</div>
+    <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">📡 Mesh</div>
+    <div class="tab" data-tab="covert" onclick="switchTab('covert')">🔒 Covert</div>
+    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
+  </div>
+
+  <div id="panel-brew" class="panel active">
+    <div class="grid">
+      <div class="card"><h2>Device</h2><div class="value">{device}</div><div class="label">{beverages}</div></div>
+      <div class="card"><h2>State</h2><div class="value" id="stateVal">—</div><div class="label" id="stateDet">Waiting</div></div>
+      <div class="card"><h2>Brews</h2><div class="value" id="brewCount">0</div><div class="label">Total completed</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Quick Brew</h2>
+      <div class="form-row">
+        <select id="brewType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
+        <select id="brewMilk"><option value="">No milk</option><option value="milk;variety=whole">Whole milk</option><option value="milk;variety=cream">Cream</option><option value="milk;variety=skim">Skim</option></select>
+        <select id="brewSugar"><option value="">No sugar</option><option value="sugar;variety=white">White</option><option value="sugar;variety=brown">Brown</option><option value="sugar;variety=honey">Honey</option></select>
+        <select id="brewSyrup"><option value="">No syrup</option><option value="syrup;variety=vanilla">Vanilla</option><option value="syrup;variety=caramel">Caramel</option><option value="syrup;variety=hazelnut">Hazelnut</option></select>
+        <select id="brewSpice"><option value="">No spice</option><option value="spice;variety=cinnamon">Cinnamon</option><option value="spice;variety=cardamom">Cardamom</option><option value="spice;variety=nutmeg">Nutmeg</option></select>
+        <button class="btn" onclick="brewCustom()">Brew with additions</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-mesh" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Mesh Status</h2><div class="value" id="meshPeers">0</div><div class="label">Peers on network</div></div>
+      <div class="card"><h2>Inbox</h2><div class="value" id="inboxCount">0</div><div class="label">Messages received</div></div>
+      <div class="card"><h2>Queued</h2><div class="value" id="queuedCount">0</div><div class="label">Store-and-forward</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Satellite <span id="satBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+          <span id="satCoords">—</span>
+          <span id="satPeersCount">0 sat-peers</span>
+          <span id="satBootstrap">—</span>
+        </div>
+        <div id="satPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Mobile <span id="mobBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+          <span id="mobIface">—</span>
+          <span id="mobPeersCount">0 mobile-peers</span>
+          <span id="mobSignal">—</span>
+          <span id="mobBootstrap" style="font-size:0.7rem">—</span>
+        </div>
+        <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Send Message</h2>
+      <div class="form-row">
+        <input type="text" id="meshDst" placeholder="Destination pot ID" style="width:150px">
+        <input type="text" id="meshMsg" placeholder="Message text" style="flex:1">
+        <label style="font-size:0.75rem;color:var(--muted)"><input type="checkbox" id="meshCovert"> Use covert channel</label>
+        <button class="btn mesh" onclick="sendMesh()">Send</button>
+        <button class="btn mesh" onclick="broadcastMesh()">Broadcast</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Peers <span id="peerCount" style="color:var(--muted)">(0)</span></h2>
+      <div id="peerList"><div style="color:var(--muted)">Scanning…</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Inbox Messages</h2>
+      <div id="inboxList"><div style="color:var(--muted)">No messages</div></div>
+    </div>
+  </div>
+
+  <div id="panel-covert" class="panel">
+    <div class="grid">
+      <div class="card">
+        <h2>Encode Message</h2>
+        <textarea id="covertInput" rows="3" placeholder="Message to hide in coffee brew request..."></textarea>
+        <div class="form-row" style="margin-top:0.5rem">
+          <input type="text" id="covertDst" placeholder="Dest pot (optional)" style="width:150px">
+          <select id="covertRecipe">
+            <option value="espresso">Espresso</option>
+            <option value="pour-over">Pour Over</option>
+            <option value="french-press">French Press</option>
+            <option value="cold-brew">Cold Brew</option>
+            <option value="moka">Moka Pot</option>
+          </select>
+          <button class="btn" onclick="encodeCovert()">Encode</button>
+        </div>
+        <div id="covertResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Decode Message</h2>
+        <textarea id="covertHeader" rows="3" placeholder="Paste Accept-Additions header value..."></textarea>
+        <div class="form-row" style="margin-top:0.5rem">
+          <button class="btn" onclick="decodeCovert()">Decode</button>
+        </div>
+        <div id="decodeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-schedule" class="panel">
+    <div class="card">
+      <h2>Schedule Brew</h2>
+      <div class="form-row">
+        <select id="schType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
+        <input type="number" id="schSeconds" value="30" min="5" style="width:80px">
+        <button class="btn secondary" onclick="scheduleIn()">In X seconds</button>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <input type="datetime-local" id="schDatetime">
+        <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
+      </div>
+      <div id="scheduleList" style="margin-top:1rem"></div>
+    </div>
+  </div>
+
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <h2>Brew History</h2>
+      <div id="brewHistory"><div style="color:var(--muted)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <h2>Live Events <span style="color:var(--muted);font-weight:400">(brew, mesh, covert)</span></h2>
+    <div class="event-log" id="eventLog"><div style="color:var(--muted)">Waiting…</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const POT = {pot_json};
+
+function showToast(m) {{ const t = document.getElementById('toast'); t.textContent = m; t.className = 'toast show'; setTimeout(() => t.className = 'toast', 2500); }}
+
+async function api(m, p, b) {{
+  try {{
+    const o = {{ method: m, headers: {{}} }};
+    if (b) {{ o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(b); }}
+    const r = await fetch(p, o);
+    if (!r.ok && r.status !== 202) {{
+      const ej = await r.json().catch(() => ({{}}));
+      showToast(ej.error || `HTTP ${{r.status}}`);
+      return ej;
+    }}
+    return await r.json();
+  }} catch(e) {{ showToast('Connection error: ' + e.message); return {{}}; }}
+}}
+
+function switchTab(name) {{
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => {{ if (t.dataset.tab === name) t.classList.add('active'); }});
+  const el = document.getElementById('panel-' + name);
+  if (el) el.classList.add('active');
+  if (name === 'mesh') {{ refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); }}
+  if (name === 'history') {{ refreshHistory(); }}
+  if (name === 'schedule') {{ refreshSchedules(); }}
+}}
+
+async function refresh() {{
+  const s = await api('GET', '/cpip/status');
+  if (!s || s.error) return;
+  const badge = document.getElementById('brewBadge');
+  const sv = document.getElementById('stateVal');
+  const sd = document.getElementById('stateDet');
+  if (s.brewing) {{
+    badge.textContent = 'BREWING'; badge.className = 'badge brewing';
+    sv.textContent = s.current_brew?.beverage || 'Brewing';
+    const secs = Math.floor(s.current_brew?.elapsed_seconds||0);
+    sd.textContent = `${{secs}}s ${{s.current_brew?.id||''}}`;
+  }} else {{
+    badge.textContent = 'IDLE'; badge.className = 'badge idle';
+    sv.textContent = 'Idle'; sd.textContent = 'Ready';
+  }}
+  document.getElementById('brewCount').textContent = s.history_count || 0;
+  if (s.mesh) {{
+    document.getElementById('meshPeers').textContent = s.mesh.peers_known;
+    document.getElementById('inboxCount').textContent = s.mesh.inbox_count || 0;
+    document.getElementById('queuedCount').textContent = s.mesh.messages_queued || 0;
+  }}
+}}
+
+function esc(s) {{ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
+
+async function refreshHistory() {{
+  const h = await api('GET', '/cpip/history?limit=8');
+  if (!h || !h.history) return;
+  const el = document.getElementById('brewHistory');
+  if (!h.history.length) {{ el.innerHTML = '<div style="color:var(--muted)">No brews yet.</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Bev</th><th>Additions</th><th>Dur</th></tr>';
+  for (const b of h.history) {{
+    const t = b.started ? new Date(b.started*1000).toLocaleTimeString() : '—';
+    const add = b.additions?.map(a => esc(a.name||a)).join(',') || '—';
+    html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.7rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshMesh() {{
+  const p = await api('GET', '/cpip/mesh/peers');
+  if (!p) return;
+  document.getElementById('peerCount').textContent = `(${{p.count||0}})`;
+  const el = document.getElementById('peerList');
+  if (!p.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No peers found. Tap Scan.</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Addr</th><th>Device</th><th>Seen</th><th>Hops</th></tr>';
+  for (const peer of p.peers) {{
+    const ls = peer.last_seen ? Math.floor((Date.now()/1000 - peer.last_seen)) + 's ago' : '—';
+    html += `<tr><td class="mono">${{esc(peer.pot?.slice(0,6)||'?')}}</td><td>${{esc(peer.hostname||'?')}}</td><td>${{esc(peer.addr||'?')}}</td><td>${{esc((peer.device||'?').slice(0,10))}}</td><td>${{esc(ls)}}</td><td>${{esc(peer.hops)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshInbox() {{
+  const ib = await api('GET', '/cpip/mesh/inbox');
+  if (!ib) return;
+  const el = document.getElementById('inboxList');
+  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages</div>'; return; }}
+  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>From</th><th>Message</th><th>Ch</th></tr>';
+  for (const m of ib.messages.slice().reverse()) {{
+    const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString() : '—';
+    const data = m.data?.length > 50 ? m.data.slice(0, 50) + '…' : (m.data || '');
+    const ch = m.channel || 'mesh';
+    html += `<tr><td>${{esc(t)}}</td><td class="mono" style="font-size:0.7rem">${{esc(m.from?.slice(0,6)||'?')}}</td><td style="font-size:0.7rem">${{esc(data)}}</td><td>${{esc(ch)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshSat() {{
+  const s = await api('GET', '/cpip/mesh/sat');
+  if (!s || !s.enabled) {{
+    document.getElementById('satBadge').textContent = 'OFF';
+    document.getElementById('satBadge').className = 'badge idle';
+    document.getElementById('satCoords').textContent = 'Satellite disabled';
+    return;
+  }}
+  document.getElementById('satBadge').textContent = 'ON';
+  document.getElementById('satBadge').className = 'badge enabled';
+  document.getElementById('satCoords').textContent = `${{s.coords?.lat||'?'}}°, ${{s.coords?.lon||'?'}}°${{s.coords?.alt ? ' alt='+s.coords.alt+'m' : ''}}`;
+  document.getElementById('satPeersCount').textContent = `${{s.peers_known||0}} sat-peer(s)`;
+  document.getElementById('satBootstrap').textContent = s.bootstrap?.length ? `bootstrap: ${{s.bootstrap.join(', ')}}` : 'no bootstrap';
+  const el = document.getElementById('satPeerList');
+  if (!s.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No satellite peers yet</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Coords</th><th>RTT</th></tr>';
+  for (const p of s.peers) {{
+    const t = p.last_seen ? Math.floor((Date.now()/1000 - p.last_seen)) + 's ago' : '—';
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed(1)+','+(p.lon||'?').toFixed(1))}}</td><td>${{esc(p.rtt||'?')}}ms</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshMobile() {{
+  const m = await api('GET', '/cpip/mesh/mobile');
+  if (!m || !m.enabled) {{
+    document.getElementById('mobBadge').textContent = 'OFF';
+    document.getElementById('mobBadge').className = 'badge idle';
+    document.getElementById('mobIface').textContent = 'Mobile disabled';
+    return;
+  }}
+  document.getElementById('mobBadge').textContent = 'ON';
+  document.getElementById('mobBadge').className = 'badge enabled';
+  document.getElementById('mobIface').textContent = m.interface || '?';
+  document.getElementById('mobPeersCount').textContent = `${{m.peers_known||0}} mobile-peer(s)`;
+  const sig = m.signal || {{}};
+  document.getElementById('mobSignal').textContent = sig.rssi != null ? `RSSI: ${{sig.rssi}}` : (sig.rsrp != null ? `RSRP: ${{sig.rsrp}}` : '—');
+  document.getElementById('mobBootstrap').textContent = m.bootstrap?.length ? `seed: ${{m.bootstrap.join(', ')}}` : 'no bootstrap';
+  const el = document.getElementById('mobPeerList');
+  if (!m.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No mobile peers yet</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Signal</th><th>Net</th><th>Hops</th></tr>';
+  for (const p of m.peers) {{
+    const sig = p.signal;
+    let sigStr = '—';
+    if (sig && typeof sig === 'object') {{ sigStr = sig.rssi != null ? sig.rssi + ' dBm' : (sig.rsrp != null ? 'RSRP ' + sig.rsrp : '—'); }}
+    else if (sig) {{ sigStr = String(sig); }}
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc(sigStr)}}</td><td>${{esc(p.network||'—')}}</td><td>${{esc(p.hops||0)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function scanMesh() {{
+  showToast('Scanning...');
+  try {{
+    const d = await api('GET', '/cpip/discover');
+    if (d && d.pots) showToast(`Found ${{d.count}} pot(s)`);
+    await refreshMesh();
+  }} catch(e) {{ showToast('Scan failed'); }}
+}}
+
+async function brew(type) {{
+  const r = await api('POST', '/cpip/brew', {{ beverage: type }});
+  if (r && r.status === 'brewing') showToast('Brewing ' + type);
+  else if (r && r.error) showToast(r.message || r.error);
+  refresh();
+}}
+
+async function brewCustom() {{
+  const type = document.getElementById('brewType').value;
+  const parts = [
+    document.getElementById('brewMilk').value,
+    document.getElementById('brewSugar').value,
+    document.getElementById('brewSyrup').value,
+    document.getElementById('brewSpice').value,
+  ].filter(p => p);
+  const additions = parts.map(p => {{ const [n,...r] = p.split(';'); const v = r.find(x => x.startsWith('variety=')); return {{ name: n, variety: v ? v.split('=')[1] : null }}; }});
+  const r = await api('POST', '/cpip/brew', {{ beverage: type, additions }});
+  if (r && r.status === 'brewing') showToast('Brewing ' + type + ' with additions');
+  else if (r && r.error) showToast(r.message || r.error);
+  refresh();
+}}
+
+async function stopBrew() {{
+  try {{
+    await fetch('/', {{ method: 'WHEN' }});
+    showToast('Stopped');
+  }} catch(e) {{ showToast('Stop failed'); }}
+  refresh();
+}}
+
+async function scheduleIn() {{
+  const s = parseInt(document.getElementById('schSeconds').value) || 30;
+  const t = document.getElementById('schType').value;
+  const r = await api('POST', '/cpip/schedule', {{ in: s, beverage: t, brew_duration: 60 }});
+  if (r && r.status === 'scheduled') showToast('Scheduled ' + t + ' in ' + s + 's');
+  refreshSchedules();
+}}
+
+async function scheduleAt() {{
+  const dt = document.getElementById('schDatetime').value;
+  const t = document.getElementById('schType').value;
+  if (!dt) {{ showToast('Pick a time'); return; }}
+  const r = await api('POST', '/cpip/schedule', {{ time: new Date(dt).toISOString(), beverage: t, brew_duration: 60 }});
+  if (r && r.status === 'scheduled') showToast('Scheduled');
+  refreshSchedules();
+}}
+
+async function refreshSchedules() {{
+  const s = await api('GET', '/cpip/schedules');
+  if (!s) return;
+  const el = document.getElementById('scheduleList');
+  if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem">None</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th></th></tr>';
+  for (const sc of s.schedules) {{
+    html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
+    html += `<td><button class="btn outline small" data-sid="${{esc(sc.id)}}">X</button></td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+  el.querySelectorAll('[data-sid]').forEach(btn => {{
+    btn.addEventListener('click', async () => {{
+      await api('DELETE', '/cpip/schedules/' + btn.dataset.sid);
+      refreshSchedules();
+    }});
+  }});
+}}
+
+async function sendMesh() {{
+  const dst = document.getElementById('meshDst').value;
+  const msg = document.getElementById('meshMsg').value;
+  const covert = document.getElementById('meshCovert').checked;
+  if (!dst || !msg) {{ showToast('Need destination + message'); return; }}
+  const r = await api('POST', '/cpip/mesh/send', {{ dst, data: msg, covert }});
+  if (r) showToast('Sent: ' + (r.status || 'ok'));
+  document.getElementById('meshMsg').value = '';
+}}
+
+async function broadcastMesh() {{
+  const msg = document.getElementById('meshMsg').value;
+  if (!msg) {{ showToast('Enter a message'); return; }}
+  const r = await api('POST', '/cpip/mesh/broadcast', {{ data: msg }});
+  if (r) showToast('Broadcast: ' + (r.peers_reached||0) + ' peers');
+  document.getElementById('meshMsg').value = '';
+}}
+
+async function encodeCovert() {{
+  const msg = document.getElementById('covertInput').value;
+  const dst = document.getElementById('covertDst').value;
+  const recipe = document.getElementById('covertRecipe').value;
+  if (!msg) {{ showToast('Enter message'); return; }}
+  const r = await api('POST', '/cpip/mesh/encode', {{ message: msg, dst, recipe }});
+  if (!r || r.status !== 'encoded') return;
+  document.getElementById('covertResult').innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem">
+    <div style="color:var(--muted)">Accept-Additions header:</div>
+    <div class="mono" style="font-size:0.7rem;word-break:break-all;margin-top:0.3rem">${{esc(r.accept_additions_header)}}</div>
+    <div style="color:var(--muted);margin-top:0.3rem">Recipe: ${{esc(r.recipe)}} | ${{esc(r.encoded_length)}} bytes</div>
+  </div>`;
+}}
+
+async function decodeCovert() {{
+  const header = document.getElementById('covertHeader').value;
+  if (!header) {{ showToast('Paste header value'); return; }}
+  const r = await api('POST', '/cpip/mesh/decode', {{ accept_additions: header }});
+  if (!r) return;
+  document.getElementById('decodeResult').innerHTML = r.status === 'decoded'
+    ? `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem"><div style="color:#88ff88">Decoded:</div><div style="margin-top:0.3rem">${{esc(r.message)}}</div></div>`
+    : `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem;color:var(--muted)">${{esc(r.message)}}</div>`;
+}}
+
+function connectSSE() {{
+  const badge = document.getElementById('sseBadge');
+  const log = document.getElementById('eventLog');
+  const evt = new EventSource('/cpip/events');
+  evt.onopen = () => {{ badge.textContent = 'SSE: OK'; badge.className = 'badge enabled'; }};
+  evt.onerror = () => {{ badge.textContent = 'SSE: ERR'; badge.className = 'badge disabled'; }};
+  evt.onmessage = (e) => {{
+    try {{
+      const d = JSON.parse(e.data);
+      const entry = document.createElement('div');
+      const ts = new Date().toLocaleTimeString();
+      if (d.event === 'brew_start') {{ entry.className = 'ev-start'; entry.textContent = '['+ts+'] Brew '+d.beverage; refresh(); }}
+      else if (d.event === 'brew_stop') {{ entry.className = 'ev-stop'; entry.textContent = '['+ts+'] Stop'; refresh(); refreshHistory(); }}
+      else if (d.event === 'mesh_message') {{ entry.className = 'ev-mesh'; entry.textContent = '['+ts+'] Msg from '+(d.from||'?'); refreshInbox(); }}
+      else {{ entry.textContent = '['+ts+'] '+e.data; }}
+      log.insertBefore(entry, log.firstChild);
+      while (log.children.length > 50) log.removeChild(log.lastChild);
+    }} catch(ex) {{}}
+  }};
+}}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile();
+setInterval(refresh, 5000);
+setInterval(refreshHistory, 15000);
+setInterval(refreshSchedules, 15000);
+setInterval(refreshMesh, 30000);
+setInterval(refreshInbox, 10000);
+setInterval(refreshSat, 30000);
+setInterval(refreshMobile, 30000);
+connectSSE();
+</script>
+</body>
+</html>

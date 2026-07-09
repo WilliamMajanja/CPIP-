@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cpip"
+version = "2.3.0"
+description = "Coffee Protocol Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
+readme = "README.md"
+license = {text = "Unlicense"}
+requires-python = ">=3.10"
+keywords = ["htcpcp", "coffee", "tea", "rfc2324", "mesh", "iot"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: Public Domain",
+    "Topic :: Communications :: Ham Radio",
+    "Topic :: Internet :: RFC",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+cpip-server = "server:main"
+
+[project.urls]
+Homepage = "https://github.com/WilliamMajanja/CPIP-"
+RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
+RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc7168"
+
+[tool.setuptools]
+py-modules = ["server"]

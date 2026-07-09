@@ -123,29 +123,104 @@ static int write_error(int fd, uint8_t code, const char *msg) {
     return write_frame(fd, RADIO_PKT_ERROR, buf, 1 + mlen);
 }
 
-/* ── SPI (simulated stub — real impl uses /dev/spidev) ──────────────────
- * In production on a Pi, this would call ioctl(SPI_IOC_MESSAGE) on
- * /dev/spidev0.0 (or whatever bus).  The stub logs the operation.
+/* ── SPI (real /dev/spidev + simulation fallback) ─────────────────────
+ * On a Pi with SX1276/78 connected to the SPI bus, this drives the
+ * radio chip directly.  If /dev/spidev is not available, falls back
+ * to the old stub behaviour (logs, returns 0).
  */
+#include <sys/ioctl.h>
+#include <linux/spi/spidev.h>
+
+static int g_spi_fd = -1;
+
+static int spi_open(const char *device) {
+    if (!device || !*device) return -1;
+    g_spi_fd = open(device, O_RDWR);
+    if (g_spi_fd < 0) return -1;
+    uint8_t mode = SPI_MODE_0;
+    uint8_t bits = 8;
+    uint32_t speed = 2000000;
+    if (ioctl(g_spi_fd, SPI_IOC_WR_MODE, &mode) < 0) goto fail;
+    if (ioctl(g_spi_fd, SPI_IOC_WR_BITS_PER_WORD, &bits) < 0) goto fail;
+    if (ioctl(g_spi_fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed) < 0) goto fail;
+    return 0;
+fail:
+    close(g_spi_fd);
+    g_spi_fd = -1;
+    return -1;
+}
+
 static int spi_write_reg(uint8_t reg, uint8_t val) {
-    (void)reg; (void)val;
-    /* TODO: real SPI write via /dev/spidev */
-    return 0;
+    if (g_spi_fd < 0) { (void)reg; (void)val; return 0; }
+    uint8_t tx[2] = {reg & 0x7F, val};
+    uint8_t rx[2] = {0};
+    struct spi_ioc_transfer tr = {
+        .tx_buf = (unsigned long)tx,
+        .rx_buf = (unsigned long)rx,
+        .len = 2,
+        .speed_hz = 2000000,
+        .delay_usecs = 0,
+        .bits_per_word = 8,
+    };
+    return ioctl(g_spi_fd, SPI_IOC_MESSAGE(1), &tr);
 }
+
 static int spi_read_reg(uint8_t reg, uint8_t *val) {
-    (void)reg;
-    if (val) *val = 0x12;  /* mock version reg */
-    return 0;
+    if (!val) return -1;
+    if (g_spi_fd < 0) { *val = 0x12; return 0; }
+    uint8_t tx[2] = {reg | 0x80, 0};
+    uint8_t rx[2] = {0};
+    struct spi_ioc_transfer tr = {
+        .tx_buf = (unsigned long)tx,
+        .rx_buf = (unsigned long)rx,
+        .len = 2,
+        .speed_hz = 2000000,
+        .delay_usecs = 0,
+        .bits_per_word = 8,
+    };
+    int ret = ioctl(g_spi_fd, SPI_IOC_MESSAGE(1), &tr);
+    if (ret >= 0) *val = rx[1];
+    return ret;
 }
+
 static int spi_burst_write(uint8_t reg, const uint8_t *data, int len) {
-    (void)reg; (void)data; (void)len;
-    /* TODO: real SPI burst write */
-    return 0;
+    if (!data || len <= 0) return -1;
+    if (g_spi_fd < 0) { (void)reg; return 0; }
+    int total = 1 + len;
+    if ((unsigned)total > sizeof(uint8_t[260])) return -1;
+    uint8_t tx[260], rx[260];
+    tx[0] = reg & 0x7F;
+    memcpy(tx + 1, data, len);
+    struct spi_ioc_transfer tr = {
+        .tx_buf = (unsigned long)tx,
+        .rx_buf = (unsigned long)rx,
+        .len = total,
+        .speed_hz = 2000000,
+        .delay_usecs = 0,
+        .bits_per_word = 8,
+    };
+    return ioctl(g_spi_fd, SPI_IOC_MESSAGE(1), &tr);
 }
+
 static int spi_burst_read(uint8_t reg, uint8_t *data, int len) {
-    (void)reg; (void)data; (void)len;
-    /* TODO: real SPI burst read */
-    return 0;
+    if (!data || len <= 0) return -1;
+    if (g_spi_fd < 0) { (void)reg; memset(data, 0, len); return 0; }
+    int total = 1 + len;
+    if ((unsigned)total > sizeof(uint8_t[260])) return -1;
+    uint8_t tx[260], rx[260];
+    memset(tx, 0, total);
+    tx[0] = reg | 0x80;
+    struct spi_ioc_transfer tr = {
+        .tx_buf = (unsigned long)tx,
+        .rx_buf = (unsigned long)rx,
+        .len = total,
+        .speed_hz = 2000000,
+        .delay_usecs = 0,
+        .bits_per_word = 8,
+    };
+    int ret = ioctl(g_spi_fd, SPI_IOC_MESSAGE(1), &tr);
+    if (ret >= 0) memcpy(data, rx + 1, len);
+    return ret;
 }
 
 /* ── LoRa Mode Helpers ────────────────────────────────────────────────── */
@@ -349,8 +424,14 @@ static int radio_init(struct radio_config *cfg) {
         break;
 
     case RADIO_MODE_LORA:
+        if (cfg->spi_device && cfg->spi_device[0]) {
+            if (spi_open(cfg->spi_device) < 0) {
+                fprintf(stderr, "[radio] WARNING: could not open %s, "
+                        "falling back to stub SPI\n", cfg->spi_device);
+            }
+        }
         lora_configure(cfg);
-        g_status.hw_connected = 1;
+        g_status.hw_connected = (g_spi_fd >= 0) ? 1 : 0;
         break;
 
     case RADIO_MODE_TNC:
