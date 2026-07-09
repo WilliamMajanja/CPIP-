@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pi-Apps uninstall script for CPIP — Coffee Protocol Internet Protocol
+set -euo pipefail
+
+echo "[CPIP] Uninstalling Coffee Protocol Internet Protocol..."
+
+# Stop and disable service
+if systemctl is-active --quiet cpip.service 2>/dev/null; then
+    sudo systemctl stop cpip.service
+fi
+if systemctl is-enabled --quiet cpip.service 2>/dev/null; then
+    sudo systemctl disable cpip.service
+fi
+
+# Remove service file
+sudo rm -f /etc/systemd/system/cpip.service
+sudo systemctl daemon-reload
+
+# Remove app files
+sudo rm -rf /opt/cpip
+
+# Remove CLI
+sudo rm -f /usr/local/bin/htcpcp
+
+echo "[CPIP] Uninstalled successfully."
+echo "[CPIP] Brew history and mesh data have been lost."
+echo "[CPIP] The mesh will continue without this node."

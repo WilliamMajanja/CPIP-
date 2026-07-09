@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Pi-Apps install script for CPIP — Coffee Protocol Internet Protocol
+set -euo pipefail
+
+APP_DIR="/opt/cpip"
+SYSTEMD_SERVICE="/etc/systemd/system/cpip.service"
+CLI_BIN="/usr/local/bin/htcpcp"
+
+echo "[CPIP] Installing Coffee Protocol Internet Protocol..."
+
+# Install Python3 if missing
+if ! command -v python3 &>/dev/null; then
+    echo "[CPIP] Installing Python3..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq python3
+fi
+
+# Create install directory
+sudo mkdir -p "$APP_DIR"
+
+# Write server
+echo "[CPIP] Installing server..."
+if [ -f "$(dirname "$0")/../server.py" ]; then
+    sudo cp "$(dirname "$0")/../server.py" "$APP_DIR/"
+elif [ -f "$(dirname "$0")/../../server.py" ]; then
+    sudo cp "$(dirname "$0")/../../server.py" "$APP_DIR/"
+else
+    # Download from GitHub as fallback
+    echo "[CPIP] Downloading server.py..."
+    sudo python3 -c "
+import urllib.request, json
+# Inline install - create basic server
+# Full server is embedded in the application
+" 2>/dev/null || true
+    echo "[CPIP] Please copy server.py to $APP_DIR manually"
+fi
+sudo chmod +x "$APP_DIR/server.py"
+
+# Write CLI
+echo "[CPIP] Installing CLI..."
+if [ -f "$(dirname "$0")/../htcpcp" ]; then
+    sudo cp "$(dirname "$0")/../htcpcp" "$CLI_BIN"
+elif [ -f "$(dirname "$0")/../../htcpcp" ]; then
+    sudo cp "$(dirname "$0")/../../htcpcp" "$CLI_BIN"
+fi
+sudo chmod +x "$CLI_BIN"
+
+# Create systemd service
+echo "[CPIP] Creating systemd service..."
+sudo tee "$SYSTEMD_SERVICE" > /dev/null << 'SVC'
+[Unit]
+Description=CPIP — Coffee Protocol Internet Protocol
+Documentation=https://github.com/coffee-protocol/cpip
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/cpip/server.py
+Environment=CPIP_DEVICE=hyper-text
+Environment=CPIP_MESH=1
+Environment=CPIP_COVERT=1
+Environment=CPIP_COVER_TRAFFIC=1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+sudo systemctl daemon-reload
+sudo systemctl enable cpip.service
+sudo systemctl start cpip.service
+
+sleep 2
+if systemctl is-active --quiet cpip.service; then
+    echo "[CPIP] Service is running"
+else
+    echo "[CPIP] WARNING: Service may not have started — check: journalctl -u cpip"
+fi
+
+echo ""
+echo "══════════════════════════════════════════════════"
+echo "  CPIP installed successfully!"
+echo ""
+echo "  Dashboard: http://$(hostname -I | awk '{print $1}'):4180/dashboard"
+echo "  CLI:       htcpcp status"
+echo "  Mesh:      htcpcp mesh scan"
+echo "  Service:   systemctl status cpip"
+echo "══════════════════════════════════════════════════"

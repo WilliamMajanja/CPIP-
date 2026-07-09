@@ -1,0 +1,566 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HTCPCP_HOST="${HTCPCP_HOST:-localhost}"
+HTCPCP_PORT="${HTCPCP_PORT:-4180}"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+usage() {
+cat << 'HELP'
+CPIP v2.2 — Coffee Protocol Internet Protocol CLI
+RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Ed25519 ECC + Mesh + Covert + 418
+
+Usage:
+  htcpcp status                          Server status
+  htcpcp brew|pour [coffee|tea] [add]    Start brewing
+  htcpcp when                            Stop pouring
+  htcpcp info                            Pot metadata (PROPFIND)
+  htcpcp   418                             Trigger 418 (brew coffee on teapot)
+  htcpcp 418-alcohol                     Trigger 418 (alcohol on teapot)
+   htcpcp additions                       List supported additions
+   htcpcp config                          Show full node configuration
+   htcpcp stats                           Show all status at a glance
+   htcpcp version                         Show server version
+   htcpcp whoami|id                       Show local node identity
+
+  # Mesh commands
+  htcpcp mesh status                     Mesh network status (incl. ECC, port hop)
+  htcpcp mesh peers                      List mesh peers
+  htcpcp mesh inbox                      Read received messages
+  htcpcp mesh send <pot|addr> <msg>      Send message via mesh (E2EE by default)
+  htcpcp mesh send-raw <pot> <msg>       Send without E2EE encryption
+   htcpcp mesh broadcast <msg>            Broadcast to all peers
+   htcpcp mesh scan                       Scan for peers
+   htcpcp mesh routes                     Show routing table
+   htcpcp mesh queued                     Show store-and-forward queue
+   htcpcp mesh sat                        Satellite mesh status
+   htcpcp mesh radio                      Radio / LoRa / packet-radio status
+   htcpcp mesh mobile                     4G/5G / LTE / WWAN status
+
+  # ECC / Address Book
+  htcpcp ecc status                      ECC engine + address book status
+  htcpcp ecc address                     Show this node's ECC address
+  htcpcp ecc book                        List address book entries
+  htcpcp ecc resolve <addr>              Resolve ECC address to POT_ID
+
+  # Dead-drop / Thermos
+  htcpcp deaddrop list                   List dead-drop messages held by this node
+  htcpcp deaddrop claim <id>             Claim a dead-drop message
+
+  # Covert channel commands
+  htcpcp covert encode <msg> [dst]       Encode message in additions
+  htcpcp covert decode <header>          Decode message from header
+  htcpcp covert brew <msg> [dst]         Brew with hidden message
+  htcpcp covert status                   Covert channel status
+
+  # Defenses
+  htcpcp defense status                  418 defense status
+
+  # Dead-drop / Thermos
+  htcpcp deaddrop list                   List dead-drop messages held by this node
+  htcpcp deaddrop claim <id>             Claim a dead-drop message
+
+Environment:
+  HTCPCP_HOST   Server hostname (default: localhost)
+  HTCPCP_PORT   Server port     (default: 4180)
+HELP
+}
+
+base_url() { echo "http://${HTCPCP_HOST}:${HTCPCP_PORT}"; }
+
+api() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local data="${1:-}"
+    if [ -n "$data" ]; then
+        curl -sS -X "$method" -H "Content-Type: application/json" \
+            -d "$data" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    else
+        curl -sS -X "$method" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    fi
+}
+
+req() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local header="${1:-}"
+    if [ -n "$header" ]; then
+        curl -sS -X "$method" -H "$header" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    else
+        curl -sS -X "$method" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    fi
+}
+
+req_verbose() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local header="${1:-}"
+    echo ">>> $method $(base_url)${path}"
+    [ -n "$header" ] && echo ">>> $header"
+    echo "---"
+    if [ -n "$header" ]; then
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X "$method" -H "$header" \
+            "$(base_url)${path}" 2>/dev/null || die "Cannot connect to $(base_url)"
+    else
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X "$method" \
+            "$(base_url)${path}" 2>/dev/null || die "Cannot connect to $(base_url)"
+    fi
+}
+
+sub_brew() {
+    local beverage="${2:-tea}"
+    local url="/${beverage}"
+    local header=""
+    if [ $# -ge 3 ]; then
+        header="Accept-Additions: $3"
+    fi
+    echo "Brewing ${beverage}..."
+    [ -n "$header" ] && echo "Additions: $3"
+    echo "---"
+    if [ -n "$header" ]; then
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW -H "$header" \
+            "$(base_url)${url}" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST -H "$header" \
+            "$(base_url)${url}" 2>/dev/null || \
+        die "Cannot connect to $(base_url)"
+    else
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+            "$(base_url)${url}" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+            "$(base_url)${url}" 2>/dev/null || \
+        die "Cannot connect to $(base_url)"
+    fi
+}
+
+case "${1:-help}" in
+
+    # ── HTCPCP Commands ────────────────────────────────────────────────
+    status)
+        echo "Server status:"
+        echo "---"
+        req GET "/"
+        ;;
+
+    brew|pour)
+        shift
+        sub_brew "$@"
+        ;;
+
+    when)
+        echo "Stopping pour..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X WHEN "$(base_url)/" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    info)
+        echo "Pot metadata:"
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X PROPFIND "$(base_url)/" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    418)
+        echo "Triggering 418 I'm a teapot (brewing coffee on a teapot)..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW "$(base_url)/coffee" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST "$(base_url)/coffee" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    418-alcohol)
+        echo "Triggering 418 I'm a teapot (alcohol on a teapot)..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+            -H "Accept-Additions: alcohol;variety=rum" "$(base_url)/tea" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+            -H "Accept-Additions: alcohol;variety=rum" "$(base_url)/tea" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    additions)
+        echo "Supported addition types (RFC 2324 §2.2.2 + RFC 7168):"
+        echo ""
+        echo "  Name      Category    Varieties"
+        echo "  ----      --------    ----------"
+        echo "  milk      dairy        cream, half-and-half, whole, part-skim, skim, non-dairy"
+        echo "  syrup     sweetener    vanilla, caramel, almond, hazelnut, chocolate"
+        echo "  sugar     sweetener    white, brown, raw, honey, artificial"
+        echo "  spice     flavoring    cinnamon, cardamom, nutmeg, clove"
+        echo "  alcohol   alcohol      whisky, rum, kahlua, aquavit, brandy (hyper-text only)"
+        ;;
+
+    version)
+        echo "CPIP / HTCPCP version:"
+        echo "---"
+        curl -sS -I "$(base_url)/" 2>/dev/null | grep -i "^server:" || \
+            api GET "/cpip/config" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version','?'))" 2>/dev/null || \
+            echo "unknown"
+        ;;
+
+    whoami|id)
+        echo "This node:"
+        echo "---"
+        api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'POT_ID:   {d.get(\"pot_id\",\"?\")}')
+print(f'Address:  {d.get(\"node_address\",\"?\")}')
+print(f'Hostname: {d.get(\"hostname\",\"?\")}')
+print(f'Device:   {d.get(\"device\",\"?\")}')
+print(f'Version:  {d.get(\"version\",\"?\")}')
+" 2>/dev/null || api GET "/cpip/config"
+        ;;
+
+    config)
+        echo "Node configuration:"
+        echo "---"
+        api GET "/cpip/config" | python3 -m json.tool 2>/dev/null || api GET "/cpip/config"
+        ;;
+
+    stats)
+        echo "=== CPIP Stats ==="
+        echo "---"
+        echo "--- Node ---"
+        api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  POT_ID:   {d.get(\"pot_id\",\"?\")}')
+print(f'  Address:  {d.get(\"node_address\",\"?\")}')
+print(f'  Hostname: {d.get(\"hostname\",\"?\")}')
+print(f'  Device:   {d.get(\"device\",\"?\")}')
+print(f'  Version:  {d.get(\"version\",\"?\")}')
+print(f'  Mesh:     {\"enabled\" if d.get(\"mesh_enabled\") else \"disabled\"} (port {d.get(\"mesh_port\",\"?\")})')
+print(f'  Covert:   {\"enabled\" if d.get(\"covert_enabled\") else \"disabled\"}')
+print(f'  Thermos:  {\"enabled\" if d.get(\"thermos_enabled\") else \"disabled\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Mesh ---"
+        api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+peers = d.get('peers', {})
+inbox = d.get('inbox', [])
+print(f'  Peers:    {len(peers)}')
+print(f'  Inbox:    {len(inbox)} message(s)')
+print(f'  Hops:     {d.get(\"max_hops\",0)}')
+print(f'  Stealth:  {\"ON\" if d.get(\"stealth\") else \"OFF\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Satellite ---"
+        api GET "/cpip/mesh/sat" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Port:     {d.get(\"port\",\"?\")}')
+    print(f'  Peers:    {d.get(\"peers_known\",0)}')
+    print(f'  Relay:    {\"yes\" if d.get(\"relay\") else \"no\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Radio ---"
+        api GET "/cpip/mesh/radio" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Mode:     {d.get(\"mode\",\"?\")}')
+    freq = d.get(\"frequency\", 0)
+    if freq and isinstance(freq, (int, float)):
+        print(f'  Freq:     {freq/1000000:.3f} MHz')
+    print(f'  SF:       {d.get(\"sf\",\"?\")}')
+" 2>/dev/null
+        echo ""
+        echo "--- Mobile ---"
+        api GET "/cpip/mesh/mobile" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Port:     {d.get(\"port\",\"?\")}')
+    print(f'  IFace:    {d.get(\"interface\",\"?\")}')
+    print(f'  Peers:    {d.get(\"peers_known\",0)}')
+" 2>/dev/null
+        ;;
+
+    # ── Mesh Commands ──────────────────────────────────────────────────
+    mesh)
+        case "${2:-status}" in
+            status)
+                echo "Mesh network status (ECC + port hop + keep warm):"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/status"
+                ;;
+            peers)
+                echo "Mesh peers:"
+                echo "---"
+                api GET "/cpip/mesh/peers"
+                ;;
+            inbox)
+                echo "Mesh inbox (E2EE messages auto-decrypted at server):"
+                echo "---"
+                api GET "/cpip/mesh/inbox" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/inbox"
+                ;;
+            send)
+                if [ $# -lt 4 ]; then
+                    die "Usage: htcpcp mesh send <pot_id_or_address> <message>"
+                fi
+                local dst="$3"
+                local msg="$4"
+                echo "Sending E2EE message to ${dst}..."
+                echo "---"
+                api POST "/cpip/mesh/send" "{\"dst\":\"${dst}\",\"data\":\"${msg}\"}"
+                ;;
+            send-raw)
+                if [ $# -lt 4 ]; then
+                    die "Usage: htcpcp mesh send-raw <pot_id> <message>"
+                fi
+                local dst="$3"
+                local msg="$4"
+                echo "Sending plaintext message to ${dst} (no E2EE)..."
+                echo "---"
+                api POST "/cpip/mesh/send" "{\"dst\":\"${dst}\",\"data\":\"${msg}\",\"e2ee\":false}"
+                ;;
+            broadcast)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp mesh broadcast <message>"
+                fi
+                local msg="$3"
+                echo "Broadcasting message..."
+                echo "---"
+                api POST "/cpip/mesh/broadcast" "{\"data\":\"${msg}\"}"
+                ;;
+            scan)
+                echo "Scanning mesh for peers..."
+                echo "---"
+                api GET "/cpip/mesh/peers"
+                ;;
+            routes)
+                echo "Mesh routing table:"
+                echo "---"
+                api GET "/cpip/mesh/routes"
+                ;;
+            sat)
+                echo "Satellite mesh status:"
+                echo "---"
+                api GET "/cpip/mesh/sat" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/sat"
+                ;;
+            radio)
+                echo "Radio / LoRa / packet-radio status:"
+                echo "---"
+                api GET "/cpip/mesh/radio" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/radio"
+                ;;
+            mobile)
+                echo "Mobile broadband (4G/5G / LTE / WWAN) status:"
+                echo "---"
+                api GET "/cpip/mesh/mobile" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/mobile"
+                ;;
+            queued)
+                echo "Store-and-forward queue:"
+                echo "---"
+                api GET "/cpip/mesh/queued" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/queued" 2>/dev/null || echo "(no queued endpoint or empty)"
+                ;;
+            *)
+                die "Unknown mesh command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── ECC / Address Book ─────────────────────────────────────────────
+    ecc)
+        case "${2:-status}" in
+            status)
+                echo "ECC engine status:"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ecc = d.get('ecc', {})
+print(f'Algorithm:     {ecc.get(\"algorithm\")}')
+print(f'Constant-time: {ecc.get(\"constant_time\")}')
+print(f'Node address:  {ecc.get(\"node_address\")}')
+print(f'Pubkey:        {(ecc.get(\"node_pubkey\") or \"\")[:32]}...')
+print(f'Port hopping:  {d.get(\"port_hopping\")}')
+print(f'Keep warm:     {d.get(\"keep_warm\")}')
+" 2>/dev/null || api GET "/cpip/mesh/status"
+                ;;
+            address)
+                echo "This node's ECC address:"
+                echo "---"
+                api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('node_address', 'unknown'))
+" 2>/dev/null
+                ;;
+            book)
+                echo "Address book (ECC address → POT_ID):"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ab = d.get('address_book', {})
+if not ab:
+    print('(empty)')
+else:
+    for addr, info in ab.items():
+        print(f'  {addr}  →  {info.get(\"pot_id\",\"?\")}  ({info.get(\"hostname\",\"?\")})')
+" 2>/dev/null
+                ;;
+            resolve)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp ecc resolve <address>"
+                fi
+                local addr="$3"
+                echo "Resolving ECC address:"
+                echo "---"
+                api GET "/cpip/config" > /dev/null  # ensure connected
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ab = d.get('address_book', {})
+target = '$addr'
+entry = ab.get(target)
+if entry:
+    print(f'  Address: {target}')
+    print(f'  POT_ID:  {entry.get(\"pot_id\")}')
+    print(f'  Host:    {entry.get(\"hostname\")}')
+else:
+    print(f'  Unknown address: {target}')
+    print('  (address book has:', ', '.join(ab.keys()) or 'nothing)')
+" 2>/dev/null
+                ;;
+            *)
+                die "Unknown ecc command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Dead-drop / Thermos ────────────────────────────────────────────
+    deaddrop)
+        case "${2:-list}" in
+            list)
+                echo "Dead-drop messages held by this node:"
+                echo "---"
+                api GET "/cpip/mesh/deaddrop?action=list"
+                ;;
+            claim)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp deaddrop claim <message_id>"
+                fi
+                local mid="$3"
+                echo "Claiming dead-drop message ${mid}..."
+                echo "---"
+                api POST "/cpip/mesh/deaddrop/claim" "{\"message_id\":\"${mid}\"}"
+                ;;
+            *)
+                die "Unknown deaddrop command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Covert Commands ────────────────────────────────────────────────
+    covert)
+        case "${2:-status}" in
+            encode)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp covert encode <message> [dst_pot] [--ecc]"
+                fi
+                local msg="$3"
+                local dst="${4:-}"
+                local ecc_flag="${5:-}"
+                local data="{\"message\":\"${msg}\"}"
+                [ -n "$dst" ] && data="{\"message\":\"${msg}\",\"dst\":\"${dst}\"}"
+                [ "$ecc_flag" = "--ecc" ] && data=$(echo "$data" | python3 -c "import sys,json; d=json.load(sys.stdin); d['ecc']=True; print(json.dumps(d))")
+                echo "Encoding covert message..."
+                echo "---"
+                api POST "/cpip/mesh/encode" "$data" | python3 -m json.tool 2>/dev/null || \
+                    api POST "/cpip/mesh/encode" "$data"
+                ;;
+            decode)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp covert decode <header_value>"
+                fi
+                local header="$3"
+                echo "Decoding covert message from header..."
+                echo "---"
+                api POST "/cpip/mesh/decode" "{\"accept_additions\":\"${header}\"}"
+                ;;
+            brew)
+                if [ $# -lt 3 ]; then
+                    die "Usage: htcpcp covert brew <message> [dst_pot]"
+                fi
+                msg="$3"
+                dst="${4:-}"
+                data="{\"message\":\"${msg}\"}"
+                [ -n "$dst" ] && data="{\"message\":\"${msg}\",\"dst\":\"${dst}\"}"
+                echo "Brewing with covert message..."
+                echo "---"
+                encoded=$(api POST "/cpip/mesh/encode" "$data" 2>/dev/null || die "Failed to encode")
+                header_val=$(echo "$encoded" | python3 -c "import sys,json; print(json.load(sys.stdin).get('accept_additions_header',''))" 2>/dev/null)
+                if [ -z "$header_val" ]; then
+                    die "Failed to get covert additions header"
+                fi
+                echo "Covert header: $header_val"
+                echo ""
+                curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+                    -H "Accept-Additions: ${header_val}" \
+                    "$(base_url)/tea" 2>/dev/null || \
+                curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+                    -H "Accept-Additions: ${header_val}" \
+                    "$(base_url)/tea" 2>/dev/null || \
+                die "Cannot connect to $(base_url)"
+                ;;
+            status)
+                echo "Covert channel status:"
+                echo "---"
+                api GET "/cpip/mesh/status"
+                ;;
+            *)
+                die "Unknown covert command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Defense ─────────────────────────────────────────────────────────
+    defense)
+        case "${2:-status}" in
+            status)
+                echo "418 I'm a Teapot defense status:"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+defense = d.get('defense', {})
+print(f'418 active:     {defense.get(\"418_teapot\")}')
+print(f'Blacklisted:    {defense.get(\"blacklisted_addrs\")} addresses')
+print(f'Port hopping:   {d.get(\"port_hopping\")}')
+print(f'Keep warm:      {d.get(\"keep_warm\")}')
+" 2>/dev/null || api GET "/cpip/mesh/status"
+                ;;
+            *)
+                die "Unknown defense command: $2\nSee 'htcpcp help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Help ────────────────────────────────────────────────────────────
+    help|--help|-h)
+        usage
+        ;;
+
+    *)
+        die "Unknown command: $1\nRun 'htcpcp help' for usage."
+        ;;
+esac

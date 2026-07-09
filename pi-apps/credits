@@ -1,0 +1,8 @@
+CPIP — Coffee Protocol Internet Protocol
+
+Based on RFC 2324 (HTCPCP) and RFC 7168 (HTCPCP-TEA)
+Original April Fools' RFCs by Larry Masinter (1998) and IETF (2014)
+
+Extended with mesh networking, covert channel, and IoT capabilities.
+
+"The coffee pot is always listening."
