@@ -173,6 +173,12 @@ The `htcpcp` command-line client communicates with a running CPIP server.
 | `htcpcp deaddrop list` | List dead-drop messages |
 | `htcpcp deaddrop claim <id>` | Claim a dead-drop message |
 | `htcpcp defense status` | 418 defense status |
+| `htcpcp itf status` | Full defense posture |
+| `htcpcp itf blacklist` | List blacklisted IPs |
+| `htcpcp itf whitelist <addr>` | Remove IP from blacklist |
+| `htcpcp itf clear` | Clear entire blacklist |
+| `htcpcp itf stealth` | Stealth mode status |
+| `htcpcp itf probe <addr>` | Check if IP is blacklisted |
 
 ---
 
@@ -492,6 +498,8 @@ All configuration is via environment variables. No config files needed.
 | `GET` | `/cpip/mesh/radio` | Radio transport status |
 | `GET` | `/cpip/mesh/mobile` | Mobile transport status |
 | `GET` | `/cpip/mesh/deaddrop` | List/claim dead drops |
+| `GET` | `/cpip/defense` | Defense posture (418, stealth, blacklist) |
+| `POST` | `/cpip/defense` | Defense actions (whitelist, clear) |
 
 ### Web Interface
 
