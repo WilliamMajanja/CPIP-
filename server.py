@@ -722,6 +722,8 @@ class MeshNode:
     sat_coords = (0.0, 0.0, 0.0)
     sat_rtt = {}
     sat_lock = threading.Lock()
+    sat_active = False
+    stealth_mode = MESH_STEALTH
 
     # ── Trust levels ───────────────────────────────────────────────────
     TRUST_UNTRUSTED = 0
@@ -786,7 +788,7 @@ class MeshNode:
 
             print(f"   ├ Mesh AAA:   Node {POT_ID} active on port {MESH_PORT}", flush=True)
             print(f"   ├ Latent:     Ports {MESH_LATENT_PORTS} (dormant)", flush=True)
-            print(f"   └ Stealth:    {'ON (no broadcast)' if MESH_STEALTH else 'OFF (broadcast enabled)'}", flush=True)
+            print(f"   └ Stealth:    {'ON (no broadcast)' if MeshNode.stealth_mode else 'OFF (broadcast enabled)'}", flush=True)
         except Exception as e:
             print(f"[MESH] Failed to start: {e}", flush=True)
 
@@ -1377,7 +1379,7 @@ class MeshNode:
         }).encode()
         payload = cls._pad_traffic(payload)
 
-        if MESH_STEALTH:
+        if MeshNode.stealth_mode:
             with cls.peers_lock:
                 targets = [(info["addr"], info.get("mesh_port", cls.current_mesh_port))
                            for pid, info in cls.peers.items()
@@ -1457,7 +1459,7 @@ class MeshNode:
         """
         while cls.running:
             time.sleep(MESH_HOP_INTERVAL)
-            if not MESH_STEALTH:
+            if not MeshNode.stealth_mode:
                 continue
             try:
                 # Pick a new port from latent range or random ephemeral
@@ -1540,7 +1542,9 @@ class MeshNode:
 
     @classmethod
     def _sat_start(cls):
-        if not SATELLITE_ENABLED:
+        if cls.sat_active:
+            return
+        if not SATELLITE_ENABLED and not cls.sat_active:
             return
         cls.sat_coords = (SATELLITE_LAT, SATELLITE_LON, SATELLITE_ALT)
         if SATELLITE_BOOTSTRAP:
@@ -1551,6 +1555,7 @@ class MeshNode:
             s.bind(("0.0.0.0", SATELLITE_PORT))
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
+            cls.sat_active = True
             threading.Thread(target=cls._sat_listener, daemon=True).start()
             threading.Thread(target=cls._sat_heartbeat_loop, daemon=True).start()
             print(f"   ├ Satellite:  Sat-Mesh on port {SATELLITE_PORT}"
@@ -1568,6 +1573,18 @@ class MeshNode:
             try: cls.sat_socket.close()
             except Exception: pass
             cls.sat_socket = None
+            cls.sat_active = False
+
+    @classmethod
+    def sat_enable(cls):
+        cls.sat_active = True
+        cls._sat_start()
+
+    @classmethod
+    def sat_disable(cls):
+        with cls.sat_lock:
+            cls.sat_peers.clear()
+        cls._sat_stop()
 
     @classmethod
     def _sat_listener(cls):
@@ -1730,7 +1747,7 @@ class MeshNode:
     def get_sat_status(cls) -> dict:
         with cls.sat_lock:
             return {
-                "enabled": SATELLITE_ENABLED,
+                "enabled": cls.sat_active,
                 "port": SATELLITE_PORT,
                 "coords": {"lat": SATELLITE_LAT, "lon": SATELLITE_LON, "alt": SATELLITE_ALT},
                 "bootstrap": cls.sat_bootstrap,
@@ -1753,10 +1770,13 @@ class MeshNode:
     mobile_peers = {}
     mobile_lock = threading.Lock()
     mobile_bootstrap = []
+    mobile_active = False
 
     @classmethod
     def _mobile_start(cls):
-        if not MOBILE_ENABLED:
+        if cls.mobile_active:
+            return
+        if not MOBILE_ENABLED and not cls.mobile_active:
             return
         if MOBILE_BOOTSTRAP:
             cls.mobile_bootstrap = [b.strip() for b in MOBILE_BOOTSTRAP.split(",") if b.strip()]
@@ -1766,6 +1786,7 @@ class MeshNode:
             s.bind(("0.0.0.0", MOBILE_PORT))
             s.settimeout(3.0)
             cls.mobile_socket = s
+            cls.mobile_active = True
             threading.Thread(target=cls._mobile_listener, daemon=True).start()
             threading.Thread(target=cls._mobile_heartbeat_loop, daemon=True).start()
             print(f"   ├ Mobile:     4G/5G port {MOBILE_PORT}"
@@ -1781,6 +1802,18 @@ class MeshNode:
             try: cls.mobile_socket.close()
             except Exception: pass
             cls.mobile_socket = None
+            cls.mobile_active = False
+
+    @classmethod
+    def mobile_enable(cls):
+        cls.mobile_active = True
+        cls._mobile_start()
+
+    @classmethod
+    def mobile_disable(cls):
+        with cls.mobile_lock:
+            cls.mobile_peers.clear()
+        cls._mobile_stop()
 
     @classmethod
     def _mobile_listener(cls):
@@ -1942,7 +1975,7 @@ class MeshNode:
                       "hops": info.get("hops", 0)}
                      for pid, info in cls.mobile_peers.items()]
         return {
-            "enabled": MOBILE_ENABLED,
+            "enabled": cls.mobile_active,
             "port": MOBILE_PORT,
             "interface": MOBILE_INTERFACE,
             "bootstrap": list(cls.mobile_bootstrap),
@@ -2310,7 +2343,7 @@ class MeshNode:
             "enabled": MESH_ENABLED,
             "port": cls.current_mesh_port,
             "latent_ports": MESH_LATENT_PORTS,
-            "stealth": MESH_STEALTH,
+            "stealth": MeshNode.stealth_mode,
             "node_id": POT_ID,
             "node_address": cls.node_address,
             "node_pubkey": base64.b64encode(cls.node_pubkey).decode() if cls.node_pubkey else None,
@@ -2329,7 +2362,7 @@ class MeshNode:
                 addr: {k: v for k, v in info.items() if k != "pubkey"}
                 for addr, info in addr_book.items()
             },
-            "port_hopping": MESH_STEALTH,
+            "port_hopping": MeshNode.stealth_mode,
             "keep_warm": True,
         }
 
@@ -3157,6 +3190,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_covert_decode()
         elif path == "/cpip/mesh/brew_covert":
             self._handle_covert_brew()
+        elif path == "/cpip/mesh/sat":
+            self._handle_mesh_sat_post()
+        elif path == "/cpip/mesh/mobile":
+            self._handle_mesh_mobile_post()
         elif path == "/cpip/defense":
             self._handle_defense_post()
         elif path == "/cpip/mesh/deaddrop":
@@ -3886,8 +3923,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 }
         self._send_json(200, "OK", {
             "418_teapot": MESH_ENABLED,
-            "stealth": MESH_STEALTH,
-            "port_hopping": MESH_STEALTH,
+            "stealth": MeshNode.stealth_mode,
+            "port_hopping": MeshNode.stealth_mode,
             "latent_ports": MESH_LATENT_PORTS,
             "blacklisted_addrs": len(blacklist),
             "blacklist": blacklist,
@@ -3931,6 +3968,34 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "remaining_seconds": remaining,
                 "probe_count": len(TEAPOT_PROBE_COUNT.get(addr, [])),
             })
+        elif action == "stealth":
+            enabled = body.get("enabled", False)
+            MeshNode.stealth_mode = bool(enabled)
+            self._send_json(200, "OK", {"status": "stealth_set", "enabled": MeshNode.stealth_mode})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+    def _handle_mesh_sat_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "enable":
+            MeshNode.sat_enable()
+            self._send_json(200, "OK", {"status": "satellite_enabled"})
+        elif action == "disable":
+            MeshNode.sat_disable()
+            self._send_json(200, "OK", {"status": "satellite_disabled"})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+    def _handle_mesh_mobile_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "enable":
+            MeshNode.mobile_enable()
+            self._send_json(200, "OK", {"status": "mobile_enabled"})
+        elif action == "disable":
+            MeshNode.mobile_disable()
+            self._send_json(200, "OK", {"status": "mobile_disabled"})
         else:
             self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
@@ -4249,8 +4314,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="card" style="margin-top:1rem">
       <h2>Quick Brew</h2>
       <div class="form-row">
-        <select id="brewType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
-        <select id="brewMilk"><option value="">No milk</option><option value="milk;variety=whole">Whole milk</option><option value="milk;variety=cream">Cream</option><option value="milk;variety=skim">Skim</option></select>
+        <select id="brewType">
+          <option value="coffee">Coffee</option><option value="tea">Tea</option>
+          <option value="espresso">Espresso</option><option value="latte">Latte</option>
+          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
+          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+          <option value="matcha">Matcha</option>
+        </select>
+        <select id="brewTemp"><option value="">Hot</option><option value="iced">Iced</option></select>
+        <select id="brewMilk"><option value="">No milk</option><option value="milk;variety=whole">Whole milk</option><option value="milk;variety=cream">Cream</option><option value="milk;variety=skim">Skim</option><option value="milk;variety=oat">Oat</option><option value="milk;variety=almond">Almond</option></select>
         <select id="brewSugar"><option value="">No sugar</option><option value="sugar;variety=white">White</option><option value="sugar;variety=brown">Brown</option><option value="sugar;variety=honey">Honey</option></select>
         <select id="brewSyrup"><option value="">No syrup</option><option value="syrup;variety=vanilla">Vanilla</option><option value="syrup;variety=caramel">Caramel</option><option value="syrup;variety=hazelnut">Hazelnut</option></select>
         <select id="brewSpice"><option value="">No spice</option><option value="spice;variety=cinnamon">Cinnamon</option><option value="spice;variety=cardamom">Cardamom</option><option value="spice;variety=nutmeg">Nutmeg</option></select>
@@ -4277,6 +4349,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <span id="satBootstrap">—</span>
         </div>
         <div id="satPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <button class="btn secondary small" id="satToggleBtn" onclick="toggleSat()">Enable</button>
+        </div>
       </div>
       <div class="card">
         <h2>Mobile <span id="mobBadge" class="badge idle">OFF</span></h2>
@@ -4290,6 +4365,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <span id="mobBootstrap" style="font-size:0.7rem">—</span>
         </div>
         <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <button class="btn secondary small" id="mobToggleBtn" onclick="toggleMobile()">Enable</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Radio <span id="radioBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+          <span id="radioMode">—</span>
+          <span id="radioFreq">—</span>
+          <span id="radioBw">—</span>
+        </div>
       </div>
     </div>
     <div class="card" style="margin-top:1rem">
@@ -4339,12 +4425,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <div id="decodeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
       </div>
     </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Covert Message History</h2>
+      <div id="covertHistory"><div style="color:var(--muted)">No messages sent yet</div></div>
+    </div>
   </div>
 
   <div id="panel-itf" class="panel">
     <div class="grid">
       <div class="card"><h2>418 Teapot</h2><div class="value" id="itf418">—</div><div class="label">Defense posture</div></div>
-      <div class="card"><h2>Stealth</h2><div class="value" id="itfStealth">—</div><div class="label">Stealth mode</div></div>
+      <div class="card"><h2>Stealth</h2><div class="value" id="itfStealth">—</div><div class="label">Stealth mode <button class="btn small outline" id="stealthToggleBtn" onclick="toggleStealth()" style="margin-left:0.3rem">Toggle</button></div></div>
       <div class="card"><h2>Port Hop</h2><div class="value" id="itfHop">—</div><div class="label"><span id="itfHopInterval"></span></div></div>
       <div class="card"><h2>Latent Ports</h2><div class="value" id="itfLatent">—</div><div class="label">Backup listener ports</div></div>
       <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
@@ -4392,6 +4482,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       </div>
       <div class="form-row" style="margin-top:0.5rem">
         <input type="datetime-local" id="schDatetime">
+        <label style="font-size:0.75rem;color:var(--muted)"><input type="checkbox" id="schRecurring"> Daily</label>
         <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
       </div>
       <div id="scheduleList" style="margin-top:1rem"></div>
@@ -4401,6 +4492,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div id="panel-history" class="panel">
     <div class="card">
       <h2>Brew History</h2>
+      <div class="form-row" style="margin-bottom:0.5rem">
+        <select id="histFilter">
+          <option value="">All beverages</option>
+          <option value="coffee">Coffee</option><option value="tea">Tea</option>
+          <option value="espresso">Espresso</option><option value="latte">Latte</option>
+          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
+          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+        </select>
+        <button class="btn outline small" onclick="clearHistory()">Clear</button>
+      </div>
       <div id="brewHistory"><div style="color:var(--muted)">Loading…</div></div>
     </div>
   </div>
@@ -4437,7 +4538,7 @@ function switchTab(name) {{
   document.querySelectorAll('.tab').forEach(t => {{ if (t.dataset.tab === name) t.classList.add('active'); }});
   const el = document.getElementById('panel-' + name);
   if (el) el.classList.add('active');
-  if (name === 'mesh') {{ refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); }}
+  if (name === 'mesh') {{ refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshRadio(); }}
   if (name === 'history') {{ refreshHistory(); }}
   if (name === 'schedule') {{ refreshSchedules(); }}
   if (name === 'itf') {{ refreshItf(); }}
@@ -4469,17 +4570,28 @@ async function refresh() {{
 function esc(s) {{ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
 
 async function refreshHistory() {{
-  const h = await api('GET', '/cpip/history?limit=8');
+  const filter = document.getElementById('histFilter').value;
+  const h = await api('GET', '/cpip/history?limit=16');
   if (!h || !h.history) return;
   const el = document.getElementById('brewHistory');
   if (!h.history.length) {{ el.innerHTML = '<div style="color:var(--muted)">No brews yet.</div>'; return; }}
+  let items = h.history;
+  if (filter) items = items.filter(b => b.beverage === filter);
+  if (!items.length) {{ el.innerHTML = '<div style="color:var(--muted)">No matches.</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>Bev</th><th>Additions</th><th>Dur</th></tr>';
-  for (const b of h.history) {{
+  for (const b of items) {{
     const t = b.started ? new Date(b.started*1000).toLocaleTimeString() : '—';
     const add = b.additions?.map(a => esc(a.name||a)).join(',') || '—';
     html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.7rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
+}}
+
+async function clearHistory() {{
+  if (!confirm('Clear all brew history?')) return;
+  const r = await api('DELETE', '/cpip/history');
+  if (r) showToast('History cleared');
+  refreshHistory();
 }}
 
 async function refreshMesh() {{
@@ -4595,6 +4707,49 @@ async function refreshMobile() {{
   html += '</table>'; el.innerHTML = html;
 }}
 
+async function refreshRadio() {{
+  const r = await api('GET', '/cpip/mesh/radio');
+  if (!r) return;
+  const badge = document.getElementById('radioBadge');
+  if (r.enabled) {{
+    badge.textContent = 'ON'; badge.className = 'badge enabled';
+    document.getElementById('radioMode').textContent = 'mode: ' + (r.mode || '?');
+    document.getElementById('radioFreq').textContent = 'freq: ' + ((r.frequency/1e6).toFixed(1) || '?') + ' MHz';
+    document.getElementById('radioBw').textContent = 'bw: ' + ((r.bandwidth/1e3).toFixed(0) || '?') + ' kHz';
+  }} else {{
+    badge.textContent = 'OFF'; badge.className = 'badge idle';
+    document.getElementById('radioMode').textContent = 'Radio disabled';
+    document.getElementById('radioFreq').textContent = '';
+    document.getElementById('radioBw').textContent = '';
+  }}
+}}
+
+async function toggleSat() {{
+  const badge = document.getElementById('satBadge');
+  const on = badge.textContent === 'ON';
+  const r = await api('POST', '/cpip/mesh/sat', {{ action: on ? 'disable' : 'enable' }});
+  if (r) showToast(r.status || 'Toggled');
+  await refreshSat();
+  document.getElementById('satToggleBtn').textContent = badge.textContent === 'ON' ? 'Disable' : 'Enable';
+}}
+
+async function toggleMobile() {{
+  const badge = document.getElementById('mobBadge');
+  const on = badge.textContent === 'ON';
+  const r = await api('POST', '/cpip/mesh/mobile', {{ action: on ? 'disable' : 'enable' }});
+  if (r) showToast(r.status || 'Toggled');
+  await refreshMobile();
+  document.getElementById('mobToggleBtn').textContent = badge.textContent === 'ON' ? 'Disable' : 'Enable';
+}}
+
+async function toggleStealth() {{
+  const v = document.getElementById('itfStealth');
+  const on = v.textContent === 'ON';
+  const r = await api('POST', '/cpip/defense', {{ action: 'stealth', enabled: !on }});
+  if (r) showToast('Stealth: ' + (r.enabled ? 'ON' : 'OFF'));
+  refreshItf();
+}}
+
 async function scanMesh() {{
   showToast('Scanning...');
   try {{
@@ -4613,6 +4768,7 @@ async function brew(type) {{
 
 async function brewCustom() {{
   const type = document.getElementById('brewType').value;
+  const temp = document.getElementById('brewTemp').value;
   const parts = [
     document.getElementById('brewMilk').value,
     document.getElementById('brewSugar').value,
@@ -4621,7 +4777,9 @@ async function brewCustom() {{
     document.getElementById('brewAlcohol').value,
   ].filter(p => p);
   const additions = parts.map(p => {{ const [n,...r] = p.split(';'); const v = r.find(x => x.startsWith('variety=')); return {{ name: n, variety: v ? v.split('=')[1] : null }}; }});
-  const r = await api('POST', '/cpip/brew', {{ beverage: type, additions }});
+  const body = {{ beverage: type, additions }};
+  if (temp) body.temperature = temp;
+  const r = await api('POST', '/cpip/brew', body);
   if (r && r.status === 'brewing') showToast('Brewing ' + type + ' with additions');
   else if (r && r.error) showToast(r.message || r.error);
   refresh();
@@ -4646,9 +4804,12 @@ async function scheduleIn() {{
 async function scheduleAt() {{
   const dt = document.getElementById('schDatetime').value;
   const t = document.getElementById('schType').value;
+  const recurring = document.getElementById('schRecurring').checked;
   if (!dt) {{ showToast('Pick a time'); return; }}
-  const r = await api('POST', '/cpip/schedule', {{ time: new Date(dt).toISOString(), beverage: t, brew_duration: 60 }});
-  if (r && r.status === 'scheduled') showToast('Scheduled');
+  const body = {{ time: new Date(dt).toISOString(), beverage: t, brew_duration: 60 }};
+  if (recurring) body.recurring = 'daily';
+  const r = await api('POST', '/cpip/schedule', body);
+  if (r && r.status === 'scheduled') showToast('Scheduled' + (recurring ? ' daily' : ''));
   refreshSchedules();
 }}
 
@@ -4657,9 +4818,10 @@ async function refreshSchedules() {{
   if (!s) return;
   const el = document.getElementById('scheduleList');
   if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem">None</div>'; return; }}
-  let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th></th></tr>';
+  let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th>Recur</th><th></th></tr>';
   for (const sc of s.schedules) {{
     html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
+    html += `<td>${{sc.recurring ? 'Daily' : '-'}}</td>`;
     html += `<td><button class="btn outline small" data-sid="${{esc(sc.id)}}">X</button></td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
@@ -4696,11 +4858,29 @@ async function encodeCovert() {{
   if (!msg) {{ showToast('Enter message'); return; }}
   const r = await api('POST', '/cpip/mesh/encode', {{ message: msg, dst, recipe }});
   if (!r || r.status !== 'encoded') return;
+  const header = r.accept_additions_header;
   document.getElementById('covertResult').innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem">
     <div style="color:var(--muted)">Accept-Additions header:</div>
-    <div class="mono" style="font-size:0.7rem;word-break:break-all;margin-top:0.3rem">${{esc(r.accept_additions_header)}}</div>
+    <div class="mono" style="font-size:0.7rem;word-break:break-all;margin-top:0.3rem">${{esc(header)}}</div>
     <div style="color:var(--muted);margin-top:0.3rem">Recipe: ${{esc(r.recipe)}} | ${{esc(r.encoded_length)}} bytes</div>
+    <div style="margin-top:0.3rem"><button class="btn small outline" onclick="navigator.clipboard.writeText('${{esc(header)}}');showToast('Copied')">Copy</button></div>
   </div>`;
+  const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
+  history.unshift({{ message: msg.slice(0, 80), dst: dst || 'any', recipe, header: header.slice(0, 60) + '…', time: new Date().toLocaleString() }});
+  if (history.length > 20) history.pop();
+  localStorage.setItem('cpip_covert_history', JSON.stringify(history));
+  renderCovertHistory();
+}}
+
+function renderCovertHistory() {{
+  const el = document.getElementById('covertHistory');
+  const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
+  if (!history.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages sent yet</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>To</th><th>Message</th><th>Recipe</th><th>Header</th></tr>';
+  for (const h of history) {{
+    html += `<tr><td style="font-size:0.7rem">${{esc(h.time)}}</td><td>${{esc(h.dst)}}</td><td style="font-size:0.7rem">${{esc(h.message)}}</td><td>${{esc(h.recipe)}}</td><td class="mono" style="font-size:0.65rem">${{esc(h.header)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
 }}
 
 async function decodeCovert() {{
@@ -4807,7 +4987,8 @@ function connectSSE() {{
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
-refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf();
+refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory();
+document.getElementById('histFilter').addEventListener('change', refreshHistory);
 setInterval(refresh, 5000);
 setInterval(refreshHistory, 15000);
 setInterval(refreshSchedules, 15000);
@@ -4815,6 +4996,7 @@ setInterval(refreshMesh, 30000);
 setInterval(refreshInbox, 10000);
 setInterval(refreshSat, 30000);
 setInterval(refreshMobile, 30000);
+setInterval(refreshRadio, 30000);
 setInterval(refreshItf, 15000);
 connectSSE();
 </script>
