@@ -403,7 +403,7 @@ Pi-Apps catalog for one-click install.
 
 ```ini
 [Unit]
-Description=CPIP v2.2 — Coffee Protocol Internet Protocol
+Description=CPIP v2.2 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]

@@ -1,6 +1,6 @@
 # Contributing to CPIP
 
-Thank you for your interest in CPIP — the Coffee Protocol Internet Protocol.
+Thank you for your interest in CPIP — the Coffee Pot Internet Protocol.
 
 ## Code of Conduct
 

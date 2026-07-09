@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Pi-Apps uninstall script for CPIP — Coffee Protocol Internet Protocol
+# Pi-Apps uninstall script for CPIP — Coffee Pot Internet Protocol
 set -euo pipefail
 
-echo "[CPIP] Uninstalling Coffee Protocol Internet Protocol..."
+echo "[CPIP] Uninstalling Coffee Pot Internet Protocol..."
 
 # Stop and disable service
 if systemctl is-active --quiet cpip.service 2>/dev/null; then

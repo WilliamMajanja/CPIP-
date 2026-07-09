@@ -8,7 +8,7 @@ die() { echo "error: $*" >&2; exit 1; }
 
 usage() {
 cat << 'HELP'
-CPIP v2.2 — Coffee Protocol Internet Protocol CLI
+CPIP v2.2 — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Ed25519 ECC + Mesh + Covert + 418
 
 Usage:

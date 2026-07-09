@@ -1,6 +1,6 @@
 FROM python:3.13-alpine
 
-LABEL description="CPIP — Coffee Protocol Internet Protocol (RFC 2324 + RFC 7168)"
+LABEL description="CPIP — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168)"
 LABEL version="2.2.0"
 
 RUN apk add --no-cache gcc make musl-dev

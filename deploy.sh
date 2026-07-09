@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Protocol Internet Protocol v2.2
+#  CPIP — Coffee Pot Internet Protocol v2.2
 #  RFC 2324 + RFC 7168 + Ed25519 ECC + Mesh + Covert + 418 Defense
 #  Full hardware install for Raspberry Pi Zero WH
 #  Zero external Python dependencies. Zero simulation. All fangs.
@@ -80,7 +80,7 @@ fi
 info "Creating systemd service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v2.2 — Coffee Protocol Internet Protocol (ECC + Mesh + 418 + Multi-Transport)
+Description=CPIP v2.2 — Coffee Pot Internet Protocol (ECC + Mesh + 418 + Multi-Transport)
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 

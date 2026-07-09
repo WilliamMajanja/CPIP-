@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server — Coffee Protocol Internet Protocol
+"""CPIP/HTCPCP Server — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Next-level evolution: real IoT coffee control + mesh communications for Raspberry Pi.
@@ -5237,7 +5237,7 @@ def main():
     server = ThreadedHTTPServer((BIND_ADDR, BIND_PORT), CPIPHandler)
     bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
 
-    print(f"☕  CPIP v{CPIP_VERSION} — Coffee Protocol Internet Protocol", flush=True)
+    print(f"☕  CPIP v{CPIP_VERSION} — Coffee Pot Internet Protocol", flush=True)
     print(f"   ┌ Device:     {DEVICE_TYPE}", flush=True)
     print(f"   ├ Pot ID:     {POT_ID}", flush=True)
     print(f"   ├ Hostname:   {HOSTNAME}", flush=True)

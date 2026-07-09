@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Pi-Apps install script for CPIP — Coffee Protocol Internet Protocol
+# Pi-Apps install script for CPIP — Coffee Pot Internet Protocol
 set -euo pipefail
 
 APP_DIR="/opt/cpip"
 SYSTEMD_SERVICE="/etc/systemd/system/cpip.service"
 CLI_BIN="/usr/local/bin/htcpcp"
 
-echo "[CPIP] Installing Coffee Protocol Internet Protocol..."
+echo "[CPIP] Installing Coffee Pot Internet Protocol..."
 
 # Install Python3 if missing
 if ! command -v python3 &>/dev/null; then
@@ -49,7 +49,7 @@ sudo chmod +x "$CLI_BIN"
 echo "[CPIP] Creating systemd service..."
 sudo tee "$SYSTEMD_SERVICE" > /dev/null << 'SVC'
 [Unit]
-Description=CPIP — Coffee Protocol Internet Protocol
+Description=CPIP — Coffee Pot Internet Protocol
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 

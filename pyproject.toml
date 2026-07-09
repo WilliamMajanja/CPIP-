@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cpip"
 version = "2.3.0"
-description = "Coffee Protocol Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
+description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
 readme = "README.md"
 license = {text = "Unlicense"}
 requires-python = ">=3.10"
