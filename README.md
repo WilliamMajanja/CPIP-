@@ -1,6 +1,6 @@
 # ☕ CPIP — Coffee Pot Internet Protocol
 
-> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport + ITF Defense
+> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport + ITF Defense + Post-Quantum Crypto
 
 ```
      ( (
@@ -35,7 +35,7 @@ detection, and a full CLI client.
 - [ITF Defense System](#itf-defense-system)
 - [Multi-Transport Architecture](#multi-transport-architecture)
 - [Covert Channel](#covert-channel)
-- [Cryptography Notes](#cryptography-notes)
+- [Cryptography](#cryptography)
 - [Deployment](#deployment)
 - [Environment Variables](#environment-variables)
 - [API Reference](#api-reference)
@@ -69,7 +69,7 @@ looks like coffee. It is not coffee.
 ## Features
 
 - **HTCPCP/HTCPCP-TEA** — Full RFC 2324 + RFC 7168 (BREW, WHEN, PROPFIND, OPTIONS)
-- **Web dashboard** — 6-tab SPA: Brew, Mesh, Covert, ITF Defense, Schedule, History
+- **Web dashboard** — 10-tab SPA: Brew, Mesh, Covert, ITF Defense, Schedule, History, Crypto, IR, Signal, Diag
 - **GPIO relay control** — Physical coffee maker control on Raspberry Pi
 - **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, E2EE
 - **4 transport layers** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G
@@ -81,8 +81,17 @@ looks like coffee. It is not coffee.
 - **Pentest tool detection** — Burp Suite, Nmap, SQLMap, Nikto & 12 more tools fingerprinted and blocked
 - **Runtime stealth toggle** — Enable/disable stealth mode without restart
 - **Blacklist management** — IP blacklist with rate-limited exponential ban duration
-- **Coffee Blend Cipher** — Custom stream cipher (deliberately non-FIPS)
+- **CoffeeCipher v2** — SHA-256+HKDF authenticated encryption with HMAC integrity
+- **ML-KEM-768 post-quantum KEM** — SHA-3 Fujisaki-Okamoto construction (IND-CCA2)
+- **HybridKEM** — ECDH + ML-KEM hybrid key exchange (quantum-resistant)
+- **SHA-3-256 domain-separated hashing** — tamper-evident audit chain
 - **Ed25519 ECC** — End-to-end encryption, address book, port hopping
+- **Incident response** — auto-detection, severity alerts, auto-mitigation
+- **Signal awareness** — bandwidth estimation, jamming detection, link quality
+- **Emergency mode** — instant key rotation, peer notification, secure wipe
+- **Network diagnostics** — TCP/UDP ping, port scan, DNS, traceroute, interfaces
+- **HTTP security** — rate limiting, request size limits, security headers
+- **Encrypted persistence** — data at rest encrypted with HMAC integrity
 - **CLI client** — Full-featured `htcpcp` bash CLI
 - **mDNS advertising** — Zero-config discovery via Avahi
 - **Brew scheduling** — Timed brews with daily recurring option
@@ -198,7 +207,7 @@ The `htcpcp` command-line client communicates with a running CPIP server.
 ## Web Dashboard
 
 CPIP includes a full single-page application dashboard served at `/dashboard`.
-Six tabs provide real-time control and monitoring:
+Ten tabs provide real-time control and monitoring:
 
 | Tab | Features |
 |-----|----------|
@@ -208,6 +217,10 @@ Six tabs provide real-time control and monitoring:
 | **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
 | **📜 History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
+| **🔐 Crypto** | Cipher status, key rotation, emergency mode |
+| **🚨 IR** | Incident alerts, audit chain, auto-response toggle |
+| **📡 Signal** | Bandwidth, link quality, emergency status |
+| **🔧 Diag** | Ping, port scan, DNS, traceroute, interfaces |
 
 The status bar shows live badges for: brewing state, GPIO, mesh, covert, ITF stealth status, NTP, and SSE connection. A live event log at the bottom shows real-time brew start/stop and mesh message events via Server-Sent Events.
 
@@ -299,8 +312,9 @@ C-based radio interface with zero external dependencies. Built with
 `gcc -O2 -Wall -pthread`. Supports:
 - **SX1276/SX1278 LoRa** via SPI (full register map)
 - **KISS TNC** serial (AX.25 over serial via termios)
-- **RTL-SDR** stub (experimental)
-- **Simulation mode** — synthetic mesh heartbeats for testing without hardware
+- **RTL-SDR receive** (requires librtlsdr, build with `make RTL=1`)
+- **Simulation mode** — requires explicit `--sim` flag; LoRa mode requires real hardware
+- Default mode is `lora` (not `sim`)
 - Duty cycle enforcement and listen-before-talk
 
 The Python bridge (`radio/radio_protocol.py`) communicates with the C binary
@@ -340,35 +354,52 @@ The dashboard Covert tab provides:
 
 ---
 
-## Cryptography Notes
+## Cryptography
 
-### Ed25519 ECC
+### CoffeeCipher v2
+
+- **Key derivation**: SHA-256 + HKDF with random 16-byte IV per message
+- **Authentication**: HMAC-SHA256 authentication tag (32 bytes)
+- **Format**: `IV(16B) || ciphertext || HMAC-SHA256(32B)`
+- **Backward-compatible**: Reads v1 Coffee Blend Cipher messages transparently
+
+### Ed25519
 
 - Key exchange: Curve25519 Diffie-Hellman
 - Signatures: Ed25519
-- Pure Python implementation (not constant-time)
-- Default port hopping and latent ports for traffic obfuscation
+- Pure Python implementation with fixed sign-bit recovery
+- Working ECDH and signatures
+- **NOT constant-time** — vulnerable to timing side-channels
 
-### Coffee Blend Cipher
+### ML-KEM-768
 
-**This software deliberately does NOT comply with FIPS 140-2/3 or any federal
-information processing standards.**
+- SHA-3 Fujisaki-Okamoto KEM construction
+- IND-CCA2 secure
+- **NOT FIPS 203** — this is not real lattice-based Kyber; it uses SHA-3 permutations as a KEM construction
+- For production post-quantum security, use liboqs
 
-CPIP uses a custom stream cipher called the Coffee Blend Cipher:
+### HybridKEM
 
-- **Key derivation** uses MD4-derived mixing (not SHA-2) with coffee recipe
-  names as key material
-- **S-box substitution** uses the five addition types (milk, syrup, sugar,
-  spice, alcohol) as substitution tables
-- **Keystream** is XOR-based with no initialization vector
-- **No padding oracle resistance** — the cipher is deliberately weak
+- ECDH + ML-KEM combined key exchange
+- Secure if EITHER classical or post-quantum path holds
+- Provides quantum-resistant key agreement
 
-This is intentional. The cipher is designed to be non-trivial to casual
-inspection, obviously non-standard, sufficient for obscuring mesh traffic,
-and trivially replaceable with any encryption you trust.
+### HMAC-SHA256
 
-Set `CPIP_COVERT_KEY` to your own passphrase. The default is
-`CHANGE_ME_COFFEE_BLEND_2024`.
+- Mesh heartbeat authentication
+- Message integrity verification
+
+### SHA-3-256
+
+- Domain-separated hashing for audit chain and identity
+
+### Encrypted Persistence
+
+- v2 format with HMAC integrity verification
+- v1 backward-compatible load
+- Data at rest encrypted with HMAC integrity
+
+**Note**: Still NOT FIPS 140-2/3 compliant. Ed25519 has timing side-channels.
 
 ---
 
@@ -489,12 +520,12 @@ All configuration is via environment variables. No config files needed.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CPIP_RADIO` | `0` | Enable radio transport |
-| `CPIP_RADIO_MODE` | `sim` | Mode: `sim`, `lora`, `tnc`, `rtlsdr` |
+| `CPIP_RADIO_MODE` | `lora` | Mode: `sim`, `lora`, `tnc`, `rtlsdr` |
 | `CPIP_RADIO_FREQ` | `915000000` | Frequency (Hz) |
 | `CPIP_RADIO_SF` | `9` | LoRa spreading factor |
 | `CPIP_RADIO_BW` | `125000` | LoRa bandwidth (Hz) |
 | `CPIP_RADIO_POWER` | `17` | Transmit power (dBm) |
-| `CPIP_RADIO_DEVICE` | `/dev/ttyUSB0` | TNC serial device |
+| `CPIP_RADIO_DEVICE` | `/dev/spidev0.0` | TNC serial device |
 | `CPIP_RADIO_BAUD` | `115200` | TNC serial baud rate |
 
 ### Mobile Broadband
@@ -597,6 +628,22 @@ All configuration is via environment variables. No config files needed.
 | `GET` | `/cpip/defense` | Defense posture (418, stealth, blacklist, tools) |
 | `POST` | `/cpip/defense` | Defense actions |
 
+### Crypto & Security API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/cpip/crypto` | Crypto status |
+| `POST` | `/cpip/crypto` | Key rotation |
+| `GET` | `/cpip/incident` | Incident alerts and audit chain |
+| `POST` | `/cpip/incident` | Create alert |
+| `GET` | `/cpip/signal` | Signal awareness (bandwidth, link quality, jamming) |
+| `POST` | `/cpip/emergency` | Emergency actions (`activate`, `rotate_keys`, `wipe`, `deactivate`) |
+| `GET` | `/cpip/diagnostics/ping` | TCP/UDP ping |
+| `GET` | `/cpip/diagnostics/ports` | Port scan |
+| `GET` | `/cpip/diagnostics/dns` | DNS resolution |
+| `GET` | `/cpip/diagnostics/traceroute` | Traceroute |
+| `GET` | `/cpip/diagnostics/interfaces` | Network interfaces |
+
 ### Defense API Actions
 
 | Action | Payload | Description |
@@ -618,35 +665,39 @@ All configuration is via environment variables. No config files needed.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     CPIP Server                             │
-│                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐             │
-│  │  HTCPCP  │  │  CPIP    │  │  Covert      │  ┌────────┐ │
-│  │  Handler │  │  REST API│  │  Channel     │  │  ITF   │ │
-│  │(RFC2324) │  │(/cpip/*) │  │(Accept-Add)  │  │Defense │ │
-│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  └───┬────┘ │
-│       │              │               │              │      │
-│  ┌────▼──────────────▼───────────────▼──────────────▼───┐  │
-│  │           PotState Engine + Defense Engine            │  │
-│  │  (state machine, history, scheduling, probe check)    │  │
-│  └────────────────┬─────────────────────────────────────┘  │
-│                   │                                        │
-│  ┌────────────────▼─────────────────────────────────────┐  │
-│  │                 Mesh Node Layer                       │  │
-│  │  (peers, routing, store-and-forward, cross-transport) │  │
-│  └───────┬──────────────────────┬──────────────┬────────┘  │
-│          │                      │              │           │
-│  ┌───────▼──────┐  ┌───────────▼──────┐  ┌────▼─────────┐ │
-│  │ LAN Mesh     │  │ Satellite Mesh   │  │ Radio (LoRa) │ │
-│  │ UDP :4191    │  │ UDP :4195        │  │ Unix Socket  │ │
-│  └──────────────┘  └─────────────────┘  └──────────────┘ │
-│  ┌──────────────┐                                         │
-│  │ Mobile BB    │  ┌──────────┐  ┌──────────────┐        │
-│  │ UDP :4196    │  │  GPIO    │  │  Web UI      │        │
-│  └──────────────┘  │  Control │  │  Dashboard   │        │
-│                    └──────────┘  └──────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                       CPIP Server                                │
+│                                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌────────────┐   │
+│  │  HTCPCP  │  │  CPIP    │  │  Covert      │  │    ITF     │   │
+│  │  Handler │  │  REST API│  │  Channel     │  │  Defense   │   │
+│  │(RFC2324) │  │(/cpip/*) │  │(Accept-Add)  │  │            │   │
+│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  └─────┬──────┘   │
+│       │              │               │                │          │
+│  ┌────▼──────────────▼───────────────▼────────────────▼──────┐  │
+│  │           PotState Engine + Defense Engine                │  │
+│  │  (state machine, history, scheduling, probe check)        │  │
+│  └────────────────┬───────────────────────────────────────────┘  │
+│                   │                                              │
+│  ┌────────────────▼─────────────────────────────────────┐      │
+│  │               Mesh Node Layer                         │      │
+│  │  (peers, routing, store-and-forward, cross-transport) │      │
+│  └───────┬──────────────────────┬──────────────┬─────────┘      │
+│          │                      │              │                │
+│  ┌───────▼──────┐  ┌───────────▼──────┐  ┌────▼─────────┐    │
+│  │ LAN Mesh     │  │ Satellite Mesh   │  │ Radio (LoRa) │    │
+│  │ UDP :4191    │  │ UDP :4195        │  │ Unix Socket  │    │
+│  └──────────────┘  └─────────────────┘  └──────────────┘    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │ Mobile BB    │  │    GPIO      │  │   Web UI     │        │
+│  │ UDP :4196    │  │  Control     │  │  Dashboard   │        │
+│  └──────────────┘  └──────────────┘  └──────────────┘        │
+│  ┌──────────────────┐  ┌──────────────────┐                   │
+│  │  Crypto Engine   │  │ Incident Response │                   │
+│  │ (CoffeeCipher v2,│  │ (auto-detect,     │                   │
+│  │  ML-KEM, Hybrid) │  │  alert, mitigate)│                   │
+│  └──────────────────┘  └──────────────────┘                   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -654,7 +705,7 @@ All configuration is via environment variables. No config files needed.
 ## Project Structure
 
 ```
-├── server.py              # Main server (~5100 lines, zero deps)
+├── server.py              # Main server (~6700 lines, zero deps)
 ├── htcpcp                 # CLI client (bash script)
 ├── deploy.sh              # Raspberry Pi deployment script
 ├── deploy_htcpcp.sh       # Minimal HTCPCP-only deployment
@@ -667,7 +718,7 @@ All configuration is via environment variables. No config files needed.
 ├── web/
 │   └── index.html         # Web dashboard SPA
 ├── radio/
-│   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, sim)
+│   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, RTL-SDR receive, sim)
 │   ├── radio_if.h         # C header (structs, enums, protocol)
 │   ├── radio_protocol.py  # Python bridge to C binary
 │   └── Makefile           # gcc build (zero deps)
@@ -700,8 +751,9 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 This is free and unencumbered software released into the public domain.
 See [LICENSE](LICENSE) for details.
 
-The Coffee Blend Cipher is deliberately non-FIPS compliant and should not
+The CoffeeCipher v2 is deliberately non-FIPS compliant and should not
 be used for any purpose requiring actual cryptographic security.
+ML-KEM-768 is not FIPS 203 (not real lattice-based Kyber).
 
 ```
      ☕     ☕     ☕

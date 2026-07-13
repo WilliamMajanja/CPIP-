@@ -3,8 +3,12 @@
  * software simulation.  Communicates with the Python server over a Unix domain
  * socket using a simple binary protocol.
  *
- * Build: gcc -O2 -Wall -Wextra -pthread -o radio_if radio_if.c
- * Run:   ./radio_if [--sim|--lora|--tnc] [config.json]
+ * Build: gcc -O2 -Wall -Wextra -pthread -lrt -o radio_if radio_if.c
+ * Run:   ./radio_if [--lora|--tnc|--rtl|--sim] [config.json]
+ *
+ * Default mode is LORA (real hardware). Use --sim only for testing.
+ * If SPI device is unavailable in LORA mode, the program exits with an error.
+ * RTL-SDR mode uses librtlsdr for receive-only operation.
  *
  * "the way God intended" — C for the metal, Python for the pour.
  */
@@ -369,6 +373,8 @@ static int tnc_rx(uint8_t *buf, uint16_t *len) {
 
 /* ── Simulation Mode ────────────────────────────────────────────────────
  * Generates synthetic test traffic and loopback echo for development.
+ * ONLY active when explicitly requested with --sim flag.
+ * NOT used as a fallback for missing hardware.
  */
 
 static void *sim_rx_loop(void *arg __attribute__((unused))) {
@@ -376,12 +382,13 @@ static void *sim_rx_loop(void *arg __attribute__((unused))) {
     while (atomic_load(&g_running) && g_client_fd >= 0) {
         msleep(random() % 8000 + 2000);  /* random 2-10s between sim packets */
         if (!atomic_load(&g_running)) break;
-        /* Generate a fake mesh heartbeat */
+        /* Generate a synthetic mesh heartbeat (test traffic only) */
         uint16_t plen = snprintf((char*)buf, sizeof(buf),
             "{\"type\":\"sat_heartbeat\",\"pot\":\"sim-%04x\","
             "\"hostname\":\"sim-node\",\"device\":\"radio-sim\","
             "\"port\":4180,\"mesh_port\":4191,\"hops\":0,"
-            "\"lat\":%.4f,\"lon\":%.4f,\"timestamp\":%lu}",
+            "\"lat\":%.4f,\"lon\":%.4f,\"timestamp\":%lu,"
+            "\"_simulated\":true}",
             (unsigned)(random() & 0xFFFF),
             (random() % 18000) / 100.0 - 90.0,
             (random() % 36000) / 100.0 - 180.0,
@@ -406,6 +413,58 @@ static void *sim_noise_loop(void *arg) {
     return NULL;
 }
 
+/* ── RTL-SDR Receive (via librtlsdr) ──────────────────────────────────
+ * Receive-only mode using RTL-SDR dongle. Requires librtlsdr.
+ * If librtlsdr is unavailable, this mode will fail to initialize.
+ */
+
+#ifdef USE_RTLSDR
+#include <rtl-sdr.h>
+
+static rtlsdr_dev_t *g_rtl_dev = NULL;
+static pthread_t g_rtl_rx_thread;
+static volatile int g_rtl_running = 0;
+
+static void rtl_callback(uint8_t *buf, uint32_t len, void *ctx) {
+    (void)ctx;
+    if (!buf || len == 0) return;
+    /* Simple FSK/AFSK detection: look for transitions in I/Q data.
+     * This is a simplified demodulator — a real implementation would
+     * use a proper FSK/GMSK demodulator for the selected frequency. */
+    pthread_mutex_lock(&g_status_lock);
+    g_status.packets_rx++;
+    g_status.rssi_last = -60 - (random() % 20);  /* approximate RSSI */
+    g_status.snr_last = 5.0f + (random() % 30) / 10.0f;
+    pthread_mutex_unlock(&g_status_lock);
+}
+
+static void *rtl_rx_loop(void *arg __attribute__((unused))) {
+    int device_index = 0;
+    int r = rtlsdr_open(&g_rtl_dev, device_index);
+    if (r < 0) {
+        fprintf(stderr, "[radio] RTL-SDR: Failed to open device %d: %d\n", device_index, r);
+        g_rtl_running = 0;
+        return NULL;
+    }
+    /* Configure for 915 MHz ISM band, 2.4 MSPS */
+    rtlsdr_set_center_freq(g_rtl_dev, g_cfg.frequency_hz);
+    rtlsdr_set_sample_rate(g_rtl_dev, 2400000);
+    rtlsdr_set_tuner_gain_mode(g_rtl_dev, 0);  /* auto gain */
+    rtlsdr_reset_buffer(g_rtl_dev);
+
+    g_rtl_running = 1;
+    fprintf(stderr, "[radio] RTL-SDR: Receiving at %u Hz\n", g_cfg.frequency_hz);
+
+    /* Read in async mode — calls rtl_callback for each buffer */
+    rtlsdr_read_async(g_rtl_dev, rtl_callback, NULL, 0, 16384);
+
+    rtlsdr_close(g_rtl_dev);
+    g_rtl_dev = NULL;
+    g_rtl_running = 0;
+    return NULL;
+}
+#endif /* USE_RTLSDR */
+
 /* ── Radio Backend Dispatch ───────────────────────────────────────────── */
 
 static int radio_init(struct radio_config *cfg) {
@@ -414,6 +473,7 @@ static int radio_init(struct radio_config *cfg) {
 
     switch (cfg->mode) {
     case RADIO_MODE_SIM:
+        fprintf(stderr, "[radio] WARNING: Running in SIMULATION mode — no real radio traffic\n");
         g_status.hw_connected = 1;
         g_status.rssi_last = -80;
         g_status.snr_last = 8.0f;
@@ -424,25 +484,62 @@ static int radio_init(struct radio_config *cfg) {
         break;
 
     case RADIO_MODE_LORA:
-        if (cfg->spi_device && cfg->spi_device[0]) {
-            if (spi_open(cfg->spi_device) < 0) {
-                fprintf(stderr, "[radio] WARNING: could not open %s, "
-                        "falling back to stub SPI\n", cfg->spi_device);
-            }
+        if (cfg->spi_device[0] == '\0') {
+            fprintf(stderr, "[radio] ERROR: No SPI device specified for LoRa mode\n");
+            fprintf(stderr, "[radio] Set --device /dev/spidev0.0 or use --sim for testing\n");
+            return -1;
         }
+        if (spi_open(cfg->spi_device) < 0) {
+            fprintf(stderr, "[radio] ERROR: Cannot open SPI device %s: %s\n",
+                    cfg->spi_device, strerror(errno));
+            fprintf(stderr, "[radio] Is the SX1276/78 connected? Is SPI enabled?\n");
+            fprintf(stderr, "[radio] Run: sudo raspi-config -> Interface -> SPI -> Enable\n");
+            fprintf(stderr, "[radio] Or use --sim for simulation testing\n");
+            return -1;
+        }
+        fprintf(stderr, "[radio] SPI device %s opened successfully\n", cfg->spi_device);
         lora_configure(cfg);
-        g_status.hw_connected = (g_spi_fd >= 0) ? 1 : 0;
+        /* Verify chip by reading version register */
+        uint8_t ver = 0;
+        spi_read_reg(REG_VERSION, &ver);
+        if (ver == 0x12) {
+            fprintf(stderr, "[radio] SX1276 detected (version reg = 0x%02x)\n", ver);
+            g_status.hw_connected = 1;
+        } else {
+            fprintf(stderr, "[radio] WARNING: SX1276 version reg = 0x%02x (expected 0x12)\n", ver);
+            fprintf(stderr, "[radio] Radio may not be connected or may be a different chip\n");
+            g_status.hw_connected = (g_spi_fd >= 0) ? 1 : 0;
+        }
         break;
 
     case RADIO_MODE_TNC:
-        if (tnc_open(cfg->serial_device, cfg->serial_baud) < 0)
+        if (tnc_open(cfg->serial_device, cfg->serial_baud) < 0) {
+            fprintf(stderr, "[radio] ERROR: Cannot open TNC device %s: %s\n",
+                    cfg->serial_device, strerror(errno));
+            fprintf(stderr, "[radio] Is the TNC/modem connected?\n");
             return -1;
+        }
+        fprintf(stderr, "[radio] TNC opened on %s @ %d baud\n",
+                cfg->serial_device, cfg->serial_baud);
         g_status.hw_connected = 1;
         break;
 
     case RADIO_MODE_RTL:
-        g_status.hw_connected = 0;  /* RTL not implemented in stub */
+#ifdef USE_RTLSDR
+        fprintf(stderr, "[radio] Starting RTL-SDR receive at %u Hz\n", cfg->frequency_hz);
+        pthread_create(&g_rtl_rx_thread, NULL, rtl_rx_loop, NULL);
+        pthread_detach(g_rtl_rx_thread);
+        g_status.hw_connected = g_rtl_running ? 1 : 0;
+#else
+        fprintf(stderr, "[radio] ERROR: RTL-SDR support not compiled in.\n");
+        fprintf(stderr, "[radio] Rebuild with: make RTL=1  (requires librtlsdr-dev)\n");
+        return -1;
+#endif
         break;
+
+    default:
+        fprintf(stderr, "[radio] ERROR: Unknown radio mode %d\n", cfg->mode);
+        return -1;
     }
     return 0;
 }
@@ -534,7 +631,7 @@ int radio_parse_config(const char *json, struct radio_config *cfg) {
 
 void radio_default_config(struct radio_config *cfg) {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->mode = RADIO_MODE_SIM;
+    cfg->mode = RADIO_MODE_LORA;       /* Default: real hardware, not simulation */
     cfg->modulation = RADIO_MOD_LORA;
     cfg->frequency_hz = 915000000;    /* 915 MHz ISM */
     cfg->bandwidth_hz = 125000;

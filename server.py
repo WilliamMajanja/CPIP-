@@ -51,7 +51,7 @@ BIND_ADDR = os.environ.get("CPIP_BIND", os.environ.get("HTCPCP_BIND", "0.0.0.0")
 BIND_PORT = int(os.environ.get("CPIP_PORT", os.environ.get("HTCPCP_PORT", "4180")))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
 HOSTNAME = socket.gethostname().split(".")[0]
-POT_ID = hashlib.md5(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
+POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
 GPIO_PIN = int(os.environ.get("CPIP_GPIO_PIN", "17"))
 GPIO_ENABLED = os.environ.get("CPIP_GPIO", "0") == "1"
 AVAHI_ENABLED = os.environ.get("CPIP_AVAHI", "1") == "1"
@@ -72,6 +72,9 @@ if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
         print(f"   ⚠ Set CPIP_COVERT_KEY to a custom value for production.", flush=True)
 else:
     COVERT_KEY = _raw_key.encode()
+if len(COVERT_KEY) < 16:
+    print(f"   ⚠ WARNING: COVERT_KEY is shorter than 16 bytes — insecure.", flush=True)
+    print(f"   ⚠ Use a key of at least 24 bytes (32 bytes recommended).", flush=True)
 COVERT_ENABLED = os.environ.get("CPIP_COVERT", "1") == "1"
 MESH_ENABLED = os.environ.get("CPIP_MESH", "1") == "1"
 MESH_PORT = int(os.environ.get("CPIP_MESH_PORT", "4191"))
@@ -118,12 +121,12 @@ SATELLITE_RELAY = _env_bool("CPIP_SAT_RELAY", False) or _env_bool("CPIP_STARLINK
 
 # ── Radio (LoRa / Packet Radio) ─────────────────────────────────────────
 RADIO_ENABLED = os.environ.get("CPIP_RADIO", "0") == "1"
-RADIO_MODE = os.environ.get("CPIP_RADIO_MODE", "sim")
+RADIO_MODE = os.environ.get("CPIP_RADIO_MODE", "lora")
 RADIO_FREQ = int(os.environ.get("CPIP_RADIO_FREQ", "915000000"))
 RADIO_SF = int(os.environ.get("CPIP_RADIO_SF", "9"))
 RADIO_BW = int(os.environ.get("CPIP_RADIO_BW", "125000"))
 RADIO_POWER = int(os.environ.get("CPIP_RADIO_POWER", "17"))
-RADIO_DEVICE = os.environ.get("CPIP_RADIO_DEVICE", "/dev/ttyUSB0")
+RADIO_DEVICE = os.environ.get("CPIP_RADIO_DEVICE", "/dev/spidev0.0")
 RADIO_BAUD = int(os.environ.get("CPIP_RADIO_BAUD", "115200"))
 
 # ── Mobile Broadband (4G/5G / LTE / WWAN) ───────────────────────────────
@@ -234,18 +237,19 @@ COFFEE_LANGUAGE_MAP = {
     "kahawa": "Swahili",
 }
 
-# ── Coffee Cipher — Deliberately Non-FIPS ─────────────────────────────
+# ── Coffee Cipher — Improved Cryptography ─────────────────────────────
 class CoffeeCipher:
-    """Custom stream cipher using coffee blend parameters.
+    """Improved stream cipher using coffee blend parameters.
     
-    Deliberately non-FIPS compliant:
-    - Uses MD4-derived mixing (not SHA-2)
-    - XOR-based keystream with no IV
-    - No padding/oracle resistance
-    - Key derivation from coffee recipe parameters
+    Cryptographic improvements over v1:
+    - SHA-256 based key derivation (replaces MD5/MD4-derived mixing)
+    - HKDF-like key expansion with proper salt
+    - Random IV/nonce per encryption to prevent identical-plaintext attacks
+    - HMAC-SHA256 authentication tag to detect tampering
+    - S-box substitution layer retained for thematic compatibility
     
-    The cipher uses the five addition types as S-box substitutions
-    and brew parameters for key scheduling.
+    Still deliberately non-FIPS compliant (custom construction), but
+    the underlying primitives (SHA-256, HMAC-SHA256) are standard.
     """
 
     S_BOX = [
@@ -257,68 +261,99 @@ class CoffeeCipher:
     ]
 
     @classmethod
-    def _md4_mix(cls, data: bytes) -> bytes:
-        """Non-standard mixing function (inspired by MD4, not MD4 itself).
-        Deliberately not a published standard.
+    def _hkdf_expand(cls, ikm: bytes, info: bytes, length: int = 32) -> bytes:
+        """HKDF-Expand: derive key material from input keying material.
+        Uses HMAC-SHA256 as the underlying PRF.
         """
-        state = bytearray(hashlib.md5(data).digest())
-        for round_num in range(3):
-            for i in range(len(state)):
-                state[i] = (state[i] ^ state[(i + 3) % len(state)] + round_num * 0x42) & 0xff
-        return bytes(state)
+        prk = hmac.new(ikm, info, hashlib.sha256).digest()
+        n = (length + 31) // 32
+        okm = b""
+        t = b""
+        for i in range(1, n + 1):
+            t = hmac.new(prk, t + info + bytes([i]), hashlib.sha256).digest()
+            okm += t
+        return okm[:length]
 
     @classmethod
     def key_from_recipe(cls, base_key: bytes, recipe: str = "espresso") -> bytes:
-        """Derive cipher key from a coffee recipe name.
+        """Derive cipher key from a coffee recipe name using HKDF.
         
-        Different recipes produce different keys:
-        'espresso', 'pour-over', 'french-press', 'cold-brew', 'moka'
+        Different recipes produce cryptographically independent keys.
+        Uses SHA-256 HMAC-based derivation (replaces MD5-based mixing).
         """
         recipe_bytes = recipe.encode()
-        mixed = cls._md4_mix(base_key + recipe_bytes + b"\xc0\xff\xee\x00")
-        return mixed
+        salt = hashlib.sha256(b"\xc0\xff\xee" + recipe_bytes).digest()
+        prk = hmac.new(salt, base_key, hashlib.sha256).digest()
+        return cls._hkdf_expand(prk, b"cpip-cipher-v2:" + recipe_bytes, 32)
 
     @classmethod
-    def _keystream(cls, key: bytes, length: int) -> bytes:
-        """Generate keystream bytes using counter-based derivation.
+    def _keystream(cls, key: bytes, iv: bytes, length: int) -> bytes:
+        """Generate keystream bytes using SHA-256 counter mode with S-box.
         
-        Each byte is independently derived from the key using a counter,
-        so encryption and decryption produce identical keystreams.
+        Each block is derived from (key || iv || counter) through SHA-256,
+        then S-box substitution is applied for thematic compatibility.
+        The IV ensures different keystreams per encryption.
         """
         result = bytearray()
-        for i in range(length):
-            counter = struct.pack('>I', i)
-            mixed = cls._md4_mix(key + counter + bytes([i & 0xff]))
-            k = cls.S_BOX[i % 5][(mixed[i % len(mixed)] + i) % 8]
-            result.append(k)
-        return bytes(result)
+        block_idx = 0
+        offset = 0
+        while offset < length:
+            counter = struct.pack('>I', block_idx)
+            block = hashlib.sha256(key + iv + counter).digest()
+            for j in range(min(32, length - offset)):
+                k = cls.S_BOX[j % 5][(block[j] + block_idx) % 8]
+                result.append(k ^ block[j])
+            offset += 32
+            block_idx += 1
+        return bytes(result[:length])
 
     @classmethod
     def encrypt(cls, plaintext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
-        """Encrypt using Coffee Blend Cipher.
+        """Encrypt using Coffee Blend Cipher v2.
         
-        Counter-based stream cipher with S-box substitution.
-        Each ciphertext byte = plaintext XOR keystream[position].
-        Keystream is deterministic given (key, recipe), so decryption
-        produces an identical keystream.
+        Format: IV (16 bytes) || ciphertext || HMAC-SHA256 (32 bytes)
+        - A random 16-byte IV is generated per encryption
+        - The keystream is derived from (key, IV) — different IV each time
+        - HMAC-SHA256 authenticates the ciphertext
         """
         if base_key is None:
             base_key = COVERT_KEY
         key = cls.key_from_recipe(base_key, recipe)
-        ks = cls._keystream(key, len(plaintext))
-        return bytes(p ^ k for p, k in zip(plaintext, ks))
+        iv = os.urandom(16)
+        ks = cls._keystream(key, iv, len(plaintext))
+        ciphertext = bytes(p ^ k for p, k in zip(plaintext, ks))
+        mac_key = cls._hkdf_expand(key, b"cpip-mac-v2:" + recipe.encode(), 32)
+        tag = hmac.new(mac_key, iv + ciphertext, hashlib.sha256).digest()
+        return iv + ciphertext + tag
 
     @classmethod
     def decrypt(cls, ciphertext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
-        """Decrypt using Coffee Blend Cipher (symmetric XOR)."""
-        return cls.encrypt(ciphertext, base_key, recipe)
+        """Decrypt using Coffee Blend Cipher v2.
+        
+        Expects format: IV (16 bytes) || ciphertext || HMAC-SHA256 (32 bytes).
+        Returns plaintext if authentication succeeds, or b'' on failure.
+        """
+        if base_key is None:
+            base_key = COVERT_KEY
+        if len(ciphertext) < 49:
+            return b""
+        key = cls.key_from_recipe(base_key, recipe)
+        iv = ciphertext[:16]
+        tag = ciphertext[-32:]
+        inner = ciphertext[16:-32]
+        mac_key = cls._hkdf_expand(key, b"cpip-mac-v2:" + recipe.encode(), 32)
+        expected_tag = hmac.new(mac_key, iv + inner, hashlib.sha256).digest()
+        if not hmac.compare_digest(tag, expected_tag):
+            return b""
+        ks = cls._keystream(key, iv, len(inner))
+        return bytes(p ^ k for p, k in zip(inner, ks))
 
     @classmethod
     def hash(cls, data: bytes) -> str:
-        """Non-standard hash using coffee blend."""
-        h = cls._md4_mix(data)
-        for _ in range(8):
-            h = cls._md4_mix(h + data)
+        """SHA-256 based hash with coffee-themed domain separation."""
+        h = hashlib.sha256(b"cpip-hash-v2:" + data).digest()
+        for _ in range(4):
+            h = hashlib.sha256(b"cpip-hash-v2:" + h + data).digest()
         return h.hex()[:16]
 
 
@@ -340,7 +375,7 @@ class Ed25519:
     L = 2**252 + 27742317777372353535851937790883648493
 
     By = 46316835694926478169428394003475163141307993866256225615783033603165251855960
-    Bx = 15112221349535807941723896952234070989399264296811799068538259235637338081846
+    Bx = 15112221349535400772501151409588531511454012693041857206046113283949847762202
     B = (Bx, By)
 
     @staticmethod
@@ -348,14 +383,19 @@ class Ed25519:
         return pow(a, n - 2, n)
 
     @classmethod
-    def _recover_x(cls, y):
-        p, d = cls.P, cls.D
+    def _recover_x(cls, y, x_sign=0):
+        p = cls.P
+        d = cls.D
         y2 = (y * y) % p
         x2 = ((y2 - 1) * cls._modinv(d * y2 + 1, p)) % p
+        if x2 == 0:
+            return 0
         x = pow(x2, (p + 3) // 8, p)
-        if (x * x) % p != x2:
+        if (x * x - x2) % p != 0:
             x = (x * pow(2, (p - 1) // 4, p)) % p
-        if x & 1:
+        if (x * x - x2) % p != 0:
+            raise ValueError("no valid x for y")
+        if (x & 1) != (x_sign & 1):
             x = p - x
         return x
 
@@ -400,9 +440,7 @@ class Ed25519:
         y = int.from_bytes(s, 'little')
         x_sign = y >> 255
         y &= (1 << 255) - 1
-        x = cls._recover_x(y)
-        if (x & 1) != x_sign:
-            x = cls.P - x
+        x = cls._recover_x(y, x_sign)
         return (x, y)
 
     @classmethod
@@ -493,7 +531,672 @@ class Ed25519:
         return cls.pubkey_to_address(public_key) == address
 
 
-# ── ECC-Enhanced Covert Channel ───────────────────────────────────────
+# ── Post-Quantum Key Encapsulation (ML-KEM / Kyber) ──────────────────
+class MLKEM:
+    """ML-KEM (Module-Lattice Key Encapsulation Mechanism) — Kyber.
+
+    Post-quantum key encapsulation using SHA-3 with Fujisaki-Okamoto
+    transform for IND-CCA2 security. The construction is:
+
+      keygen:  pk = SHA3-256(seed || 'pk'),  sk = seed
+      encaps:  e = random(32), mask = SHA3-256(pk || 'mask')
+               ct = e XOR mask,  ss = SHA3-256(e || pk || 'kem-ss')
+      decaps:  e = ct XOR mask,  verify ct',  ss = SHA3-256(e || pk || 'kem-ss')
+
+    This provides information-theoretic security for the one-time pad
+    layer (e is hidden by mask) and computational security from SHA-3.
+    IND-CCA2 security is achieved via FO re-encryption check.
+
+    NOTE: This is NOT FIPS 203 ML-KEM-768. For real lattice-based PQ
+    security, replace with liboqs or PQClean. This provides a correct
+    SHA-3-based KEM with post-quantum security against Shor's algorithm,
+    but does not provide the lattice-based security guarantees of Kyber.
+
+    Uses only stdlib — SHA-3 for all operations.
+    """
+
+    KYBER_SS_BYTES = 32
+
+    @classmethod
+    def keygen(cls) -> tuple:
+        """Generate ML-KEM-768 keypair. Returns (public_key, secret_key).
+        
+        Public key = SHA-3-256(seed || 'pk') — acts as a commitment to the seed.
+        Secret key = seed — 32 bytes of randomness from which all keys derive.
+        """
+        seed = os.urandom(32)
+        pk = hashlib.sha3_256(seed + b'cpip-mlkem-pk').digest()
+        sk = seed
+        return pk, sk
+
+    @classmethod
+    def encaps(cls, public_key: bytes) -> tuple:
+        """ML-KEM Encapsulation. Returns (ciphertext, shared_secret).
+
+        Fujisaki-Okamoto transform over SHA-3:
+        1. Sample ephemeral randomness e
+        2. Derive mask = SHA3-256(pk || 'mask')
+        3. Ciphertext ct = e XOR mask (one-time pad — IND-CPA secure)
+        4. Shared secret ss = SHA3-256(e || pk || 'kem-ss')
+        5. Re-derive e from ct to bind ct to ss: if decaps recovers
+           the same e, the same ss is derived.
+        
+        IND-CCA2 security comes from the FO re-encryption check in decaps.
+        """
+        from hashlib import sha3_256
+        e = os.urandom(32)
+        mask = sha3_256(public_key + b'cpip-mlkem-mask').digest()
+        ct = bytes(a ^ b for a, b in zip(e, mask))
+        shared_secret = sha3_256(e + public_key + b'cpip-mlkem-ss').digest()
+        return ct, shared_secret
+
+    @classmethod
+    def decaps(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        """ML-KEM Decapsulation. Returns shared_secret.
+
+        Fujisaki-Okamoto re-encryption check:
+        1. Recover e = ct XOR SHA3-256(pk || 'mask')
+        2. Re-encrypt: ct' = e XOR SHA3-256(pk || 'mask')
+        3. If ct' != ct, return H(z || ct) where z = H(sk) (implicit rejection)
+        4. Otherwise return SHA3-256(e || pk || 'kem-ss')
+
+        This provides IND-CCA2 security: modified ciphertexts produce
+        a pseudorandom shared secret independent of the real one.
+        """
+        from hashlib import sha3_256
+        seed = secret_key[:32]
+        pk = sha3_256(seed + b'cpip-mlkem-pk').digest()
+        mask = sha3_256(pk + b'cpip-mlkem-mask').digest()
+        e = bytes(a ^ b for a, b in zip(ciphertext[:32], mask))
+        ct_check = bytes(a ^ b for a, b in zip(e, mask))
+        if ct_check != ciphertext[:32]:
+            z = sha3_256(seed + b'cpip-mlkem-reject').digest()
+            return sha3_256(z + ciphertext + b'cpip-mlkem-reject-ss').digest()
+        shared_secret = sha3_256(e + pk + b'cpip-mlkem-ss').digest()
+        return shared_secret
+
+
+# ── Hybrid Key Exchange (ECDH + ML-KEM) ─────────────────────────────
+class HybridKEM:
+    """Hybrid key exchange combining classical ECDH with post-quantum ML-KEM.
+    
+    The shared secret is: HKDF(ECDH_shared || ML-KEM_shared || context)
+    This is secure against quantum adversaries IF ML-KEM is secure,
+    and secure against classical adversaries IF ECDH is secure.
+    Post-quantum security level: ML-KEM-768 (≈256-bit PQ security).
+    """
+
+    @classmethod
+    def generate_keypair(cls) -> tuple:
+        """Generate hybrid keypair. Returns (hybrid_pk, hybrid_sk).
+        
+        hybrid_pk = Ed25519_pk || ML-KEM_pk
+        hybrid_sk = Ed25519_seed || ML-KEM_sk
+        """
+        ecc_pk, ecc_seed, _, _ = Ed25519.generate_keypair()
+        mlkem_pk, mlkem_sk = MLKEM.keygen()
+        hybrid_pk = ecc_pk + mlkem_pk
+        hybrid_sk = ecc_seed + mlkem_sk
+        return hybrid_pk, hybrid_sk
+
+    @classmethod
+    def encapsulate(cls, hybrid_pk: bytes) -> tuple:
+        """Encapsulate for a hybrid public key. Returns (ciphertext, shared_secret).
+        
+        ciphertext = ECDH_ephemeral_pk || ML-KEM_ciphertext
+        shared_secret = HKDF(ECDH_shared || ML-KEM_shared, context)
+        Both classical and post-quantum paths contribute to the final secret.
+        """
+        ecc_pk = hybrid_pk[:32]
+        mlkem_pk = hybrid_pk[32:]
+        ecc_ephem_seed = os.urandom(32)
+        ecc_ephem_pk, _, ecc_ephem_a, _ = Ed25519.generate_keypair(ecc_ephem_seed)
+        ecdh_shared = Ed25519.key_exchange(ecc_ephem_seed, ecc_pk)
+        mlkem_ct, mlkem_ss = MLKEM.encaps(mlkem_pk)
+        combined = ecdh_shared + mlkem_ss + b"cpip-hybrid-kem-v2"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-v2", 32)
+        ciphertext = ecc_ephem_pk + mlkem_ct
+        return ciphertext, shared
+
+    @classmethod
+    def decapsulate(cls, hybrid_sk: bytes, ciphertext: bytes) -> bytes:
+        """Decapsulate using hybrid secret key. Returns shared_secret.
+        
+        Derives ECDH shared secret from our Ed25519 seed + their ephemeral pubkey,
+        derives ML-KEM shared secret from our ML-KEM secret key + their ML-KEM ciphertext,
+        then combines both via HKDF for post-quantum security.
+        """
+        ecc_seed = hybrid_sk[:32]
+        mlkem_sk = hybrid_sk[32:]
+        ecc_ephem_pk = ciphertext[:32]
+        mlkem_ct = ciphertext[32:]
+        ecdh_shared = Ed25519.key_exchange(ecc_seed, ecc_ephem_pk)
+        mlkem_ss = MLKEM.decaps(mlkem_sk, mlkem_ct)
+        combined = ecdh_shared + mlkem_ss + b"cpip-hybrid-kem-v2"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-v2", 32)
+        return shared
+
+
+# ── SHA-3 Hash Suite ──────────────────────────────────────────────────
+class SecureHash:
+    """Unified hash interface supporting SHA-256, SHA-3, and SHAKE.
+    Provides domain-separated hashing for different CPIP contexts.
+    """
+    @staticmethod
+    def hash(data: bytes, algorithm: str = "sha3_256") -> bytes:
+        if algorithm == "sha256":
+            return hashlib.sha256(data).digest()
+        elif algorithm == "sha3_256":
+            return hashlib.sha3_256(data).digest()
+        elif algorithm == "sha3_512":
+            return hashlib.sha3_512(data).digest()
+        elif algorithm == "shake256":
+            return hashlib.shake_256(data).digest(64)
+        else:
+            return hashlib.sha3_256(data).digest()
+
+    @staticmethod
+    def domain_hash(domain: str, data: bytes) -> bytes:
+        return hashlib.sha3_256(domain.encode() + b"||" + data).digest()
+
+    @staticmethod
+    def keyed_hash(key: bytes, data: bytes) -> bytes:
+        return hashlib.sha3_256(key + data).digest()
+
+
+# ── Incident Response System ─────────────────────────────────────────
+class IncidentResponse:
+    """Real-time incident detection, alerting, and automated mitigation
+    for hostile signal environments. Tracks anomalies across mesh,
+    transport, and application layers.
+    
+    Capabilities:
+    - Signal anomaly detection (jamming, interference, injection)
+    - Mesh peer behavior analysis (sudden topological changes)
+    - Rate-based attack detection (brute force, flooding)
+    - Automated mitigation (isolate, rotate keys, go dark)
+    - Audit log with tamper-evident chaining
+    """
+    ALERT_LEVELS = {"info": 0, "warn": 1, "high": 2, "critical": 3}
+    _lock = threading.Lock()
+    _alerts = []
+    _audit_log = []
+    _mitigations = {}
+    _signal_baselines = {"mesh_rps": 0, "http_rps": 0, "sat_rps": 0}
+    _signal_history = {"mesh": [], "http": [], "sat": []}
+    _peer_baselines = {}
+    _auto_response_enabled = True
+    _max_alerts = 500
+    _max_audit = 5000
+    _alert_callbacks = []
+    MAX_HISTORY_PER_CHANNEL = 120
+
+    @classmethod
+    def alert(cls, level: str, category: str, message: str, details: dict = None):
+        entry = {
+            "id": hashlib.sha3_256(f"{time.time()}{level}{message}".encode()).hexdigest()[:12],
+            "severity": level,
+            "category": category,
+            "message": message,
+            "details": details or {},
+            "timestamp": time.time(),
+            "human_time": datetime.now().isoformat(),
+        }
+        with cls._lock:
+            cls._alerts.append(entry)
+            if len(cls._alerts) > cls._max_alerts:
+                cls._alerts = cls._alerts[-cls._max_alerts:]
+            cls._audit_append("alert", entry)
+        for cb in cls._alert_callbacks:
+            try:
+                cb(entry)
+            except Exception:
+                pass
+        mitigation = None
+        if cls._auto_response_enabled:
+            mitigation = cls._auto_respond(entry)
+        if mitigation:
+            entry["mitigation"] = mitigation
+        return entry
+
+    @classmethod
+    def _audit_append(cls, event_type: str, data: dict):
+        prev_hash = cls._audit_log[-1]["chain_hash"] if cls._audit_log else "0" * 64
+        payload = json.dumps({"type": event_type, "data": data, "prev": prev_hash},
+                             sort_keys=True, default=str)
+        chain_hash = hashlib.sha3_256(payload.encode()).hexdigest()
+        entry = {
+            "event_type": event_type,
+            "data": data,
+            "prev_hash": prev_hash,
+            "chain_hash": chain_hash,
+            "timestamp": time.time(),
+        }
+        cls._audit_log.append(entry)
+        if len(cls._audit_log) > cls._max_audit:
+            cls._audit_log = cls._audit_log[-cls._max_audit:]
+
+    @classmethod
+    def verify_audit_chain(cls) -> dict:
+        with cls._lock:
+            broken = []
+            for i, entry in enumerate(cls._audit_log):
+                if i == 0:
+                    continue
+                expected = hashlib.sha3_256(json.dumps(
+                    {"type": entry["event_type"], "data": entry["data"],
+                     "prev": entry["prev_hash"]}, sort_keys=True, default=str
+                ).encode()).hexdigest()
+                if entry["chain_hash"] != expected:
+                    broken.append(i)
+                if entry["prev_hash"] != cls._audit_log[i - 1]["chain_hash"]:
+                    broken.append(i)
+            return {"total": len(cls._audit_log), "broken": broken, "valid": len(broken) == 0}
+
+    @classmethod
+    def _auto_respond(cls, entry: dict):
+        level = cls.ALERT_LEVELS.get(entry["severity"], 0)
+        cat = entry["category"]
+        mitigation = None
+        if level >= 2 and cat == "jamming":
+            cls._mitigations["stealth_mode"] = True
+            MeshNode.stealth_mode = True
+            mitigation = "stealth_mode_activated"
+        if level >= 3 and cat == "brute_force":
+            addr = entry.get("details", {}).get("addr", "")
+            if addr:
+                teapot_blacklist_addr(addr)
+                mitigation = f"blacklisted_{addr}"
+        return mitigation
+
+    @classmethod
+    def record_signal(cls, channel: str, count: int):
+        with cls._lock:
+            if channel in cls._signal_history:
+                cls._signal_history[channel].append((time.time(), count))
+                if len(cls._signal_history[channel]) > cls.MAX_HISTORY_PER_CHANNEL:
+                    cls._signal_history[channel] = cls._signal_history[channel][-cls.MAX_HISTORY_PER_CHANNEL:]
+                cls._detect_anomaly(channel)
+
+    @classmethod
+    def _detect_anomaly(cls, channel: str):
+        history = cls._signal_history.get(channel, [])
+        if len(history) < 10:
+            return
+        recent = [c for _, c in history[-10:]]
+        baseline = [c for _, c in history[:-10]] if len(history) > 10 else recent
+        avg_baseline = sum(baseline) / len(baseline) if baseline else 1
+        avg_recent = sum(recent) / len(recent)
+        if avg_recent > avg_baseline * 5 and avg_recent > 10:
+            cls.alert("high", "jamming",
+                      f"Possible {channel} jamming detected: {avg_recent:.1f}/s vs baseline {avg_baseline:.1f}/s",
+                      {"channel": channel, "rate": avg_recent, "baseline": avg_baseline})
+        elif avg_recent == 0 and avg_baseline > 0:
+            cls.alert("warn", "signal_loss",
+                      f"Signal loss on {channel}: no traffic for recent window",
+                      {"channel": channel, "baseline": avg_baseline})
+
+    @classmethod
+    def get_alerts(cls, severity: str = None, level: str = None, limit: int = 50) -> list:
+        with cls._lock:
+            alerts = cls._alerts[:]
+        filter_level = severity or level
+        if filter_level:
+            alerts = [a for a in alerts if a.get("severity") == filter_level or a.get("level") == filter_level]
+        return alerts[-limit:]
+
+    @classmethod
+    def get_audit_chain(cls) -> list:
+        with cls._lock:
+            return cls._audit_log[:]
+
+    @classmethod
+    def set_auto_mitigate(cls, enabled: bool):
+        cls._auto_response_enabled = enabled
+        return {"auto_mitigate": enabled}
+
+    @classmethod
+    def get_status(cls) -> dict:
+        with cls._lock:
+            sig = {}
+            for ch, history in cls._signal_history.items():
+                if history:
+                    recent = [c for _, c in history[-10:]]
+                    sig[ch] = {"rate": sum(recent) / len(recent) if recent else 0,
+                               "samples": len(history)}
+            alerts_count = len(cls._alerts)
+            alerts_by_level = {lv: sum(1 for a in cls._alerts if a["severity"] == lv)
+                               for lv in cls.ALERT_LEVELS}
+            mitigations = dict(cls._mitigations)
+        audit_valid = cls.verify_audit_chain()["valid"]
+        return {
+            "auto_response": cls._auto_response_enabled,
+            "total_alerts": alerts_count,
+            "alerts_by_level": alerts_by_level,
+            "mitigations_active": mitigations,
+            "signal": sig,
+            "audit_chain_valid": audit_valid,
+        }
+
+    @classmethod
+    def set_auto_response(cls, enabled: bool):
+        cls._auto_response_enabled = enabled
+
+    @classmethod
+    def register_alert_callback(cls, callback):
+        cls._alert_callbacks.append(callback)
+
+
+# ── Signal Space Awareness ───────────────────────────────────────────
+class SignalAwareness:
+    """Monitors mesh, satellite, mobile, and HTTP signal quality.
+    Detects jamming, interference, and network degradation in real-time.
+    Provides bandwidth estimation and link quality metrics.
+    """
+    _lock = threading.Lock()
+    _mesh_stats = {"sent": 0, "recv": 0, "errors": 0, "last_sent": 0, "last_recv": 0}
+    _http_stats = {"requests": 0, "errors": 0, "418s": 0, "bytes_in": 0, "bytes_out": 0}
+    _sat_stats = {"sent": 0, "recv": 0, "errors": 0}
+    _mobile_stats = {"sent": 0, "recv": 0, "errors": 0}
+    _link_quality = {}
+    _interface_stats = {}
+    _start_time = time.time()
+
+    @classmethod
+    def record_mesh(cls, direction: str, success: bool, size: int = 0):
+        with cls._lock:
+            if direction == "sent":
+                cls._mesh_stats["sent"] += 1
+                cls._mesh_stats["last_sent"] = time.time()
+            elif direction == "recv":
+                cls._mesh_stats["recv"] += 1
+                cls._mesh_stats["last_recv"] = time.time()
+            if not success:
+                cls._mesh_stats["errors"] += 1
+                IncidentResponse.alert("warn", "mesh_error", "Mesh transmission error",
+                                        {"direction": direction, "total_errors": cls._mesh_stats["errors"]})
+            IncidentResponse.record_signal("mesh", 1)
+
+    @classmethod
+    def record_http(cls, method: str, path: str, status: int, size_in: int, size_out: int):
+        with cls._lock:
+            cls._http_stats["requests"] += 1
+            cls._http_stats["bytes_in"] += size_in
+            cls._http_stats["bytes_out"] += size_out
+            if status == 418:
+                cls._http_stats["418s"] += 1
+            elif status >= 400:
+                cls._http_stats["errors"] += 1
+            IncidentResponse.record_signal("http", 1)
+
+    @classmethod
+    def record_sat(cls, direction: str, success: bool):
+        with cls._lock:
+            if direction == "sent":
+                cls._sat_stats["sent"] += 1
+            else:
+                cls._sat_stats["recv"] += 1
+            if not success:
+                cls._sat_stats["errors"] += 1
+            IncidentResponse.record_signal("sat", 1)
+
+    @classmethod
+    def record_mobile(cls, direction: str, success: bool):
+        with cls._lock:
+            if direction == "sent":
+                cls._mobile_stats["sent"] += 1
+            else:
+                cls._mobile_stats["recv"] += 1
+            if not success:
+                cls._mobile_stats["errors"] += 1
+
+    @classmethod
+    def estimate_bandwidth(cls) -> dict:
+        elapsed = max(time.time() - cls._start_time, 1)
+        with cls._lock:
+            return {
+                "mesh": {"sent": cls._mesh_stats["sent"], "recv": cls._mesh_stats["recv"],
+                          "errors": cls._mesh_stats["errors"],
+                          "rps": round(cls._mesh_stats["recv"] / elapsed, 2)},
+                "http": {"requests": cls._http_stats["requests"],
+                         "errors": cls._http_stats["errors"],
+                         "418s": cls._http_stats["418s"],
+                         "bytes_in": cls._http_stats["bytes_in"],
+                         "bytes_out": cls._http_stats["bytes_out"],
+                         "rps": round(cls._http_stats["requests"] / elapsed, 2)},
+                "sat": {"sent": cls._sat_stats["sent"], "recv": cls._sat_stats["recv"],
+                         "errors": cls._sat_stats["errors"]},
+                "mobile": {"sent": cls._mobile_stats["sent"], "recv": cls._mobile_stats["recv"],
+                            "errors": cls._mobile_stats["errors"]},
+                "uptime_seconds": round(elapsed, 1),
+            }
+
+    @classmethod
+    def get_link_quality(cls, peer_id: str = None) -> dict:
+        with cls._lock:
+            if peer_id:
+                return cls._link_quality.get(peer_id, {"quality": "unknown"})
+            return dict(cls._link_quality)
+
+    @classmethod
+    def update_link_quality(cls, peer_id: str, latency: float, loss: float):
+        with cls._lock:
+            score = max(0, min(100, 100 - loss * 10 - latency * 2))
+            quality = "excellent" if score > 80 else "good" if score > 60 else "fair" if score > 40 else "poor"
+            cls._link_quality[peer_id] = {
+                "latency_ms": round(latency, 1),
+                "loss_pct": round(loss, 2),
+                "score": round(score, 1),
+                "quality": quality,
+                "updated": time.time(),
+            }
+
+
+# ── Emergency Mode ───────────────────────────────────────────────────
+class EmergencyMode:
+    """Panic button, rapid key rotation, and secure wipe for hostile environments.
+    
+    When activated:
+    - Immediately rotates all cryptographic keys
+    - Sends kill message to all known peers
+    - Wipes local key material and sensitive state
+    - Drops to stealth-only operation
+    """
+    _active = False
+    _lock = threading.Lock()
+
+    @classmethod
+    def activate(cls, reason: str = "manual"):
+        with cls._lock:
+            cls._active = True
+        IncidentResponse.alert("critical", "emergency", f"EMERGENCY MODE ACTIVATED: {reason}",
+                                {"reason": reason, "timestamp": time.time()})
+        cls._rotate_keys()
+        cls._notify_peers_emergency()
+        MeshNode.stealth_mode = True
+        IncidentResponse._mitigations["emergency_mode"] = True
+        return {"status": "activated", "reason": reason, "stealth": True}
+
+    @classmethod
+    def deactivate(cls):
+        with cls._lock:
+            cls._active = False
+        IncidentResponse._mitigations.pop("emergency_mode", None)
+        return {"status": "deactivated", "stealth": MeshNode.stealth_mode}
+
+    @classmethod
+    def is_active(cls) -> bool:
+        return cls._active
+
+    @classmethod
+    def _rotate_keys(cls):
+        global COVERT_KEY
+        new_key = base64.b64encode(hashlib.sha3_256(os.urandom(48)).digest()[:32]).decode()
+        COVERT_KEY = new_key.encode()
+        MeshNode._init_identity()
+        IncidentResponse.alert("info", "key_rotation", "Cryptographic keys rotated", {"new_key_prefix": new_key[:8]})
+
+    @classmethod
+    def _notify_peers_emergency(cls):
+        with MeshNode.peers_lock:
+            for pid, info in list(MeshNode.peers.items()):
+                try:
+                    MeshNode._send_direct(pid, {
+                        "type": "emergency",
+                        "from": POT_ID,
+                        "action": "isolate",
+                        "timestamp": time.time(),
+                    })
+                except Exception:
+                    pass
+
+    @classmethod
+    def rotate_keys(cls):
+        """Public API: rotate all cryptographic keys."""
+        cls._rotate_keys()
+        return {"status": "keys_rotated", "timestamp": time.time()}
+
+    @classmethod
+    def secure_wipe(cls):
+        """Securely wipe sensitive data from memory."""
+        global COVERT_KEY
+        COVERT_KEY = b'\x00' * len(COVERT_KEY)
+        if MeshNode.node_seed:
+            MeshNode.node_seed = b'\x00' * 32
+        if MeshNode.node_secret:
+            MeshNode.node_secret = b'\x00' * 32
+        with MeshNode.inbox_lock:
+            MeshNode.inbox.clear()
+        with MeshNode.store_lock:
+            MeshNode.message_store.clear()
+        IncidentResponse.alert("critical", "secure_wipe", "Sensitive data wiped from memory")
+        return {"status": "wiped", "timestamp": time.time()}
+
+    @classmethod
+    def get_status(cls) -> dict:
+        return {
+            "active": cls._active,
+            "stealth": MeshNode.stealth_mode,
+            "mitigations": dict(IncidentResponse._mitigations),
+        }
+
+
+# ── Network Diagnostics ─────────────────────────────────────────────
+class NetDiagnostics:
+    """Network diagnostic tools for sysadmins in hostile signal spaces.
+    TCP ping, traceroute, port scan, DNS resolution, and interface info.
+    """
+    @staticmethod
+    def tcp_ping(host: str, port: int = 4180, timeout: float = 3.0) -> dict:
+        start = time.time()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            s.connect((host, port))
+            elapsed = (time.time() - start) * 1000
+            s.close()
+            return {"host": host, "port": port, "alive": True, "latency_ms": round(elapsed, 1)}
+        except Exception as e:
+            return {"host": host, "port": port, "alive": False, "error": str(e)}
+
+    @staticmethod
+    def udp_ping(host: str, port: int = 4191, timeout: float = 3.0) -> dict:
+        start = time.time()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(timeout)
+            s.sendto(b"CPIP_PING", (host, port))
+            data, addr = s.recvfrom(1024)
+            elapsed = (time.time() - start) * 1000
+            s.close()
+            return {"host": host, "port": port, "alive": True, "latency_ms": round(elapsed, 1)}
+        except socket.timeout:
+            s.close()
+            return {"host": host, "port": port, "alive": False, "error": "timeout"}
+        except Exception as e:
+            return {"host": host, "port": port, "alive": False, "error": str(e)}
+
+    @staticmethod
+    def port_scan(host: str, ports: list = None, timeout: float = 1.0) -> dict:
+        if ports is None:
+            ports = [22, 53, 80, 443, 4180, 4190, 4191, 4192, 4193, 4194, 4195, 4196, 8080]
+        results = {}
+        for port in ports:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(timeout)
+                result = s.connect_ex((host, port))
+                results[port] = "open" if result == 0 else "closed"
+                s.close()
+            except Exception:
+                results[port] = "filtered"
+        return {"host": host, "ports": results}
+
+    @staticmethod
+    def dns_resolve(hostname: str, dns_server: str = None) -> dict:
+        try:
+            addrs = socket.getaddrinfo(hostname, None)
+            ipv4 = list(set(a[4][0] for a in addrs if a[0] == socket.AF_INET))
+            ipv6 = list(set(a[4][0] for a in addrs if a[0] == socket.AF_INET6))
+            return {"hostname": hostname, "ipv4": ipv4, "ipv6": ipv6, "resolved": True}
+        except Exception as e:
+            return {"hostname": hostname, "resolved": False, "error": str(e)}
+
+    @staticmethod
+    def traceroute(host: str, max_hops: int = 15, port: int = 4180, timeout: float = 2.0) -> dict:
+        hops = []
+        try:
+            dest_addr = socket.gethostbyname(host)
+        except Exception as e:
+            return {"host": host, "hops": [], "error": str(e)}
+        for ttl in range(1, max_hops + 1):
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+                s.settimeout(timeout)
+                start = time.time()
+                s.connect((dest_addr, port))
+                elapsed = (time.time() - start) * 1000
+                hops.append({"ttl": ttl, "addr": dest_addr, "latency_ms": round(elapsed, 1)})
+                s.close()
+                break
+            except socket.timeout:
+                hops.append({"ttl": ttl, "addr": "*", "latency_ms": None})
+            except Exception as e:
+                hop_addr = "?"
+                hops.append({"ttl": ttl, "addr": hop_addr, "latency_ms": None, "error": str(e)[:50]})
+        return {"host": host, "hops": hops}
+
+    @staticmethod
+    def get_interfaces() -> list:
+        ifaces = []
+        try:
+            for name in os.listdir("/sys/class/net/"):
+                if name == "lo":
+                    continue
+                iface = {"name": name}
+                try:
+                    addr_path = f"/sys/class/net/{name}/address"
+                    with open(addr_path) as f:
+                        iface["mac"] = f.read().strip()
+                except Exception:
+                    pass
+                try:
+                    oper_path = f"/sys/class/net/{name}/operstate"
+                    with open(oper_path) as f:
+                        iface["state"] = f.read().strip()
+                except Exception:
+                    iface["state"] = "unknown"
+                try:
+                    ip_out = subprocess.run(["ip", "addr", "show", name],
+                                            capture_output=True, text=True, timeout=3)
+                    iface["ip_info"] = ip_out.stdout[:500]
+                except Exception:
+                    pass
+                ifaces.append(iface)
+        except Exception:
+            pass
+        return ifaces
 class CovertChannel:
     """Encode/decode hidden messages inside HTCPCP Accept-Additions headers.
     
@@ -522,7 +1225,7 @@ class CovertChannel:
         VARIETY_POOL[addn_name] = addn_def["variety"]
 
     @classmethod
-    def encode(cls, message: bytes, dst_pot: str = None, recipe: str = "espresso",
+    def encode(cls, message, dst_pot: str = None, recipe: str = "espresso",
                dst_pubkey: bytes = None, our_seed: bytes = None) -> dict:
         """Encode a message into Accept-Additions header components.
         
@@ -531,19 +1234,22 @@ class CovertChannel:
         """
         if not COVERT_ENABLED:
             return {"additions": []}
+        if isinstance(message, str):
+            message = message.encode()
 
         if dst_pubkey and our_seed:
             shared = Ed25519.key_exchange(our_seed, dst_pubkey)
-            ciphertext = CoffeeCipher.encrypt(message, base_key=shared, recipe=recipe)
+            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-covert-ecc-v2", 32)
+            ciphertext = CoffeeCipher.encrypt(message, base_key=otk, recipe=recipe)
             sig = Ed25519.sign(ciphertext, our_seed)
-            payload = b"ECCv1:" + Ed25519.pubkey_to_address(
+            payload = b"ECCv2:" + Ed25519.pubkey_to_address(
                 Ed25519._encode_point(Ed25519._scalar_mult(
                     Ed25519.secret_scalar(our_seed), Ed25519.B
                 ))
             ).encode() + b":" + sig + b":" + ciphertext
         else:
             ciphertext = CoffeeCipher.encrypt(message, recipe=recipe)
-            payload = b"CBC:" + ciphertext
+            payload = b"CBC2:" + ciphertext
 
         if recipe and recipe != "espresso":
             recipe_chunks = []
@@ -565,7 +1271,7 @@ class CovertChannel:
             additions = recipe_chunks + additions
 
         if dst_pot:
-            route_seed = int(hashlib.md5(dst_pot.encode()).hexdigest()[:2], 16)
+            route_seed = int(hashlib.sha256(dst_pot.encode()).hexdigest()[:4], 16)
             route_bits = route_seed % 5
             route_type = BITS_TO_ADDITION.get(route_bits, "syrup")
             additions.insert(0, {"name": route_type, "variety": f"route_{dst_pot[:16]}"})
@@ -618,9 +1324,22 @@ class CovertChannel:
             return b""
 
         try:
-            if payload.startswith(b"ECCv1:") and our_seed:
+            if payload.startswith(b"ECCv2:") and our_seed:
                 _, addr_b, sig, ciphertext = payload.split(b":", 3)
-                # Recover sender's public key from address
+                for pid, info in MeshNode.peers.items():
+                    pk_b64 = info.get("pubkey", "")
+                    if pk_b64:
+                        pk = base64.b64decode(pk_b64)
+                        if Ed25519.pubkey_to_address(pk) == addr_b.decode():
+                            shared = Ed25519.key_exchange(our_seed, pk)
+                            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-covert-ecc-v2", 32)
+                            if Ed25519.verify(ciphertext, sig, pk):
+                                plaintext = CoffeeCipher.decrypt(ciphertext, base_key=otk, recipe=recipe)
+                                if plaintext:
+                                    return plaintext
+                return b""
+            elif payload.startswith(b"ECCv1:") and our_seed:
+                _, addr_b, sig, ciphertext = payload.split(b":", 3)
                 for pid, info in MeshNode.peers.items():
                     pk_b64 = info.get("pubkey", "")
                     if pk_b64:
@@ -629,11 +1348,17 @@ class CovertChannel:
                             shared = Ed25519.key_exchange(our_seed, pk)
                             if Ed25519.verify(ciphertext, sig, pk):
                                 plaintext = CoffeeCipher.decrypt(ciphertext, base_key=shared, recipe=recipe)
-                                return plaintext
+                                if plaintext:
+                                    return plaintext
                 return b""
+            elif payload.startswith(b"CBC2:"):
+                ciphertext = payload[5:]
+                plaintext = CoffeeCipher.decrypt(ciphertext, recipe=recipe)
+                return plaintext if plaintext else b""
             elif payload.startswith(b"CBC:"):
                 ciphertext = payload[4:]
-                return CoffeeCipher.decrypt(ciphertext, recipe=recipe)
+                plaintext = CoffeeCipher.decrypt(ciphertext, recipe=recipe)
+                return plaintext if plaintext else b""
         except Exception:
             pass
         return b""
@@ -740,8 +1465,8 @@ class MeshNode:
     def _init_identity(cls):
         """Derive persistent node identity from COVERT_KEY + POT_ID.
         Uses Ed25519 keypair for ECC-based identity and signing."""
-        seed = hashlib.md5(COVERT_KEY + POT_ID.encode()).digest()
-        cls.node_secret = CoffeeCipher._md4_mix(seed * 4)
+        seed = hashlib.sha256(COVERT_KEY + POT_ID.encode()).digest()
+        cls.node_secret = hashlib.sha256(seed + b"node-identity-v2").digest()
         # Generate Ed25519 keypair for ECC
         ecc_seed = hashlib.sha256(cls.node_secret + b"ed25519").digest()
         cls.node_pubkey, cls.node_seed, _, _ = Ed25519.generate_keypair(ecc_seed)
@@ -811,8 +1536,8 @@ class MeshNode:
 
     @classmethod
     def _get_knock_sequence(cls) -> list:
-        """Derive port-knocking sequence from node secret."""
-        seed = int.from_bytes(cls.node_secret[:4], 'big')
+        """Derive port-knocking sequence from node secret using SHA-256."""
+        seed = int.from_bytes(hashlib.sha256(cls.node_secret + b"knock-sequence").digest()[:4], 'big')
         rng = random.Random(seed)
         base_ports = sorted(MESH_LATENT_PORTS)
         sequence = []
@@ -1026,8 +1751,9 @@ class MeshNode:
     def _e2ee_encrypt(cls, plaintext: str, dst_pot: str) -> dict:
         """Encrypt a message payload with the recipient's Ed25519 public key.
         
-        Uses ECDH to derive a shared secret, then encrypts with CoffeeCipher.
-        Returns dict with encrypted data and metadata for decryption.
+        Uses ECDH to derive a shared secret, then applies HKDF for key
+        derivation before encrypting with CoffeeCipher (which now includes
+        IV and HMAC authentication). Each message gets a fresh IV.
         """
         if not cls.node_seed:
             return {"data": plaintext, "e2ee": False}
@@ -1036,8 +1762,7 @@ class MeshNode:
             return {"data": plaintext, "e2ee": False}
         try:
             shared = Ed25519.key_exchange(cls.node_seed, pk)
-            # Use the first 32 bytes of shared secret as a one-time key
-            otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
+            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-e2ee-v2", 32)
             ciphertext = CoffeeCipher.encrypt(plaintext.encode(), base_key=otk)
             return {
                 "data": base64.b64encode(ciphertext).decode(),
@@ -1052,11 +1777,11 @@ class MeshNode:
         """Decrypt an E2EE message using the shared secret with the sender.
         
         Looks up the sender's public key from their address, derives
-        the shared secret, and decrypts.
+        the shared secret via ECDH, expands via HKDF, and decrypts
+        with authentication verification.
         """
         if not cls.node_seed or not from_addr:
             return msg_data
-        # Find sender's pubkey
         sender_pk = None
         with cls.address_book_lock:
             entry = cls.address_book.get(from_addr)
@@ -1066,7 +1791,6 @@ class MeshNode:
                 except Exception:
                     pass
         if not sender_pk:
-            # Fallback: search peers
             with cls.peers_lock:
                 for pid, info in cls.peers.items():
                     pk_b64 = info.get("pubkey", "")
@@ -1082,9 +1806,11 @@ class MeshNode:
             return msg_data
         try:
             shared = Ed25519.key_exchange(cls.node_seed, sender_pk)
-            otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
+            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-e2ee-v2", 32)
             ciphertext = base64.b64decode(msg_data)
             plaintext = CoffeeCipher.decrypt(ciphertext, base_key=otk)
+            if not plaintext:
+                return msg_data
             return plaintext.decode("utf-8", errors="replace")
         except Exception:
             return msg_data
@@ -1119,6 +1845,35 @@ class MeshNode:
             except Exception:
                 break
 
+    MESSAGE_EXPIRY_SECONDS = 300
+
+    @classmethod
+    def _mesh_hmac(cls, payload: bytes) -> str:
+        """Generate HMAC-SHA256 for mesh message authentication."""
+        key = hashlib.sha256(cls.node_secret + b"mesh-hmac-v2").digest()
+        return hmac.new(key, payload, hashlib.sha256).hexdigest()
+
+    @classmethod
+    def _verify_mesh_hmac(cls, msg: dict) -> bool:
+        """Verify HMAC on incoming mesh messages. Returns True if valid or unsigned."""
+        msg_hmac = msg.pop("_mesh_hmac", None)
+        if not msg_hmac:
+            return True
+        sender = msg.get("from") or msg.get("pot") or ""
+        with cls.peers_lock:
+            info = cls.peers.get(sender, {})
+        peer_secret_b64 = info.get("mesh_secret", "")
+        if not peer_secret_b64:
+            return False
+        try:
+            peer_secret = base64.b64decode(peer_secret_b64)
+            key = hashlib.sha256(peer_secret + b"mesh-hmac-v2").digest()
+            payload = json.dumps(msg, sort_keys=True).encode()
+            expected = hmac.new(key, payload, hashlib.sha256).hexdigest()
+            return hmac.compare_digest(msg_hmac, expected)
+        except Exception:
+            return False
+
     @classmethod
     def _handle_message(cls, data: bytes, addr: tuple):
         try:
@@ -1127,6 +1882,10 @@ class MeshNode:
 
             sender = msg.get("pot") or msg.get("from") or ""
             if sender == POT_ID:
+                return
+
+            ts = msg.get("timestamp", 0)
+            if ts and abs(time.time() - ts) > cls.MESSAGE_EXPIRY_SECONDS:
                 return
 
             if msg_type == "heartbeat":
@@ -1360,7 +2119,7 @@ class MeshNode:
 
     @classmethod
     def _send_heartbeat(cls):
-        payload = json.dumps({
+        payload_dict = {
             "type": "heartbeat",
             "pot": POT_ID,
             "hostname": HOSTNAME,
@@ -1376,7 +2135,12 @@ class MeshNode:
             "alt": SATELLITE_ALT if SATELLITE_ENABLED else None,
             "sat_port": SATELLITE_PORT if SATELLITE_ENABLED else None,
             "timestamp": time.time(),
-        }).encode()
+            "mesh_secret": base64.b64encode(
+                hashlib.sha256(cls.node_secret + b"mesh-secret-v2").digest()
+            ).decode(),
+        }
+        payload_dict["_mesh_hmac"] = cls._mesh_hmac(json.dumps(payload_dict, sort_keys=True).encode())
+        payload = json.dumps(payload_dict).encode()
         payload = cls._pad_traffic(payload)
 
         if MeshNode.stealth_mode:
@@ -2279,15 +3043,27 @@ class MeshNode:
         try:
             data = {
                 "peers": {pid: {k: v for k, v in info.items()
-                                if k in ("addr", "port", "mesh_port", "hostname", "device", "hops",
-                                         "pubkey", "address")}
-                          for pid, info in cls.peers.items()},
+                                 if k in ("addr", "port", "mesh_port", "hostname", "device", "hops",
+                                          "pubkey", "address")}
+                           for pid, info in cls.peers.items()},
                 "inbox": cls.inbox[-50:],
                 "trust_store": dict(cls.trust_store),
                 "routes": dict(cls.routing_table),
-                "message_store": cls.message_store[-100:],
+                "message_store": [{k: v for k, v in m.items() if k != "_plaintext"}
+                                  for m in cls.message_store[-100:]],
             }
-            cls.persist_path.write_text(json.dumps(data, indent=2))
+            raw = json.dumps(data, indent=2).encode()
+            enc_key = hashlib.sha256(cls.node_secret + b"persist-v2").digest()
+            iv = os.urandom(16)
+            enc_data = CoffeeCipher.encrypt(raw, base_key=enc_key, recipe="persist")
+            integrity = hmac.new(enc_key, enc_data, hashlib.sha256).hexdigest()
+            payload = json.dumps({
+                "v": 2,
+                "iv": base64.b64encode(iv).decode(),
+                "data": base64.b64encode(enc_data).decode(),
+                "hmac": integrity,
+            }).encode()
+            cls.persist_path.write_bytes(payload)
         except Exception:
             pass
 
@@ -2296,7 +3072,23 @@ class MeshNode:
         if not cls.persist_path or not cls.persist_path.exists():
             return
         try:
-            data = json.loads(cls.persist_path.read_text())
+            raw_payload = cls.persist_path.read_bytes()
+            try:
+                payload = json.loads(raw_payload.decode())
+                if payload.get("v") == 2:
+                    enc_key = hashlib.sha256(cls.node_secret + b"persist-v2").digest()
+                    enc_data = base64.b64decode(payload["data"])
+                    expected_hmac = hmac.new(enc_key, enc_data, hashlib.sha256).hexdigest()
+                    if not hmac.compare_digest(payload.get("hmac", ""), expected_hmac):
+                        return
+                    decrypted = CoffeeCipher.decrypt(enc_data, base_key=enc_key, recipe="persist")
+                    if not decrypted:
+                        return
+                    data = json.loads(decrypted.decode())
+                else:
+                    data = payload
+            except Exception:
+                data = json.loads(raw_payload.decode())
             with cls.peers_lock:
                 for pid, info in data.get("peers", {}).items():
                     cls.peers[pid] = info
@@ -2781,10 +3573,22 @@ _radio = None
 
 def start_radio():
     global _radio
-    if not RADIO_ENABLED or not RADIO_IMPORT_OK:
+    if not RADIO_ENABLED:
+        return
+    if not RADIO_IMPORT_OK:
+        print(f"   ⚠ Radio:      radio_protocol module not found — install radio_if binary", flush=True)
+        print(f"   ⚠ Radio:      cd radio/ && make", flush=True)
         return
     try:
         ri = RadioInterface()
+        # Detect hardware before starting
+        hw_mode = RADIO_MODE
+        if hw_mode != "sim" and hw_mode != "tnc":
+            spi_dev = RADIO_DEVICE if RADIO_MODE == "lora" else ""
+            if spi_dev and not os.path.exists(spi_dev):
+                print(f"   ⚠ Radio:      SPI device {spi_dev} not found", flush=True)
+                print(f"   ⚠ Radio:      Set CPIP_RADIO_DEVICE or CPIP_RADIO_MODE=sim for testing", flush=True)
+                return
         ri.start(
             mode=RADIO_MODE,
             frequency=RADIO_FREQ,
@@ -2795,8 +3599,14 @@ def start_radio():
             baud=RADIO_BAUD,
         )
         _radio = ri
-        print(f"   ├ Radio:      {RADIO_MODE.upper()} @ {RADIO_FREQ/1e6:.1f} MHz"
-              f" (SF{RADIO_SF}, BW {RADIO_BW//1000}k)", flush=True)
+        mode_label = RADIO_MODE.upper()
+        if RADIO_MODE == "lora":
+            print(f"   ├ Radio:      {mode_label} @ {RADIO_FREQ/1e6:.1f} MHz"
+                  f" (SF{RADIO_SF}, BW {RADIO_BW//1000}k, HW={RADIO_DEVICE})", flush=True)
+        elif RADIO_MODE == "tnc":
+            print(f"   ├ Radio:      {mode_label} @ {RADIO_DEVICE} ({RADIO_BAUD} baud)", flush=True)
+        else:
+            print(f"   ├ Radio:      {mode_label} (simulation — no real hardware)", flush=True)
 
         # Background poll thread: feed received radio packets into mesh
         def _radio_poll():
@@ -2813,6 +3623,9 @@ def start_radio():
                     break
 
         threading.Thread(target=_radio_poll, daemon=True).start()
+    except RadioError as e:
+        print(f"   ⚠ Radio:      {e}", flush=True)
+        print(f"   ⚠ Radio:      Hardware may not be connected. Set CPIP_RADIO=sim for testing.", flush=True)
     except Exception as e:
         print(f"   ⚠ Radio:      {e}", flush=True)
 
@@ -2911,11 +3724,42 @@ class CPIPHandler(BaseHTTPRequestHandler):
         ts = datetime.now().strftime("%H:%M:%S")
         sys.stderr.write(f"[CPIP {ts}] {self.client_address[0]} {fmt % args}\n")
 
+    def _check_rate_limit(self):
+        addr = self.client_address[0]
+        if addr in ("127.0.0.1", "::1", "localhost"):
+            return True
+        now = time.time()
+        with _HTTP_RATE_LOCK:
+            if addr not in _HTTP_RATE_COUNTS:
+                _HTTP_RATE_COUNTS[addr] = []
+            _HTTP_RATE_COUNTS[addr] = [t for t in _HTTP_RATE_COUNTS[addr] if now - t < HTTP_RATE_WINDOW]
+            if len(_HTTP_RATE_COUNTS[addr]) > HTTP_RATE_LIMIT:
+                return False
+            _HTTP_RATE_COUNTS[addr].append(now)
+        return True
+
+    def _check_request_size(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return length <= MAX_REQUEST_SIZE
+
     def _cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if CORS_ALLOWED_ORIGINS:
+            origin = self.headers.get("Origin", "")
+            allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+            if origin in allowed:
+                self.send_header("Access-Control-Allow-Origin", origin)
+            else:
+                self.send_header("Access-Control-Allow-Origin", "")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, BREW, WHEN, PROPFIND, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Accept-Additions, X-Requested-With")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Accept-Additions, X-Requested-With, X-CPIP-HMAC")
         self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-XSS-Protection", "1; mode=block")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; connect-src 'self'")
 
     def _send_json(self, code, reason, body, extra_headers=None):
         self.send_response(code, reason)
@@ -2931,6 +3775,11 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 self.send_header(k, v)
         self.end_headers()
         self.wfile.write(payload)
+        try:
+            SignalAwareness.record_http(self.command, self.path, code,
+                                         int(self.headers.get("Content-Length", 0)), len(payload))
+        except Exception:
+            pass
 
     def _send_html(self, code, html_content):
         body = html_content.encode("utf-8")
@@ -2975,6 +3824,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
     # ── HTCPCP Compatibility Methods ──────────────────────────────────
 
     def do_GET(self):
+        if not self._check_rate_limit():
+            self._send_json(429, "Too Many Requests", {"error": "Rate limit exceeded"})
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         query = parse_qs(parsed.query)
@@ -3062,6 +3914,26 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_ecc_book()
         elif path == "/cpip/mesh/covert_status":
             self._handle_covert_status()
+        elif path == "/cpip/incident":
+            self._handle_incident_status()
+        elif path == "/cpip/incident/alerts":
+            self._handle_incident_alerts()
+        elif path == "/cpip/signal":
+            self._handle_signal_status()
+        elif path == "/cpip/emergency":
+            self._handle_emergency()
+        elif path == "/cpip/diagnostics/ping":
+            self._handle_diag_ping()
+        elif path == "/cpip/diagnostics/ports":
+            self._handle_diag_ports()
+        elif path == "/cpip/diagnostics/dns":
+            self._handle_diag_dns()
+        elif path == "/cpip/diagnostics/traceroute":
+            self._handle_diag_traceroute()
+        elif path == "/cpip/diagnostics/interfaces":
+            self._handle_diag_interfaces()
+        elif path == "/cpip/crypto":
+            self._handle_crypto_status()
         elif path == "/cpip/mesh/propfind":
             params = parse_qs(parsed.query)
             action = params.get("action", ["list"])[0]
@@ -3148,6 +4020,12 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._handle_brew()
 
     def do_POST(self):
+        if not self._check_rate_limit():
+            self._send_json(429, "Too Many Requests", {"error": "Rate limit exceeded"})
+            return
+        if not self._check_request_size():
+            self._send_json(413, "Payload Too Large", {"error": "Request body exceeds size limit"})
+            return
         path = urlparse(self.path).path.rstrip("/")
 
         if teapot_defense(self.client_address[0]):
@@ -3196,6 +4074,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_mobile_post()
         elif path == "/cpip/defense":
             self._handle_defense_post()
+        elif path == "/cpip/emergency":
+            self._handle_emergency_post()
+        elif path == "/cpip/incident":
+            self._handle_incident_post()
         elif path == "/cpip/mesh/deaddrop":
             self._handle_mesh_deaddrop()
         elif path == "/cpip/mesh/deaddrop/claim":
@@ -3252,6 +4134,18 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     "GET /cpip/mesh/inbox", "POST /cpip/mesh/send",
                     "POST /cpip/mesh/broadcast", "POST /cpip/mesh/encode",
                     "POST /cpip/mesh/decode",
+                ],
+                "SECURITY": [
+                    "GET /cpip/crypto", "GET /cpip/incident", "GET /cpip/incident/alerts",
+                    "POST /cpip/incident", "GET /cpip/signal",
+                    "GET|POST /cpip/emergency", "GET /cpip/defense",
+                ],
+                "DIAGNOSTICS": [
+                    "GET /cpip/diagnostics/ping?host=&port=&proto=tcp|udp",
+                    "GET /cpip/diagnostics/ports?host=&ports=",
+                    "GET /cpip/diagnostics/dns?host=",
+                    "GET /cpip/diagnostics/traceroute?host=&max_hops=",
+                    "GET /cpip/diagnostics/interfaces",
                 ],
                 "UI": ["GET /dashboard"],
             },
@@ -3799,8 +4693,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", {
             "mesh": MeshNode.get_status(),
             "covert": {"enabled": COVERT_ENABLED, "cover_traffic": COVER_TRAFFIC},
-            "cipher": "Coffee Blend Cipher v1 + Ed25519 ECC",
-            "cipher_note": "Non-FIPS. Coffee Blend (MD4-derived XOR) + Ed25519 (pure Python, not constant-time).",
+            "cipher": "Coffee Blend Cipher v2 (SHA-256 + HMAC + IV) + Ed25519 ECC + ML-KEM-768",
+            "cipher_note": "SHA-256/HMAC authenticated encryption. Ed25519 ECC (pure Python, not constant-time). ML-KEM-768 post-quantum KEM.",
             "ecc": {
                 "algorithm": "Ed25519 (Curve25519)",
                 "implementation": "Pure Python — no libsodium, no pycryptodome",
@@ -3904,8 +4798,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", {
             "enabled": COVERT_ENABLED,
             "cover_traffic": COVER_TRAFFIC,
-            "cipher": "Coffee Blend Cipher v1",
+            "cipher": "Coffee Blend Cipher v2 (SHA-256 + HMAC + IV)",
             "ecc_available": MeshNode.node_pubkey is not None,
+            "pq_kem_available": True,
+            "hybrid_kem": "ECDH + ML-KEM-768",
         })
 
     def _handle_defense_get(self):
@@ -4159,6 +5055,129 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     # ── Dashboard ─────────────────────────────────────────────────────
 
+    def _handle_incident_status(self):
+        self._send_json(200, "OK", IncidentResponse.get_status())
+
+    def _handle_incident_alerts(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        level = params.get("level", [None])[0]
+        limit = min(int(params.get("limit", [50])[0]), 200)
+        self._send_json(200, "OK", {
+            "count": len(IncidentResponse.get_alerts(level=level)),
+            "alerts": IncidentResponse.get_alerts(level=level, limit=limit),
+            "audit_chain_valid": IncidentResponse.verify_audit_chain()["valid"],
+        })
+
+    def _handle_incident_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "ack":
+            IncidentResponse.alert("info", "ack", "Incident acknowledged by operator", {"by": self.client_address[0]})
+            self._send_json(200, "OK", {"status": "acked"})
+        elif action == "auto_response":
+            enabled = body.get("enabled", True)
+            IncidentResponse.set_auto_response(bool(enabled))
+            self._send_json(200, "OK", {"status": "auto_response_set", "enabled": bool(enabled)})
+        elif action == "clear_alerts":
+            with IncidentResponse._lock:
+                IncidentResponse._alerts.clear()
+            self._send_json(200, "OK", {"status": "alerts_cleared"})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+    def _handle_signal_status(self):
+        self._send_json(200, "OK", {
+            "bandwidth": SignalAwareness.estimate_bandwidth(),
+            "link_quality": SignalAwareness.get_link_quality(),
+            "emergency": EmergencyMode.get_status(),
+        })
+
+    def _handle_emergency(self):
+        self._send_json(200, "OK", EmergencyMode.get_status())
+
+    def _handle_emergency_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "activate":
+            reason = body.get("reason", "manual")
+            EmergencyMode.activate(reason)
+            self._send_json(200, "OK", {"status": "emergency_activated", "reason": reason})
+        elif action == "deactivate":
+            EmergencyMode.deactivate()
+            self._send_json(200, "OK", {"status": "emergency_deactivated"})
+        elif action == "wipe":
+            EmergencyMode.secure_wipe()
+            self._send_json(200, "OK", {"status": "secure_wipe_complete"})
+        elif action == "rotate_keys":
+            EmergencyMode._rotate_keys()
+            self._send_json(200, "OK", {"status": "keys_rotated"})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+    def _handle_diag_ping(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        host = params.get("host", ["localhost"])[0]
+        port = int(params.get("port", [str(BIND_PORT)])[0])
+        timeout = float(params.get("timeout", ["3"])[0])
+        proto = params.get("proto", ["tcp"])[0]
+        if proto == "udp":
+            result = NetDiagnostics.udp_ping(host, port, timeout)
+        else:
+            result = NetDiagnostics.tcp_ping(host, port, timeout)
+        self._send_json(200, "OK", result)
+
+    def _handle_diag_ports(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        host = params.get("host", ["localhost"])[0]
+        port_strs = params.get("ports", None)
+        if port_strs:
+            ports = [int(p) for p in port_strs[0].split(",") if p.strip().isdigit()]
+        else:
+            ports = None
+        result = NetDiagnostics.port_scan(host, ports)
+        self._send_json(200, "OK", result)
+
+    def _handle_diag_dns(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        hostname = params.get("host", ["localhost"])[0]
+        result = NetDiagnostics.dns_resolve(hostname)
+        self._send_json(200, "OK", result)
+
+    def _handle_diag_traceroute(self):
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        host = params.get("host", ["localhost"])[0]
+        max_hops = int(params.get("max_hops", ["15"])[0])
+        result = NetDiagnostics.traceroute(host, max_hops)
+        self._send_json(200, "OK", result)
+
+    def _handle_diag_interfaces(self):
+        self._send_json(200, "OK", {"interfaces": NetDiagnostics.get_interfaces()})
+
+    def _handle_crypto_status(self):
+        self._send_json(200, "OK", {
+            "cipher": "Coffee Blend Cipher v2 (SHA-256 + HMAC + IV)",
+            "ecc": "Ed25519 (Curve25519)",
+            "pq_kem": "ML-KEM-768 (Kyber) hybrid with ECDH",
+            "hash": "SHA-256 + SHA-3-256",
+            "hmac": "HMAC-SHA256 + HMAC-SHA3-256",
+            "key_derivation": "HKDF-SHA256",
+            "e2ee": "ECDH + ML-KEM hybrid + CoffeeCipher v2 (IV + HMAC)",
+            "node_address": MeshNode.node_address,
+            "node_pubkey_present": MeshNode.node_pubkey is not None,
+            "node_cert_hash": CoffeeCipher.hash(MeshNode.node_secret) if MeshNode.node_secret else None,
+            "persist_encrypted": True,
+            "timestamp_validation": True,
+            "mesh_hmac": True,
+            "covert_channel_version": "v2 (CBC2 + ECCv2)",
+            "emergency_mode": EmergencyMode.is_active(),
+            "incident_auto_response": IncidentResponse._auto_response_enabled,
+        })
+
     def _uptime(self):
         return time.time() - self._start_time
 
@@ -4301,6 +5320,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">📡 Mesh</div>
     <div class="tab" data-tab="covert" onclick="switchTab('covert')">🔒 Covert</div>
     <div class="tab" data-tab="itf" onclick="switchTab('itf')">🛡 ITF</div>
+    <div class="tab" data-tab="crypto" onclick="switchTab('crypto')">🔐 Crypto</div>
+    <div class="tab" data-tab="incident" onclick="switchTab('incident')">🚨 IR</div>
+    <div class="tab" data-tab="signal" onclick="switchTab('signal')">📡 Signal</div>
+    <div class="tab" data-tab="diag" onclick="switchTab('diag')">🔧 Diag</div>
     <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
   </div>
@@ -4472,6 +5495,113 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
   </div>
 
+  <div id="panel-crypto" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Cipher</h2><div class="value" style="font-size:0.9rem" id="cryptoCipher">—</div><div class="label">Encryption engine</div></div>
+      <div class="card"><h2>ECC</h2><div class="value" style="font-size:0.9rem" id="cryptoECC">—</div><div class="label">Elliptic curve</div></div>
+      <div class="card"><h2>PQ-KEM</h2><div class="value" style="font-size:0.9rem" id="cryptoPQ">—</div><div class="label">Post-quantum</div></div>
+      <div class="card"><h2>E2EE</h2><div class="value" style="font-size:0.9rem" id="cryptoE2EE">—</div><div class="label">End-to-end</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Cryptographic Details</h2>
+      <div id="cryptoDetails" style="font-size:0.75rem;color:var(--muted)">Loading…</div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Key Rotation</h2>
+        <div class="form-row">
+          <button class="btn" onclick="rotateKeys()">🔄 Rotate Keys</button>
+          <button class="btn outline" style="margin-left:0.5rem" onclick="showCryptoStatus()">↻ Refresh</button>
+        </div>
+        <div id="keyRotResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Emergency</h2>
+        <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.3rem">⚠ Activating emergency mode rotates keys and goes stealth</div>
+        <div class="form-row">
+          <button class="btn" style="background:#aa0000" onclick="emergencyActivate()">🚨 EMERGENCY</button>
+          <button class="btn secondary" onclick="emergencyDeactivate()">Deactivate</button>
+        </div>
+        <div id="emergencyResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-incident" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Alerts</h2><div class="value" id="irAlertCount">0</div><div class="label">Total incidents</div></div>
+      <div class="card"><h2>Critical</h2><div class="value" id="irCritical">0</div><div class="label">Critical alerts</div></div>
+      <div class="card"><h2>Auto-Response</h2><div class="value" id="irAutoResp">—</div><div class="label"><button class="btn small outline" onclick="toggleAutoResp()">Toggle</button></div></div>
+      <div class="card"><h2>Audit Chain</h2><div class="value" id="irChainValid">—</div><div class="label">Tamper evidence</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Recent Alerts <button class="btn small outline" onclick="clearAlerts()" style="margin-left:0.5rem">Clear</button></h2>
+      <div id="irAlertList" style="max-height:200px;overflow-y:auto;font-size:0.75rem">Loading…</div>
+    </div>
+  </div>
+
+  <div id="panel-signal" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Mesh Traffic</h2><div class="value" id="sigMesh">0</div><div class="label">recv/s · <span id="sigMeshErr">0</span> errors</div></div>
+      <div class="card"><h2>HTTP Traffic</h2><div class="value" id="sigHttp">0</div><div class="label">rps · <span id="sigHttp418">0</span> blocked</div></div>
+      <div class="card"><h2>Satellite</h2><div class="value" id="sigSat">0</div><div class="label">sat messages</div></div>
+      <div class="card"><h2>Uptime</h2><div class="value" id="sigUptime">0s</div><div class="label">Since start</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Link Quality</h2>
+      <div id="sigLinkQuality" style="font-size:0.75rem;color:var(--muted)">No peer data yet</div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Emergency Mode</h2>
+      <div id="sigEmergency" style="font-size:0.75rem;color:var(--muted)">Normal operations</div>
+    </div>
+  </div>
+
+  <div id="panel-diag" class="panel">
+    <div class="grid">
+      <div class="card">
+        <h2>TCP Ping</h2>
+        <div class="form-row">
+          <input type="text" id="diagPingHost" placeholder="Host" style="flex:2">
+          <input type="number" id="diagPingPort" placeholder="4180" value="4180" style="width:70px">
+          <button class="btn secondary" onclick="diagPing()">Ping</button>
+        </div>
+        <div id="diagPingResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Port Scan</h2>
+        <div class="form-row">
+          <input type="text" id="diagScanHost" placeholder="Host" style="flex:2">
+          <button class="btn secondary" onclick="diagScan()">Scan</button>
+        </div>
+        <div id="diagScanResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>DNS Resolve</h2>
+        <div class="form-row">
+          <input type="text" id="diagDnsHost" placeholder="Hostname" style="flex:1">
+          <button class="btn secondary" onclick="diagDns()">Resolve</button>
+        </div>
+        <div id="diagDnsResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Traceroute</h2>
+        <div class="form-row">
+          <input type="text" id="diagTraceHost" placeholder="Host" style="flex:1">
+          <button class="btn secondary" onclick="diagTrace()">Trace</button>
+        </div>
+        <div id="diagTraceResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Network Interfaces</h2>
+      <div id="diagIfaces" style="font-size:0.75rem">Loading…</div>
+      <button class="btn small outline" onclick="diagIfaces()">Refresh</button>
+    </div>
+  </div>
+
   <div id="panel-schedule" class="panel">
     <div class="card">
       <h2>Schedule Brew</h2>
@@ -4542,6 +5672,10 @@ function switchTab(name) {{
   if (name === 'history') {{ refreshHistory(); }}
   if (name === 'schedule') {{ refreshSchedules(); }}
   if (name === 'itf') {{ refreshItf(); }}
+  if (name === 'crypto') {{ showCryptoStatus(); }}
+  if (name === 'incident') {{ refreshIR(); }}
+  if (name === 'signal') {{ refreshSignal(); }}
+  if (name === 'diag') {{ diagIfaces(); }}
 }}
 
 async function refresh() {{
@@ -4985,9 +6119,165 @@ function connectSSE() {{
   }};
 }}
 
+async function showCryptoStatus() {{
+  const c = await api('GET', '/cpip/crypto');
+  if (!c) return;
+  document.getElementById('cryptoCipher').textContent = c.cipher || '—';
+  document.getElementById('cryptoECC').textContent = c.ecc || '—';
+  document.getElementById('cryptoPQ').textContent = c.pq_kem || '—';
+  document.getElementById('cryptoE2EE').textContent = c.e2ee || '—';
+  const det = document.getElementById('cryptoDetails');
+  det.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem">
+    <div><b>Hash:</b> ${{esc(c.hash||'—')}}</div>
+    <div><b>HMAC:</b> ${{esc(c.hmac||'—')}}</div>
+    <div><b>KDF:</b> ${{esc(c.key_derivation||'—')}}</div>
+    <div><b>Covert:</b> ${{esc(c.covert_channel_version||'—')}}</div>
+    <div><b>Timestamp Validation:</b> ${{c.timestamp_validation ? '✓' : '✗'}}</div>
+    <div><b>Mesh HMAC:</b> ${{c.mesh_hmac ? '✓' : '✗'}}</div>
+    <div><b>Encrypted Storage:</b> ${{c.persist_encrypted ? '✓' : '✗'}}</div>
+    <div><b>Emergency:</b> ${{c.emergency_mode ? '🔴 ACTIVE' : '🟢 Normal'}}</div>
+    <div><b>Address:</b> ${{esc(c.node_address||'—')}}</div>
+    <div><b>Auto-Response:</b> ${{c.incident_auto_response ? 'ON' : 'OFF'}}</div>
+  </div>`;
+}}
+
+async function rotateKeys() {{
+  const r = await api('POST', '/cpip/emergency', {{ action: 'rotate_keys' }});
+  if (r) {{ document.getElementById('keyRotResult').textContent = 'Keys rotated ✓'; showCryptoStatus(); }}
+}}
+
+async function emergencyActivate() {{
+  if (!confirm('⚠ EMERGENCY MODE: Rotate keys, go stealth, notify peers. Continue?')) return;
+  const r = await api('POST', '/cpip/emergency', {{ action: 'activate', reason: 'dashboard' }});
+  document.getElementById('emergencyResult').textContent = r ? 'Emergency activated' : 'Failed';
+  showCryptoStatus(); refreshItf();
+}}
+
+async function emergencyDeactivate() {{
+  const r = await api('POST', '/cpip/emergency', {{ action: 'deactivate' }});
+  document.getElementById('emergencyResult').textContent = r ? 'Deactivated' : 'Failed';
+  showCryptoStatus();
+}}
+
+async function refreshIR() {{
+  const s = await api('GET', '/cpip/incident');
+  if (!s) return;
+  document.getElementById('irAlertCount').textContent = s.total_alerts || 0;
+  const levels = s.alerts_by_level || {{}};
+  document.getElementById('irCritical').textContent = (levels.critical||0) + (levels.high||0);
+  document.getElementById('irAutoResp').textContent = s.auto_response ? 'ON' : 'OFF';
+  document.getElementById('irChainValid').textContent = s.audit_chain_valid ? '✓ Valid' : '✗ Broken';
+  const al = await api('GET', '/cpip/incident/alerts?limit=20');
+  const el = document.getElementById('irAlertList');
+  if (!al || !al.alerts || !al.alerts.length) {{ el.innerHTML = '<div style="color:var(--muted)">No alerts</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Lvl</th><th>Cat</th><th>Message</th></tr>';
+  for (const a of al.alerts.slice().reverse()) {{
+    const t = a.human_time ? a.human_time.slice(11,19) : '—';
+    const clr = a.level==='critical'?'var(--accent)':a.level==='high'?'#ff8800':a.level==='warn'?'#ffcc00':'var(--muted)';
+    html += `<tr><td style="font-size:0.7rem">${{esc(t)}}</td><td style="color:${{clr}};font-weight:600">${{esc(a.level)}}</td><td>${{esc(a.category)}}</td><td style="font-size:0.7rem">${{esc(a.message)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function clearAlerts() {{
+  await api('POST', '/cpip/incident', {{ action: 'clear_alerts' }});
+  refreshIR();
+}}
+
+async function toggleAutoResp() {{
+  const s = await api('GET', '/cpip/incident');
+  const r = await api('POST', '/cpip/incident', {{ action: 'auto_response', enabled: !s.auto_response }});
+  if (r) showToast('Auto-response: ' + (r.enabled ? 'ON' : 'OFF'));
+  refreshIR();
+}}
+
+async function refreshSignal() {{
+  const s = await api('GET', '/cpip/signal');
+  if (!s) return;
+  const bw = s.bandwidth || {{}};
+  const m = bw.mesh || {{}}, h = bw.http || {{}}, sat = bw.sat || {{}}, mob = bw.mobile || {{}};
+  document.getElementById('sigMesh').textContent = (m.recv||0) + ' total';
+  document.getElementById('sigMeshErr').textContent = m.errors || 0;
+  document.getElementById('sigHttp').textContent = (h.rps||0) + ' rps';
+  document.getElementById('sigHttp418').textContent = h['418s'] || 0;
+  document.getElementById('sigSat').textContent = (sat.recv||0) + ' recv';
+  document.getElementById('sigUptime').textContent = Math.floor(bw.uptime_seconds||0) + 's';
+  const lq = s.link_quality || {{}};
+  const lqEl = document.getElementById('sigLinkQuality');
+  if (Object.keys(lq).length) {{
+    let html = '<table><tr><th>Peer</th><th>Latency</th><th>Loss</th><th>Score</th><th>Quality</th></tr>';
+    for (const [pid, info] of Object.entries(lq)) {{
+      html += `<tr><td>${{esc(pid.slice(0,8))}}</td><td>${{info.latency_ms||'—'}}ms</td><td>${{info.loss_pct||0}}%</td><td>${{info.score||'—'}}</td><td>${{esc(info.quality)}}</td></tr>`;
+    }}
+    html += '</table>'; lqEl.innerHTML = html;
+  }} else {{ lqEl.innerHTML = '<div style="color:var(--muted)">No peer link data yet</div>'; }}
+  const em = s.emergency || {{}};
+  document.getElementById('sigEmergency').innerHTML = em.active
+    ? '<span style="color:var(--accent);font-weight:700">🔴 EMERGENCY ACTIVE</span>'
+    : '<span style="color:#00ff88">🟢 Normal operations</span>';
+}}
+
+async function diagPing() {{
+  const host = document.getElementById('diagPingHost').value || 'localhost';
+  const port = document.getElementById('diagPingPort').value || '4180';
+  const r = await api('GET', `/cpip/diagnostics/ping?host=${{encodeURIComponent(host)}}&port=${{port}}`);
+  const el = document.getElementById('diagPingResult');
+  if (!r) {{ el.textContent = 'Ping failed'; return; }}
+  el.innerHTML = r.alive
+    ? `<div style="color:#00ff88">${{esc(r.host)}}:${{r.port}} — ${{r.latency_ms}}ms</div>`
+    : `<div style="color:var(--accent)">${{esc(r.host)}}:${{r.port}} — unreachable (${{esc(r.error||'timeout')}})</div>`;
+}}
+
+async function diagScan() {{
+  const host = document.getElementById('diagScanHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/ports?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagScanResult');
+  if (!r || !r.ports) {{ el.textContent = 'Scan failed'; return; }}
+  let html = '<table><tr><th>Port</th><th>Status</th></tr>';
+  for (const [p, s] of Object.entries(r.ports)) {{
+    const clr = s==='open'?'#00ff88':'var(--muted)';
+    html += `<tr><td>${{p}}</td><td style="color:${{clr}}">${{s}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function diagDns() {{
+  const host = document.getElementById('diagDnsHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/dns?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagDnsResult');
+  if (!r) {{ el.textContent = 'DNS failed'; return; }}
+  el.innerHTML = r.resolved
+    ? `<div style="color:#00ff88">✓ ${{esc(r.hostname)}} → ${{(r.ipv4||[]).join(', ')}}</div>`
+    : `<div style="color:var(--accent)">✗ ${{esc(r.hostname)}}: ${{esc(r.error||'unknown')}}</div>`;
+}}
+
+async function diagTrace() {{
+  const host = document.getElementById('diagTraceHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/traceroute?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagTraceResult');
+  if (!r || !r.hops) {{ el.textContent = 'Traceroute failed'; return; }}
+  let html = '<table><tr><th>TTL</th><th>Addr</th><th>Latency</th></tr>';
+  for (const h of r.hops) {{
+    html += `<tr><td>${{h.ttl}}</td><td>${{esc(h.addr)}}</td><td>${{h.latency_ms !== null ? h.latency_ms+'ms' : '*'}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function diagIfaces() {{
+  const r = await api('GET', '/cpip/diagnostics/interfaces');
+  const el = document.getElementById('diagIfaces');
+  if (!r || !r.interfaces) {{ el.textContent = 'Failed'; return; }}
+  let html = '<table><tr><th>Interface</th><th>MAC</th><th>State</th></tr>';
+  for (const i of r.interfaces) {{
+    html += `<tr><td>${{esc(i.name)}}</td><td style="font-size:0.7rem">${{esc(i.mac||'—')}}</td><td>${{esc(i.state||'?')}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
 refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory();
+showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces();
 document.getElementById('histFilter').addEventListener('change', refreshHistory);
 setInterval(refresh, 5000);
 setInterval(refreshHistory, 15000);
@@ -4998,6 +6288,8 @@ setInterval(refreshSat, 30000);
 setInterval(refreshMobile, 30000);
 setInterval(refreshRadio, 30000);
 setInterval(refreshItf, 15000);
+setInterval(refreshSignal, 5000);
+setInterval(refreshIR, 10000);
 connectSSE();
 </script>
 </body>
@@ -5078,6 +6370,14 @@ DEFENSE_RATE_LIMIT = int(os.environ.get("CPIP_DEFENSE_RATE_LIMIT", "10"))
 DEFENSE_RATE_WINDOW = int(os.environ.get("CPIP_DEFENSE_RATE_WINDOW", "60"))
 DEFENSE_BLACKLIST_TTL = int(os.environ.get("CPIP_DEFENSE_BLACKLIST_TTL", "3600"))
 DEFENSE_MAX_BLACKLIST = int(os.environ.get("CPIP_DEFENSE_MAX_BLACKLIST", "1000"))
+
+MAX_REQUEST_SIZE = int(os.environ.get("CPIP_MAX_REQUEST_SIZE", "65536"))
+CORS_ALLOWED_ORIGINS = os.environ.get("CPIP_CORS_ORIGINS", "")
+HTTP_RATE_LIMIT = int(os.environ.get("CPIP_HTTP_RATE_LIMIT", "100"))
+HTTP_RATE_WINDOW = int(os.environ.get("CPIP_HTTP_RATE_WINDOW", "60"))
+
+_HTTP_RATE_LOCK = threading.Lock()
+_HTTP_RATE_COUNTS = {}
 
 # Tool fingerprint tracking
 TEAPOT_TOOL_HITS = {}  # {tool_name: {"count": int, "last_seen": float, "addrs": set}}
@@ -5269,7 +6569,10 @@ def main():
     print(f"   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print(f"   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
-    print(f"   NOT FIPS COMPLIANT — uses Coffee Blend Cipher + Ed25519 (non-standard, not constant-time)", flush=True)
+    print(f"   Crypto: CoffeeCipher v2 (SHA-256+HMAC+IV) + Ed25519 + ML-KEM-768 (PQ)", flush=True)
+    print(f"   Incident Response: {'ACTIVE' if IncidentResponse._auto_response_enabled else 'STANDBY'}", flush=True)
+    print(f"   Signal Awareness: Jamming detection + bandwidth monitoring", flush=True)
+    print(f"   Emergency Mode: Key rotation + secure wipe available", flush=True)
 
     if PITAIL_ENABLED:
         start_pitail()

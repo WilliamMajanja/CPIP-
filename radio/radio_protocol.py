@@ -4,7 +4,9 @@ Communicates with the C radio_if binary over a Unix domain socket.
 Usage:
     from radio_protocol import RadioInterface
     ri = RadioInterface()
-    ri.start(mode="sim")
+    ri.start(mode="lora")           # Real LoRa hardware (default)
+    ri.start(mode="tnc")            # KISS TNC over serial
+    ri.start(mode="sim")            # Simulation (testing only)
     ri.send(b"hello")
     for pkt in ri.receive():
         print(pkt)
@@ -53,8 +55,8 @@ class RadioInterface:
         self._rx_lock = threading.Lock()
         self._status = {}
 
-    def start(self, mode="sim", frequency=915000000, sf=9, bandwidth=125000,
-              tx_power=17, device="/dev/ttyUSB0", baud=115200, binary=None):
+    def start(self, mode="lora", frequency=915000000, sf=9, bandwidth=125000,
+              tx_power=17, device="/dev/spidev0.0", baud=115200, binary=None):
         """Launch the C radio_if binary and connect over Unix socket."""
         if self._running:
             return

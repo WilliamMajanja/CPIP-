@@ -10,7 +10,8 @@ import urllib.request
 import urllib.error
 
 SERVER_CMD = [sys.executable, "server.py"]
-BASE = "http://localhost:4180"
+TEST_PORT = int(os.environ.get("CPIP_TEST_PORT", "4182"))
+BASE = f"http://localhost:{TEST_PORT}"
 
 
 class TestCPIPServer(unittest.TestCase):
@@ -20,7 +21,7 @@ class TestCPIPServer(unittest.TestCase):
     def setUpClass(cls):
         env = os.environ.copy()
         env.update({
-            "CPIP_PORT": "4180",
+            "CPIP_PORT": str(TEST_PORT),
             "CPIP_MESH": "1",
             "CPIP_SAT": "1",
             "CPIP_MOBILE": "1",
@@ -351,6 +352,18 @@ class TestCPIPServer(unittest.TestCase):
     def test_ntp_status_key(self):
         d = self._get("/cpip/status")
         self.assertIn("ntp", d)
+
+    # ── Crypto API ────────────────────────────────────────────────
+    # (tested comprehensively in test_crypto.py)
+
+    # ── Security Headers ─────────────────────────────────────────
+    def test_security_headers(self):
+        import urllib.request
+        req = urllib.request.Request(f"{BASE}/")
+        with urllib.request.urlopen(req) as r:
+            headers = {k.lower(): v for k, v in r.headers.items()}
+        self.assertIn("x-content-type-options", headers, 
+                      f"Missing security headers. Got: {list(headers.keys())[:10]}")
 
 
 if __name__ == "__main__":

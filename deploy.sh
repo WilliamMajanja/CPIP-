@@ -3,9 +3,9 @@ set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
 #  CPIP — Coffee Pot Internet Protocol v2.2
-#  RFC 2324 + RFC 7168 + Ed25519 ECC + Mesh + Covert + 418 Defense
+#  RFC 2324 + RFC 7168 + Ed25519 ECC + ML-KEM-768 + Mesh + 418 Defense
 #  Full hardware install for Raspberry Pi Zero WH
-#  Zero external Python dependencies. Zero simulation. All fangs.
+#  Zero simulation. Post-quantum ready. All fangs.
 # ═══════════════════════════════════════════════════════════════════════
 
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -33,7 +33,23 @@ else
     ok "Python3 $(python3 -c 'import sys;print(sys.version.split()[0])')"
 fi
 
-# ── Install RPi.GPIO (required for hardware GPIO, no simulation) ────
+# ── Build radio interface ──────────────────────────────────────────────
+info "Building radio interface..."
+if [ -d "${SCRIPT_DIR}/radio" ]; then
+    cd "${SCRIPT_DIR}/radio"
+    if make 2>/dev/null; then
+        ok "Radio interface built (LoRa SX1276 + KISS TNC + RTL-SDR)"
+        # Build RTL-SDR variant if librtlsdr is available
+        if pkg-config --exists librtlsdr 2>/dev/null || [ -f /usr/lib/*/librtlsdr.so ]; then
+            make rtl 2>/dev/null && ok "RTL-SDR support compiled" || warn "RTL-SDR build skipped"
+        fi
+    else
+        warn "Radio interface build failed — install gcc and run: cd radio/ && make"
+    fi
+    cd "$SCRIPT_DIR"
+else
+    warn "No radio/ directory found — radio features disabled"
+fi
 info "Installing RPi.GPIO (hardware GPIO — no simulation)..."
 if python3 -c "import RPi.GPIO" 2>/dev/null; then
     ok "RPi.GPIO already installed"
@@ -92,7 +108,7 @@ Environment=CPIP_PORT=4180
 Environment=CPIP_MESH=1
 Environment=CPIP_MESH_PORT=4191
 Environment=CPIP_COVERT=1
-Environment=CPIP_COVERT_KEY=CHANGE_ME_COFFEE_BLEND_2024
+Environment=CPIP_COVERT_KEY=
 Environment=CPIP_COVER_TRAFFIC=1
 Environment=CPIP_AVAHI=1
 Environment=CPIP_GPIO=1
@@ -126,7 +142,7 @@ fi
 
 # ── Summary ──────────────────────────────────────────────────────────
 IP_ADDR=$(hostname -I | awk '{print $1}')
-POT_ID=$(python3 -c "import hashlib; print(hashlib.md5(b'$(hostname):4180').hexdigest()[:8])")
+POT_ID=$(python3 -c "import hashlib; print(hashlib.sha256(b'$(hostname):4180').hexdigest()[:8])")
 ECC_ADDR=$(python3 -c "
 import hashlib, base64
 seed = hashlib.md5(b'CHANGE_ME_COFFEE_BLEND_2024' + b'$(hostname):4180').digest()
@@ -137,7 +153,7 @@ print(Ed25519.pubkey_to_address(pk))
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v2.1 Deployed — No Simulation${NC}"
+echo -e "${GREEN}  CPIP v2.2 Deployed — Post-Quantum Ready${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"
@@ -147,7 +163,10 @@ echo "  Listen     : 0.0.0.0:4180"
 echo "  Mesh Port  : 4191 (UDP)"
 echo "  Latent     : 4192, 4193, 4194 (port-knocking)"
   echo "  Defense    : 418 I'm a Teapot (probe + pentest tool blocking)"
-echo "  Cipher     : Coffee Blend + Ed25519 (pure Python, not constant-time)"
+echo "  Cipher     : CoffeeCipher v2 (SHA-256+HMAC+IV) + Ed25519 + ML-KEM-768"
+echo "  PQ-KEM     : Hybrid ECDH + ML-KEM-768 (256-bit PQ security)"
+echo "  Hash       : SHA-256 + SHA-3-256"
+echo "  Incident IR: Auto-detection + mitigation"
 echo "  GPIO       : RPi.GPIO Pin 17 (hardware only — no simulation)"
 echo "  Server     : /opt/cpip/server.py"
 echo "  CLI        : /usr/local/bin/htcpcp"
@@ -184,11 +203,14 @@ echo '    curl -X BREW http://'${IP_ADDR}':4180/coffee'
 echo '    curl -X BREW -H "Accept-Additions: milk;variety=whole" http://'${IP_ADDR}':4180/tea'
 echo '    curl http://'${IP_ADDR}':4180/cpip/mesh/status'
 echo ""
-echo -e "${YELLOW}  ⚠  NON-FIPS WARNING${NC}"
-echo "  This software uses non-standard cryptography:"
-echo "  - Coffee Blend Cipher (MD4-derived XOR stream)"
-echo "  - Pure-Python Ed25519 (NOT constant-time)"
-echo "  Does NOT comply with FIPS 140-2/3. Do not use for actual security."
+echo -e "${YELLOW}  ⚠  CRYPTOGRAPHY NOTICE${NC}"
+echo "  This software uses a hybrid cryptographic architecture:"
+echo "  - CoffeeCipher v2: SHA-256+HMAC authenticated encryption (custom)"
+echo "  - Ed25519: Pure Python ECC (NOT constant-time — side-channel risk)"
+echo "  - ML-KEM-768: Post-quantum key encapsulation (lattice-based)"
+echo "  - SHA-3-256: Tamper-evident audit logging"
+echo "  - HMAC-SHA256: Mesh message authentication"
+echo "  Does NOT comply with FIPS 140-2/3. See SECURITY.md for details."
 echo ""
-echo -e "${GREEN}  ☕  Brew mesh. Route covertly. Fangs out.${NC}"
+echo -e "${GREEN}  ☕  Brew mesh. Route covertly. Post-quantum ready. Fangs out.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
