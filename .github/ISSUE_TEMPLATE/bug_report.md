@@ -1,35 +1,30 @@
 ---
 name: Bug report
-about: Report something that isn't brewing right
-title: ''
+about: Report a bug in CPIP
+title: "[BUG] "
 labels: bug
 assignees: ''
-
 ---
 
 **Describe the bug**
-A clear description of what's wrong.
+A clear description of what went wrong.
 
-**To reproduce**
-Steps to reproduce the behavior:
-1. Start server with `...`
-2. Run `htcpcp ...`
-3. See error
+**To Reproduce**
+Steps to reproduce:
+1. Start server with `python3 server.py`
+2. ...
 
 **Expected behavior**
-What should have happened.
+What you expected to happen.
 
-**Environment (please complete):**
-- OS: [e.g. Raspberry Pi OS, Ubuntu 24.04]
-- Python version: [e.g. 3.13]
-- CPIP version: [output of `htcpcp version`]
-- Transports enabled: [mesh, sat, radio, mobile]
-- Hardware: [e.g. Pi 5, SX1276 LoRa, SIM7600 modem]
+**Environment**
+- Raspberry Pi model: 
+- Python version: 
+- CPIP version: 
+- Transport(s) active: [ ] LAN [ ] Satellite [ ] Radio [ ] Mobile
 
-**Server logs**
-```
-Paste relevant output from the server console here.
-```
+**Logs**
+Paste relevant server output.
 
 **Additional context**
-Anything else?
+Any other context.

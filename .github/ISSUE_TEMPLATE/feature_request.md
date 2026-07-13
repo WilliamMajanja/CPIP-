@@ -1,20 +1,19 @@
 ---
 name: Feature request
-about: Suggest an addition to the protocol
-title: ''
+about: Suggest a feature for CPIP
+title: "[FEATURE] "
 labels: enhancement
 assignees: ''
-
 ---
 
 **Is your feature request related to a problem?**
-What problem does it solve?
+A clear description of the problem.
 
-**Describe the solution**
-What should happen? New endpoint, CLI flag, transport, env var?
+**Describe the solution you'd like**
+What you want to happen.
 
-**Describe alternatives you've considered**
-Other approaches.
+**Describe alternatives considered**
+Any alternative solutions.
 
-**Implementation hints**
-If you know the codebase, where would this go?
+**Additional context**
+Any other context.

@@ -1,6 +1,6 @@
 CPIP — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 + Mesh Extension
 
-Next-gen IoT coffee control for Raspberry Pi with mesh networking. Controls real coffee makers via GPIO, discovers peers via mDNS/UDP, routes messages through Pi Zero mesh networks without internet. Includes web dashboard, SSE events, Prometheus metrics, brew scheduling, and a covert channel hidden in HTCPCP brew requests using a non-FIPS custom cipher.
+Next-gen IoT coffee control for Raspberry Pi with mesh networking and post-quantum encrypted comms. Controls real coffee makers via GPIO, discovers peers via mDNS/UDP, routes messages through Pi Zero mesh networks without internet. Includes ML-KEM-768 (Kyber768) post-quantum key exchange, AES-256-CTR encryption, web dashboard, SSE events, Prometheus metrics, brew scheduling, and a covert channel hidden in HTCPCP brew requests.
 
 Pots discover each other automatically. Messages store-and-forward through the mesh. Zero external Python dependencies. Runs on Pi Zero 2 WH.

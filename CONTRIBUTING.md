@@ -19,8 +19,9 @@ participating, you are expected to uphold its terms.
 ## What We Do Not Accept
 
 - Pull requests that add external Python dependencies (stdlib only)
-- Cryptographic "hardening" that moves toward FIPS compliance (this is
-  deliberately non-FIPS)
+- Cryptographic "hardening" that moves toward FIPS compliance (the ML-KEM-768
+  KEM is real lattice-based crypto verified correct for in-situ use; constant-
+  time hardening is welcome but FIPS certification is out of scope)
 - Changes that break RFC 2324 or RFC 7168 compliance
 - Removal of the 418 "I'm a teapot" defense
 

@@ -144,8 +144,9 @@ Encode a covert message
 .I /usr/local/bin/htcpcp
 CLI client.
 .SH BUGS
-The Coffee Blend Cipher is deliberately non-FIPS compliant. Do not use for
-actual cryptographic security.
+The Coffee Blend Cipher is deliberately non-FIPS compliant and provides only
+covert channel encoding. Actual E2EE uses ML-KEM-768 (Kyber768) post-quantum
+key exchange with AES-256-CTR symmetric encryption.
 .SH SEE ALSO
 .BR server.py (1),
 RFC 2324 (https://datatracker.ietf.org/doc/html/rfc2324),
