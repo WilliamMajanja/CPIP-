@@ -1,6 +1,6 @@
 # ☕ CPIP — Coffee Pot Internet Protocol
 
-> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh + Multi-Transport + ITF Defense + FIPS-Compliant Crypto
+> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh + Multi-Transport + ITF Defense + FIPS-Compliant Crypto + 1nf1D3L Post-Quantum KEM
 
 ```
      ( (
@@ -87,6 +87,8 @@ looks like coffee. It is not coffee.
 - **CoffeeCipher v3 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
 - **RSA-KEM-2048** — FIPS 186-4 / SP 800-56B key encapsulation with OAEP
 - **HybridKEM** — ECDH P-256 + RSA-KEM hybrid key exchange
+- **1nf1D3L's Kyber KEM** — Non-FIPS ML-KEM-768 variant (η=3, custom domain tags, NTT perturbation, coffee recipe binding) via `b4dm4n-cw` CLI
+- **Hybrid PQ+Classical** — ECDH P-256 + 1nf1D3L Kyber hybrid key exchange
 - **SHA-256 domain-separated hashing** — tamper-evident audit chain
 - **ECDSA/ECDH P-256** — FIPS 186-4 end-to-end encryption, address book, port hopping
 - **Incident response** — auto-detection, severity alerts, auto-mitigation
@@ -364,6 +366,7 @@ The dashboard Covert tab provides:
 All cryptographic primitives in CPIP v3 use FIPS-compliant algorithms via the
 `cryptography` library, which provides constant-time implementations. The
 `secrets` module replaces `random` for all security-relevant operations.
+Post-quantum KEM is available via the `b4dm4n-cw` CLI (Non-FIPS).
 
 ### CoffeeCipher v3 (AES-256-GCM)
 
@@ -385,20 +388,43 @@ All cryptographic primitives in CPIP v3 use FIPS-compliant algorithms via the
 - **Padding**: OAEP with SHA-256 label
 - **Key derivation**: HKDF-SHA256 from RSA-KEM shared secret
 
-### HybridKEM
+### HybridKEM (Classical)
 
 - **ECDH P-256 + RSA-KEM-2048** combined key exchange
 - **Key derivation**: HKDF-SHA256 from combined ECDH + RSA-KEM shared secrets
 - **Hybrid guarantee**: Secure if EITHER classical component holds
+
+### 1nf1D3L's Kyber KEM (Post-Quantum, Non-FIPS)
+
+Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
+
+- **Variant**: Non-FIPS ML-KEM-768 with 1nf1D3L modifications
+- **Parameters**: n=256, k=3, q=3329, η₁=3, η₂=3, du=10, dv=4
+- **Domain tag**: "1NF1D3L-KYBER-V1" on all hash/KDF inputs
+- **Wider noise**: η=3 (vs FIPS η=2) — more entropy, stronger concrete security
+- **NTT twiddle perturbation**: Per-session random twiddle factors for side-channel resistance
+- **Coffee recipe binding**: Recipe string (espresso, cappuccino, latte, mocha, americano) mixed into KDF
+- **Key confirmation**: Re-encapsulation check (implicit rejection via KDF with z)
+- **Sizes**: PK=1184B, SK=2400B, CT=1120B, SS=32B
+- **CLI**: `b4dm4n-cw {keygen,encaps,decaps,bench,info}`
+
+### Hybrid PQ+Classical (Defense in Depth)
+
+- **ECDH P-256 + 1nf1D3L Kyber** combined key exchange
+- **Key derivation**: HKDF-SHA3-256 from combined ECDH + Kyber shared secrets
+- **Hybrid guarantee**: Secure if EITHER component holds
+- **Sizes**: PK≈1251B, SK≈2432B, CT≈1187B, SS=32B
+- **CLI**: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps}`
 
 ### HMAC-SHA256
 
 - Mesh heartbeat authentication
 - Message integrity verification
 
-### SHA-256
+### SHA-256 / SHA3-256
 
 - Domain-separated hashing for audit chain and identity
+- SHA3-256 for Kyber KDF/H
 
 ### Encrypted Persistence
 
@@ -406,9 +432,8 @@ All cryptographic primitives in CPIP v3 use FIPS-compliant algorithms via the
 - v1/v2 backward-compatible load
 - Data at rest encrypted with HMAC integrity
 
-**Note**: All cryptographic primitives are FIPS-compliant: AES-256-GCM (FIPS 197),
-ECDSA/ECDH P-256 (FIPS 186-4), RSA-KEM-2048 (FIPS 186-4 / SP 800-56B),
-HKDF-SHA256, HMAC-SHA256.
+**Note**: Classical primitives (AES-256-GCM, ECDSA/ECDH P-256, RSA-KEM-2048, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant.
+**1nf1D3L's Kyber is NOT FIPS 203 validated** — it is a Non-FIPS ML-KEM-768 variant with wider noise (η=3), custom domain tags, NTT perturbation, and coffee recipe binding. Use for coffee protocols, red teaming, research, and survival.
 
 ---
 

@@ -13,6 +13,33 @@ htcpcp brew coffee "milk;variety=whole, sugar;variety=honey"
 htcpcp 418
 ```
 
+## 1nf1D3L's Kyber KEM (Post-Quantum)
+
+```bash
+# Basic Kyber KEM
+b4dm4n-cw keygen -o mykeys
+b4dm4n-cw encaps -k mykeys.pk -o ct.bin
+b4dm4n-cw decaps -k mykeys.sk -c ct.bin
+
+# With different coffee recipe (domain separation)
+b4dm4n-cw keygen --recipe cappuccino -o cap_keys
+b4dm4n-cw encaps --recipe cappuccino -k cap_keys.pk -o cap_ct.bin
+
+# Hybrid ECDH P-256 + Kyber (defense in depth)
+b4dm4n-cw hybrid-keygen -o hybrid
+b4dm4n-cw hybrid-encaps -k hybrid.hp -o hyb_ct.bin
+b4dm4n-cw hybrid-decaps -k hybrid.hs -c hyb_ct.bin
+
+# Benchmark
+b4dm4n-cw bench -n 50
+
+# Show parameters
+b4dm4n-cw info
+
+# Show ASCII art
+b4dm4n-cw art
+```
+
 ## Mesh Messaging
 
 ```bash

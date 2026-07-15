@@ -27,6 +27,16 @@ curl -X WHEN http://localhost:4180/
 # 7. Check defenses
 ./htcpcp itf status
 ./htcpcp itf blacklist
+
+# 8. Post-Quantum KEM (1nf1D3L's Kyber)
+./b4dm4n_cw.py keygen -o mykeys
+./b4dm4n_cw.py encaps -k mykeys.pk -o ct.bin
+./b4dm4n_cw.py decaps -k mykeys.sk -c ct.bin
+
+# 9. Hybrid ECDH + Kyber (defense in depth)
+./b4dm4n_cw.py hybrid-keygen -o hybrid
+./b4dm4n_cw.py hybrid-encaps -k hybrid.hp -o hyb_ct.bin
+./b4dm4n_cw.py hybrid-decaps -k hybrid.hs -c hyb_ct.bin
 ```
 
 ## With extra transports
