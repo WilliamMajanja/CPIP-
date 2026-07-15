@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Pot Internet Protocol v2.2
+#  CPIP — Coffee Pot Internet Protocol v3.0
 #  RFC 2324 + RFC 7168 + Ed25519 ECC + ML-KEM-768 + Mesh + 418 Defense
 #  Full hardware install for Raspberry Pi Zero WH
 #  Zero simulation. Post-quantum ready. All fangs.
@@ -96,7 +96,7 @@ fi
 info "Creating systemd service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v2.2 — Coffee Pot Internet Protocol (ECC + Mesh + 418 + Multi-Transport)
+Description=CPIP v3.0 — Coffee Pot Internet Protocol (ECC + Mesh + 418 + Multi-Transport)
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 
@@ -116,6 +116,10 @@ Environment=CPIP_NTP=1
 Environment=CPIP_MESH_STEALTH=0
 Environment=CPIP_THERMOS=0
 Environment=CPIP_PITAIL=0
+Environment=CPIP_SSL=1
+Environment=CPIP_SSL_AUTO=1
+Environment=CPIP_HTTP_REDIRECT=1
+Environment=CPIP_HTTP_REDIRECT_PORT=4181
 ExecStart=/usr/bin/python3 /opt/cpip/server.py
 Restart=on-failure
 RestartSec=5
@@ -153,16 +157,18 @@ print(Ed25519.pubkey_to_address(pk))
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v2.2 Deployed — Post-Quantum Ready${NC}"
+echo -e "${GREEN}  CPIP v3.0 Deployed — Post-Quantum Ready${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"
 echo "  Pot ID     : ${POT_ID}"
 echo "  ECC Addr   : ${ECC_ADDR}"
 echo "  Listen     : 0.0.0.0:4180"
+echo "  TLS/SSL    : Auto self-signed (CPIP_SSL_AUTO=1)"
+echo "  HTTP→HTTPS : Port 4181 (CPIP_HTTP_REDIRECT=1)"
 echo "  Mesh Port  : 4191 (UDP)"
 echo "  Latent     : 4192, 4193, 4194 (port-knocking)"
-  echo "  Defense    : 418 I'm a Teapot (probe + pentest tool blocking)"
+echo "  Defense    : 418 I'm a Teapot (probe + pentest tool blocking)"
 echo "  Cipher     : CoffeeCipher v2 (SHA-256+HMAC+IV) + Ed25519 + ML-KEM-768"
 echo "  PQ-KEM     : Hybrid ECDH + ML-KEM-768 (256-bit PQ security)"
 echo "  Hash       : SHA-256 + SHA-3-256"
@@ -173,7 +179,8 @@ echo "  CLI        : /usr/local/bin/htcpcp"
 echo "  Service    : cpip.service"
 echo ""
 echo -e "${CYAN}  Dashboard:${NC}"
-echo "    http://${IP_ADDR}:4180/dashboard"
+echo "    https://${IP_ADDR}:4180/dashboard"
+echo "    http://${IP_ADDR}:4181 → redirects to HTTPS"
 echo ""
 echo -e "${CYAN}  CLI Commands:${NC}"
 echo "    htcpcp status                    # Server status"
@@ -191,26 +198,27 @@ echo "    htcpcp covert decode <header>    # Decode covert header"
 echo "    htcpcp covert brew <msg>         # Brew with hidden message"
 echo ""
 echo -e "${CYAN}  Env Overrides:${NC}"
-echo "    CPIP_GPIO=1          # Enable RPi.GPIO pin 17 (default)"
-echo "    CPIP_MESH=1          # Enable mesh (default)"
-echo "    CPIP_MESH_STEALTH=0  # Stealth mode (no broadcast heartbeats)"
-echo "    CPIP_THERMOS=0       # Aggregator node for encrypted dead-drops"
-echo "    CPIP_PITAIL=0        # USB gadget mode (Pi Zero → host)"
-echo "    CPIP_COVERT_KEY=...  # CHANGE THIS for production"
+echo "    CPIP_SSL=0             # Disable TLS (HTTP only)"
+echo "    CPIP_SSL=1             # Enable TLS (HTTPS)"
+echo "    CPIP_SSL_AUTO=1        # Auto-generate self-signed cert"
+echo "    CPIP_SSL_CERT=/path    # Custom TLS certificate"
+echo "    CPIP_SSL_KEY=/path     # Custom TLS private key"
+echo "    CPIP_HTTP_REDIRECT=1  # Redirect HTTP→HTTPS on port 4181"
 echo ""
 echo -e "${CYAN}  Remote testing (from another machine):${NC}"
-echo '    curl -X BREW http://'${IP_ADDR}':4180/coffee'
-echo '    curl -X BREW -H "Accept-Additions: milk;variety=whole" http://'${IP_ADDR}':4180/tea'
-echo '    curl http://'${IP_ADDR}':4180/cpip/mesh/status'
+echo '    curl -X BREW https://'${IP_ADDR}':4180/coffee'
+echo '    curl -X BREW -H "Accept-Additions: milk;variety=whole" https://'${IP_ADDR}':4180/tea'
+echo '    curl https://'${IP_ADDR}':4180/cpip/mesh/status'
 echo ""
 echo -e "${YELLOW}  ⚠  CRYPTOGRAPHY NOTICE${NC}"
 echo "  This software uses a hybrid cryptographic architecture:"
 echo "  - CoffeeCipher v2: SHA-256+HMAC authenticated encryption (custom)"
 echo "  - Ed25519: Pure Python ECC (NOT constant-time — side-channel risk)"
-echo "  - ML-KEM-768: Post-quantum key encapsulation (lattice-based)"
+echo "  - ML-KEM-768: Post-quantum key encapsulation (SHA-3-based)"
 echo "  - SHA-3-256: Tamper-evident audit logging"
 echo "  - HMAC-SHA256: Mesh message authentication"
+echo "  - TLS/SSL: HTTPS with auto self-signed certs (CPIP_SSL_AUTO=1)"
 echo "  Does NOT comply with FIPS 140-2/3. See SECURITY.md for details."
 echo ""
-echo -e "${GREEN}  ☕  Brew mesh. Route covertly. Post-quantum ready. Fangs out.${NC}"
+echo -e "${GREEN}  ☕  Brew mesh. Route covertly. Post-quantum ready. TLS on. Fangs out.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"

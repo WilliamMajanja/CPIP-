@@ -3,95 +3,175 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CPIP — {hostname} Coffee Protocol</title>
+<title>CPIP v3 — {hostname}</title>
 <style>
   :root {{
-    --bg: #0a0a1a; --surface: #111128; --accent: #e94560;
-    --green: #0a2840; --text: #d0d0e0; --muted: #6666aa;
-    --card: #18183a; --border: #2a2a5c; --mesh: #00cc88;
+    --bg: #080810; --surface: #0e0e1f; --surface2: #141428;
+    --accent: #e94560; --accent-hover: #ff5a74;
+    --green: #00e68a; --green-bg: #003322; --green-hover: #00cc77;
+    --blue: #4488ff; --blue-bg: #0a1840; --blue-hover: #3377ee;
+    --orange: #ff8844; --orange-bg: #331a00;
+    --text: #d0d0e8; --muted: #6666aa; --dim: #444470;
+    --card: #12122a; --border: #222248; --border-light: #2a2a58;
+    --mesh: #00cc88; --danger: #ff4444;
+    --radius: 10px; --radius-sm: 6px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.4);
+    --transition: 0.18s ease;
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{ font-family: 'Courier New', monospace;
-          background: var(--bg); color: var(--text); min-height: 100vh; }}
-  .header {{ background: linear-gradient(135deg, var(--surface), #0a0a2a);
-            padding: 1rem 2rem; border-bottom: 3px solid var(--accent); }}
-  .header h1 {{ font-size: 1.4rem; font-weight: 700; }}
-  .header .sub {{ color: var(--muted); font-size: 0.8rem; }}
-  .container {{ max-width: 1400px; margin: 0 auto; padding: 1.5rem; }}
-  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }}
-  .card {{ background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-           padding: 1.2rem; }}
-  .card h2 {{ font-size: 0.8rem; color: var(--muted); text-transform: uppercase;
-              letter-spacing: 0.1em; margin-bottom: 0.8rem; }}
-  .value {{ font-size: 1.8rem; font-weight: 700; font-family: inherit; }}
-  .label {{ color: var(--muted); font-size: 0.75rem; margin-top: 0.2rem; }}
-  .badge {{ display: inline-block; padding: 0.2rem 0.6rem; border-radius: 3px;
-            font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }}
-  .badge.brewing {{ background: var(--accent); color: #fff; animation: pulse 1s infinite; }}
-  .badge.idle {{ background: #1a3a5c; color: #88ccff; }}
-  .badge.enabled {{ background: #003322; color: #00ff88; }}
-  .badge.disabled {{ background: #332200; color: #ff8800; }}
-  .badge.physical {{ background: #004433; color: #00ffaa; }}
+  body {{ font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+          background: var(--bg); color: var(--text); min-height: 100vh;
+          font-size: 13px; line-height: 1.5; }}
+
+  .header {{ background: linear-gradient(135deg, #0c0c20 0%, #141430 50%, #0c0c20 100%);
+             padding: 1.2rem 2rem; border-bottom: 2px solid var(--accent);
+             position: relative; overflow: hidden; }}
+  .header::before {{ content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: radial-gradient(ellipse at 20% 50%, rgba(233,69,96,0.08) 0%, transparent 60%);
+                    pointer-events: none; }}
+  .header h1 {{ font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; position: relative; }}
+  .header h1 .version {{ color: var(--accent); font-weight: 400; font-size: 0.7rem;
+                         margin-left: 0.5rem; vertical-align: super; letter-spacing: 0.05em; }}
+  .header .sub {{ color: var(--muted); font-size: 0.75rem; margin-top: 0.2rem; position: relative; }}
+
+  .container {{ max-width: 1440px; margin: 0 auto; padding: 1.25rem; }}
+
+  .status-bar {{ display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+                 margin-bottom: 1rem; padding: 0.6rem 0.8rem;
+                 background: var(--surface); border: 1px solid var(--border);
+                 border-radius: var(--radius); }}
+  .status-bar .spacer {{ flex: 1; }}
+
+  .badge {{ display: inline-flex; align-items: center; gap: 0.25rem;
+             padding: 0.2rem 0.55rem; border-radius: 20px;
+             font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+             letter-spacing: 0.08em; white-space: nowrap; }}
+  .badge.brewing {{ background: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }}
+  .badge.idle {{ background: var(--surface2); color: var(--dim); border: 1px solid var(--border); }}
+  .badge.enabled {{ background: var(--green-bg); color: var(--green); border: 1px solid rgba(0,230,138,0.2); }}
+  .badge.disabled {{ background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(255,136,68,0.2); }}
+  .badge.physical {{ background: #004433; color: #00ffaa; border: 1px solid rgba(0,255,170,0.15); }}
+  .badge.mesh {{ background: rgba(0,204,136,0.1); color: var(--mesh); border: 1px solid rgba(0,204,136,0.2); }}
+  .badge .dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; }}
   @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
-  .btn {{ background: var(--accent); color: #fff; border: none; padding: 0.5rem 1rem;
-          border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
-          font-family: inherit; transition: all 0.2s; }}
-  .btn:hover {{ background: #d13850; }}
-  .btn.secondary {{ background: #1a3a6c; }}
-  .btn.secondary:hover {{ background: #2a4a8c; }}
-  .btn.outline {{ background: transparent; border: 1px solid var(--accent); color: var(--accent); }}
-  .btn.small {{ padding: 0.3rem 0.6rem; font-size: 0.7rem; }}
-  .btn.mesh {{ background: #005533; }}
-  .btn.mesh:hover {{ background: #007744; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }}
-  th, td {{ padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }}
-  th {{ color: var(--muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; }}
-  .event-log {{ max-height: 150px; overflow-y: auto; font-size: 0.75rem; }}
-  .event-log div {{ padding: 0.2rem 0; border-bottom: 1px solid var(--border); }}
-  .ev-start {{ color: #88ff88; }}
-  .ev-stop {{ color: #ff8888; }}
-  .ev-mesh {{ color: #88ffff; }}
-  input, select {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
-                  padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-family: inherit; }}
-  input:focus, select:focus {{ outline: none; border-color: var(--accent); }}
-  .form-row {{ display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; }}
-  textarea {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
-              padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; width: 100%;
-              font-family: inherit; resize: vertical; }}
-  .toast {{ position: fixed; bottom: 1rem; right: 1rem; background: #003322; color: #00ff88;
-            padding: 0.8rem 1.2rem; border-radius: 4px; opacity: 0; transform: translateY(10px);
-            transition: all 0.3s; z-index: 100; font-size: 0.8rem; }}
-  .toast.show {{ opacity: 1; transform: translateY(0); }}
-  .inline-code {{ background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.75rem; }}
-  .mono {{ font-family: monospace; }}
-  .tab-bar {{ display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }}
-  .tab {{ padding: 0.5rem 1rem; cursor: pointer; color: var(--muted); font-size: 0.8rem;
-          border-bottom: 2px solid transparent; }}
-  .tab.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+
+  .btn {{ display: inline-flex; align-items: center; gap: 0.3rem;
+          background: var(--accent); color: #fff; border: none;
+          padding: 0.4rem 0.85rem; border-radius: var(--radius-sm);
+          cursor: pointer; font-size: 0.75rem; font-weight: 700;
+          font-family: inherit; transition: all var(--transition);
+          letter-spacing: 0.03em; text-transform: uppercase; }}
+  .btn:hover {{ background: var(--accent-hover); transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(233,69,96,0.3); }}
+  .btn:active {{ transform: translateY(0); }}
+  .btn.secondary {{ background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(68,136,255,0.2); }}
+  .btn.secondary:hover {{ background: var(--blue-hover); color: #fff;
+                           box-shadow: 0 2px 8px rgba(68,136,255,0.2); }}
+  .btn.outline {{ background: transparent; border: 1px solid var(--border-light); color: var(--muted); }}
+  .btn.outline:hover {{ border-color: var(--accent); color: var(--accent);
+                         box-shadow: 0 2px 8px rgba(233,69,96,0.15); }}
+  .btn.danger {{ background: #331111; color: var(--danger); border: 1px solid rgba(255,68,68,0.2); }}
+  .btn.danger:hover {{ background: #ff4444; color: #fff; box-shadow: 0 2px 8px rgba(255,68,68,0.3); }}
+  .btn.small {{ padding: 0.2rem 0.5rem; font-size: 0.65rem; }}
+  .btn.mesh-btn {{ background: rgba(0,204,136,0.12); color: var(--mesh);
+                    border: 1px solid rgba(0,204,136,0.2); }}
+  .btn.mesh-btn:hover {{ background: var(--green-hover); color: #000;
+                          box-shadow: 0 2px 8px rgba(0,230,138,0.25); }}
+  .btn.green {{ background: var(--green-bg); color: var(--green); border: 1px solid rgba(0,230,138,0.2); }}
+  .btn.green:hover {{ background: var(--green-hover); color: #000; }}
+
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; }}
+
+  .card {{ background: var(--card); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 1rem;
+           transition: border-color var(--transition); }}
+  .card:hover {{ border-color: var(--border-light); }}
+  .card h2 {{ font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+              letter-spacing: 0.12em; margin-bottom: 0.6rem; font-weight: 700; }}
+  .value {{ font-size: 1.6rem; font-weight: 800; font-family: inherit;
+            background: linear-gradient(135deg, var(--text), var(--muted));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; }}
+  .label {{ color: var(--dim); font-size: 0.7rem; margin-top: 0.15rem; }}
+
+  .tab-bar {{ display: flex; gap: 0; margin-bottom: 1rem;
+              border-bottom: 2px solid var(--border); }}
+  .tab {{ padding: 0.55rem 1rem; cursor: pointer; color: var(--dim);
+          font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em;
+          border-bottom: 2px solid transparent; margin-bottom: -2px;
+          transition: all var(--transition); text-transform: uppercase; }}
   .tab:hover {{ color: var(--text); }}
-  .panel {{ display: none; }}
+  .tab.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+
+  .panel {{ display: none; animation: fadeIn 0.2s ease; }}
   .panel.active {{ display: block; }}
+  @keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.75rem; }}
+  th, td {{ padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }}
+  th {{ color: var(--dim); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }}
+  tr:hover td {{ background: rgba(255,255,255,0.02); }}
+
+  input, select {{ background: var(--surface); border: 1px solid var(--border);
+                   color: var(--text); padding: 0.35rem 0.55rem;
+                   border-radius: var(--radius-sm); font-size: 0.75rem;
+                   font-family: inherit; transition: border-color var(--transition); }}
+  input:focus, select:focus {{ outline: none; border-color: var(--accent);
+                                box-shadow: 0 0 0 2px rgba(233,69,96,0.15); }}
+  textarea {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
+              padding: 0.5rem; border-radius: var(--radius-sm); font-size: 0.75rem;
+              width: 100%; font-family: inherit; resize: vertical;
+              transition: border-color var(--transition); }}
+  textarea:focus {{ outline: none; border-color: var(--accent);
+                    box-shadow: 0 0 0 2px rgba(233,69,96,0.15); }}
+
+  .form-row {{ display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }}
+
+  .event-log {{ max-height: 180px; overflow-y: auto; font-size: 0.7rem;
+                scrollbar-width: thin; scrollbar-color: var(--border) transparent; }}
+  .event-log div {{ padding: 0.2rem 0; border-bottom: 1px solid var(--border); }}
+  .ev-start {{ color: var(--green); }}
+  .ev-stop {{ color: var(--danger); }}
+  .ev-mesh {{ color: var(--mesh); }}
+
+  .toast {{ position: fixed; bottom: 1.5rem; right: 1.5rem;
+            background: var(--surface); color: var(--green); border: 1px solid rgba(0,230,138,0.3);
+            padding: 0.7rem 1.2rem; border-radius: var(--radius); opacity: 0;
+            transform: translateY(12px); transition: all 0.3s ease; z-index: 100;
+            font-size: 0.75rem; font-weight: 600;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); }}
+  .toast.show {{ opacity: 1; transform: translateY(0); }}
+
+  .mono {{ font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; }}
+  .inline-code {{ background: var(--surface2); padding: 0.1rem 0.3rem; border-radius: 3px;
+                   font-size: 0.7rem; border: 1px solid var(--border); }}
+
+  .section-title {{ font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+                    letter-spacing: 0.12em; font-weight: 700; margin: 0.75rem 0 0.5rem 0;
+                    padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }}
+
+  .quick-actions {{ display: flex; gap: 0.4rem; flex-wrap: wrap; }}
 </style>
 </head>
 <body>
 <div class="header">
-  <h1>☕ CPIP — {hostname} <span style="color:var(--muted);font-weight:400">| {pot_id}</span></h1>
-  <div class="sub">{version} — Internet Coffee Protocol + Mesh Comms</div>
+  <h1>CPIP <span class="version">v3</span> — {hostname} <span style="color:var(--muted);font-weight:400">| {pot_id}</span></h1>
+  <div class="sub">{version} — Coffee Pot Internet Protocol + Mesh + PQ-Crypto</div>
 </div>
 <div class="container">
-  <div class="status-bar" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
-    <span id="brewBadge" class="badge idle">—</span>
+  <div class="status-bar">
+    <span id="brewBadge" class="badge idle"><span class="dot"></span> IDLE</span>
     <span id="gpioBadge" class="badge {gpio_class}">{gpio_status}</span>
-    <span id="meshBadge" class="badge {mesh_class}">{mesh_status}</span>
+    <span id="meshBadge" class="badge {mesh_class}"><span class="dot"></span> {mesh_status}</span>
     <span id="covertBadge" class="badge {covert_class}">{covert_status}</span>
     <span id="itfBadge" class="badge idle">ITF</span>
-    <span id="ntpBadge" class="badge enabled">NTP</span>
-    <span id="sseBadge" class="badge idle">SSE: ?</span>
-    <span style="flex:1"></span>
+    <span id="ntpBadge" class="badge enabled"><span class="dot"></span> NTP</span>
+    <span id="sseBadge" class="badge idle">SSE</span>
+    <span class="spacer"></span>
     <button class="btn secondary" onclick="brew('coffee')">☕ Brew</button>
     <button class="btn secondary" onclick="brew('tea')">🍵 Tea</button>
     <button class="btn outline" onclick="stopBrew()">⏹ Stop</button>
-    <button class="btn mesh" onclick="scanMesh()">📡 Scan</button>
+    <button class="btn mesh-btn" onclick="scanMesh()">📡 Scan</button>
   </div>
 
   <div class="tab-bar">
@@ -109,7 +189,7 @@
       <div class="card"><h2>State</h2><div class="value" id="stateVal">—</div><div class="label" id="stateDet">Waiting</div></div>
       <div class="card"><h2>Brews</h2><div class="value" id="brewCount">0</div><div class="label">Total completed</div></div>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card" style="margin-top:0.75rem">
       <h2>Quick Brew</h2>
       <div class="form-row">
         <select id="brewType">
@@ -132,67 +212,69 @@
 
   <div id="panel-mesh" class="panel">
     <div class="grid">
-      <div class="card"><h2>Mesh Status</h2><div class="value" id="meshPeers">0</div><div class="label">Peers on network</div></div>
+      <div class="card"><h2>Peers</h2><div class="value" id="meshPeers">0</div><div class="label">On network</div></div>
       <div class="card"><h2>Inbox</h2><div class="value" id="inboxCount">0</div><div class="label">Messages received</div></div>
       <div class="card"><h2>Queued</h2><div class="value" id="queuedCount">0</div><div class="label">Store-and-forward</div></div>
     </div>
     <div class="grid" style="margin-top:0.5rem">
       <div class="card">
         <h2>Satellite <span id="satBadge" class="badge idle">OFF</span></h2>
-        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
           <span id="satCoords">—</span>
           <span id="satPort" style="display:none"></span>
           <span id="satRelay" style="display:none"></span>
           <span id="satPeersCount">0 sat-peers</span>
           <span id="satBootstrap">—</span>
         </div>
-        <div id="satPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
-        <div class="form-row" style="margin-top:0.5rem">
-          <button class="btn secondary small" id="satToggleBtn" onclick="toggleSat()">Enable</button>
+        <div id="satPeerList" style="margin-top:0.3rem;font-size:0.7rem"></div>
+        <div style="margin-top:0.5rem">
+          <button class="btn small secondary" id="satToggleBtn" onclick="toggleSat()">Enable</button>
         </div>
       </div>
       <div class="card">
         <h2>Mobile <span id="mobBadge" class="badge idle">OFF</span></h2>
-        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
           <span id="mobIface">—</span>
           <span id="mobPort" style="display:none"></span>
           <span id="mobTelemetry" style="display:none"></span>
           <span id="mobPeersCount">0 mobile-peers</span>
           <span id="mobSignal">—</span>
           <span id="mobSignalDetail" style="display:none"></span>
-          <span id="mobBootstrap" style="font-size:0.7rem">—</span>
+          <span id="mobBootstrap" style="font-size:0.65rem">—</span>
         </div>
-        <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.75rem"></div>
-        <div class="form-row" style="margin-top:0.5rem">
-          <button class="btn secondary small" id="mobToggleBtn" onclick="toggleMobile()">Enable</button>
+        <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.7rem"></div>
+        <div style="margin-top:0.5rem">
+          <button class="btn small secondary" id="mobToggleBtn" onclick="toggleMobile()">Enable</button>
         </div>
       </div>
       <div class="card">
         <h2>Radio <span id="radioBadge" class="badge idle">OFF</span></h2>
-        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.75rem;color:var(--muted)">
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
           <span id="radioMode">—</span>
           <span id="radioFreq">—</span>
           <span id="radioBw">—</span>
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card" style="margin-top:0.75rem">
       <h2>Send Message</h2>
       <div class="form-row">
-        <input type="text" id="meshDst" placeholder="Destination pot ID" style="width:150px">
+        <input type="text" id="meshDst" placeholder="Destination pot ID" style="width:140px">
         <input type="text" id="meshMsg" placeholder="Message text" style="flex:1">
-        <label style="font-size:0.75rem;color:var(--muted)"><input type="checkbox" id="meshCovert"> Use covert channel</label>
-        <button class="btn mesh" onclick="sendMesh()">Send</button>
-        <button class="btn mesh" onclick="broadcastMesh()">Broadcast</button>
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+          <input type="checkbox" id="meshCovert"> Covert
+        </label>
+        <button class="btn mesh-btn" onclick="sendMesh()">Send</button>
+        <button class="btn mesh-btn" onclick="broadcastMesh()">Broadcast</button>
       </div>
     </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Peers <span id="peerCount" style="color:var(--muted)">(0)</span></h2>
-      <div id="peerList"><div style="color:var(--muted)">Scanning…</div></div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Peers <span id="peerCount" style="color:var(--dim);font-weight:400">(0)</span></h2>
+      <div id="peerList"><div style="color:var(--dim)">Scanning…</div></div>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card" style="margin-top:0.75rem">
       <h2>Inbox Messages</h2>
-      <div id="inboxList"><div style="color:var(--muted)">No messages</div></div>
+      <div id="inboxList"><div style="color:var(--dim)">No messages</div></div>
     </div>
   </div>
 
@@ -200,9 +282,9 @@
     <div class="grid">
       <div class="card">
         <h2>Encode Message</h2>
-        <textarea id="covertInput" rows="3" placeholder="Message to hide in coffee brew request..."></textarea>
+        <textarea id="covertInput" rows="3" placeholder="Message to hide in coffee brew request…"></textarea>
         <div class="form-row" style="margin-top:0.5rem">
-          <input type="text" id="covertDst" placeholder="Dest pot (optional)" style="width:150px">
+          <input type="text" id="covertDst" placeholder="Dest pot (optional)" style="width:140px">
           <select id="covertRecipe">
             <option value="espresso">Espresso</option>
             <option value="pour-over">Pour Over</option>
@@ -212,20 +294,20 @@
           </select>
           <button class="btn" onclick="encodeCovert()">Encode</button>
         </div>
-        <div id="covertResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+        <div id="covertResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
       </div>
       <div class="card">
         <h2>Decode Message</h2>
-        <textarea id="covertHeader" rows="3" placeholder="Paste Accept-Additions header value..."></textarea>
+        <textarea id="covertHeader" rows="3" placeholder="Paste Accept-Additions header value…"></textarea>
         <div class="form-row" style="margin-top:0.5rem">
           <button class="btn" onclick="decodeCovert()">Decode</button>
         </div>
-        <div id="decodeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+        <div id="decodeResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
       </div>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card" style="margin-top:0.75rem">
       <h2>Covert Message History</h2>
-      <div id="covertHistory"><div style="color:var(--muted)">No messages sent yet</div></div>
+      <div id="covertHistory"><div style="color:var(--dim)">No messages sent yet</div></div>
     </div>
   </div>
 
@@ -237,9 +319,9 @@
       <div class="card"><h2>Latent Ports</h2><div class="value" id="itfLatent">—</div><div class="label">Backup listener ports</div></div>
       <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card" style="margin-top:0.75rem">
       <h2>Blacklist</h2>
-      <div id="itfBlacklist"><div style="color:var(--muted)">No addresses blacklisted</div></div>
+      <div id="itfBlacklist"><div style="color:var(--dim)">No addresses blacklisted</div></div>
     </div>
     <div class="grid" style="margin-top:0.5rem">
       <div class="card">
@@ -255,18 +337,16 @@
           <input type="text" id="itfProbeAddr" placeholder="IP address" style="flex:1">
           <button class="btn secondary" onclick="probeAddr()">Probe</button>
         </div>
-        <div id="itfProbeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+        <div id="itfProbeResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
       </div>
       <div class="card">
         <h2>Clear All</h2>
-        <div class="form-row">
-          <button class="btn outline" onclick="clearBlacklist()">Clear Blacklist</button>
-        </div>
+        <button class="btn danger" onclick="clearBlacklist()">Clear Blacklist</button>
       </div>
     </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Detected Tools <span id="itfToolsCount" style="color:var(--muted);font-weight:400">(0)</span></h2>
-      <div id="itfTools"><div style="color:var(--muted)">No tools detected yet</div></div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Detected Tools <span id="itfToolsCount" style="color:var(--dim);font-weight:400">(0)</span></h2>
+      <div id="itfTools"><div style="color:var(--dim)">No tools detected yet</div></div>
     </div>
   </div>
 
@@ -280,10 +360,12 @@
       </div>
       <div class="form-row" style="margin-top:0.5rem">
         <input type="datetime-local" id="schDatetime">
-        <label style="font-size:0.75rem;color:var(--muted)"><input type="checkbox" id="schRecurring"> Daily</label>
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+          <input type="checkbox" id="schRecurring"> Daily
+        </label>
         <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
       </div>
-      <div id="scheduleList" style="margin-top:1rem"></div>
+      <div id="scheduleList" style="margin-top:0.75rem"></div>
     </div>
   </div>
 
@@ -298,15 +380,15 @@
           <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
           <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
         </select>
-        <button class="btn outline small" onclick="clearHistory()">Clear</button>
+        <button class="btn small danger" onclick="clearHistory()">Clear</button>
       </div>
-      <div id="brewHistory"><div style="color:var(--muted)">Loading…</div></div>
+      <div id="brewHistory"><div style="color:var(--dim)">Loading…</div></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:1rem">
-    <h2>Live Events <span style="color:var(--muted);font-weight:400">(brew, mesh, covert)</span></h2>
-    <div class="event-log" id="eventLog"><div style="color:var(--muted)">Waiting…</div></div>
+  <div class="card" style="margin-top:0.75rem">
+    <h2>Live Events <span style="color:var(--dim);font-weight:400;font-size:0.6rem">(brew, mesh, covert)</span></h2>
+    <div class="event-log" id="eventLog"><div style="color:var(--dim)">Waiting…</div></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -349,12 +431,12 @@ async function refresh() {{
   const sv = document.getElementById('stateVal');
   const sd = document.getElementById('stateDet');
   if (s.brewing) {{
-    badge.textContent = 'BREWING'; badge.className = 'badge brewing';
+    badge.innerHTML = '<span class="dot"></span> BREWING'; badge.className = 'badge brewing';
     sv.textContent = s.current_brew?.beverage || 'Brewing';
     const secs = Math.floor(s.current_brew?.elapsed_seconds||0);
     sd.textContent = `${{secs}}s ${{s.current_brew?.id||''}}`;
   }} else {{
-    badge.textContent = 'IDLE'; badge.className = 'badge idle';
+    badge.innerHTML = '<span class="dot"></span> IDLE'; badge.className = 'badge idle';
     sv.textContent = 'Idle'; sd.textContent = 'Ready';
   }}
   document.getElementById('brewCount').textContent = s.history_count || 0;
@@ -372,15 +454,15 @@ async function refreshHistory() {{
   const h = await api('GET', '/cpip/history?limit=16');
   if (!h || !h.history) return;
   const el = document.getElementById('brewHistory');
-  if (!h.history.length) {{ el.innerHTML = '<div style="color:var(--muted)">No brews yet.</div>'; return; }}
+  if (!h.history.length) {{ el.innerHTML = '<div style="color:var(--dim)">No brews yet.</div>'; return; }}
   let items = h.history;
   if (filter) items = items.filter(b => b.beverage === filter);
-  if (!items.length) {{ el.innerHTML = '<div style="color:var(--muted)">No matches.</div>'; return; }}
+  if (!items.length) {{ el.innerHTML = '<div style="color:var(--dim)">No matches.</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>Bev</th><th>Additions</th><th>Dur</th></tr>';
   for (const b of items) {{
     const t = b.started ? new Date(b.started*1000).toLocaleTimeString() : '—';
     const add = b.additions?.map(a => esc(a.name||a)).join(',') || '—';
-    html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.7rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
+    html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.65rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -397,7 +479,7 @@ async function refreshMesh() {{
   if (!p) return;
   document.getElementById('peerCount').textContent = `(${{p.count||0}})`;
   const el = document.getElementById('peerList');
-  if (!p.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No peers found. Tap Scan.</div>'; return; }}
+  if (!p.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No peers found. Tap Scan.</div>'; return; }}
   let html = '<table><tr><th>Pot</th><th>Host</th><th>Addr</th><th>Device</th><th>Seen</th><th>Hops</th></tr>';
   for (const peer of p.peers) {{
     const ls = peer.last_seen ? Math.floor((Date.now()/1000 - peer.last_seen)) + 's ago' : '—';
@@ -410,14 +492,16 @@ async function refreshInbox() {{
   const ib = await api('GET', '/cpip/mesh/inbox');
   if (!ib) return;
   const el = document.getElementById('inboxList');
-  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages</div>'; return; }}
-  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages</div>'; return; }}
+  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No messages</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>From</th><th>Message</th><th>Ch</th></tr>';
   for (const m of ib.messages.slice().reverse()) {{
     const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString() : '—';
-    const data = m.data?.length > 50 ? m.data.slice(0, 50) + '…' : (m.data || '');
+    let data = m.data || '';
+    data = data.replace(/[^\x20-\x7E\n\r\t]/g, '\uFFFD');
+    if (data.length > 50) data = data.slice(0, 50) + '\u2026';
     const ch = m.channel || 'mesh';
-    html += `<tr><td>${{esc(t)}}</td><td class="mono" style="font-size:0.7rem">${{esc(m.from?.slice(0,6)||'?')}}</td><td style="font-size:0.7rem">${{esc(data)}}</td><td>${{esc(ch)}}</td></tr>`;
+    const e2eeTag = m.e2ee ? (m.e2ee_decrypted ? ' <span style="color:var(--green)">\uD83D\uDD12</span>' : ' <span style="color:var(--orange)">\uD83D\uDD12?</span>') : '';
+    html += `<tr><td>${{esc(t)}}</td><td class="mono" style="font-size:0.65rem">${{esc(m.from?.slice(0,6)||'?')}}</td><td style="font-size:0.65rem">${{esc(data)}}${{e2eeTag}}</td><td>${{esc(ch)}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -432,7 +516,7 @@ async function refreshSat() {{
     document.getElementById('satRelay').style.display = 'none';
     return;
   }}
-  document.getElementById('satBadge').textContent = 'ON';
+  document.getElementById('satBadge').innerHTML = '<span class="dot"></span> ON';
   document.getElementById('satBadge').className = 'badge enabled';
   document.getElementById('satCoords').textContent = `${{s.coords?.lat||'?'}}°, ${{s.coords?.lon||'?'}}°${{s.coords?.alt ? ' '+s.coords.alt+'m' : ''}}`;
   const portEl = document.getElementById('satPort');
@@ -441,15 +525,15 @@ async function refreshSat() {{
   const relayEl = document.getElementById('satRelay');
   relayEl.textContent = s.relay ? 'relay: ON' : 'relay: OFF';
   relayEl.style.display = 'inline';
-  relayEl.style.color = s.relay ? '#00ff88' : 'var(--muted)';
+  relayEl.style.color = s.relay ? 'var(--green)' : 'var(--dim)';
   document.getElementById('satPeersCount').textContent = `${{s.peers_known||0}} sat-peer(s)`;
   document.getElementById('satBootstrap').textContent = s.bootstrap?.length ? `bootstrap: ${{s.bootstrap.join(', ')}}` : 'no bootstrap';
   const el = document.getElementById('satPeerList');
-  if (!s.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No satellite peers yet</div>'; return; }}
+  if (!s.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No satellite peers yet</div>'; return; }}
   let html = '<table><tr><th>Pot</th><th>Host</th><th>Coords</th><th>RTT</th><th>Seen</th></tr>';
   for (const p of s.peers) {{
     const t = p.last_seen ? Math.floor((Date.now()/1000 - p.last_seen)) + 's ago' : '—';
-    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed(1)+','+(p.lon||'?').toFixed(1))}}</td><td>${{esc(p.rtt||'?')}}ms</td><td>${{esc(t)}}</td></tr>`;
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed?(p.lat||'?').toFixed(1):(p.lat||'?'))}},${{esc((p.lon||'?').toFixed?(p.lon||'?').toFixed(1):(p.lon||'?'))}}</td><td>${{esc(p.rtt||'?')}}ms</td><td>${{esc(t)}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -465,7 +549,7 @@ async function refreshMobile() {{
     document.getElementById('mobSignalDetail').style.display = 'none';
     return;
   }}
-  document.getElementById('mobBadge').textContent = 'ON';
+  document.getElementById('mobBadge').innerHTML = '<span class="dot"></span> ON';
   document.getElementById('mobBadge').className = 'badge enabled';
   document.getElementById('mobIface').textContent = m.interface || '?';
   const portEl = document.getElementById('mobPort');
@@ -474,7 +558,7 @@ async function refreshMobile() {{
   const telEl = document.getElementById('mobTelemetry');
   telEl.textContent = m.telemetry ? 'telemetry: ON' : 'telemetry: OFF';
   telEl.style.display = 'inline';
-  telEl.style.color = m.telemetry ? '#00ff88' : 'var(--muted)';
+  telEl.style.color = m.telemetry ? 'var(--green)' : 'var(--dim)';
   document.getElementById('mobPeersCount').textContent = `${{m.peers_known||0}} mobile-peer(s)`;
   const sig = m.signal || {{}};
   let sigStr = '—';
@@ -493,7 +577,7 @@ async function refreshMobile() {{
   }}
   document.getElementById('mobBootstrap').textContent = m.bootstrap?.length ? `seed: ${{m.bootstrap.join(', ')}}` : 'no bootstrap';
   const el = document.getElementById('mobPeerList');
-  if (!m.peers?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No mobile peers yet</div>'; return; }}
+  if (!m.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No mobile peers yet</div>'; return; }}
   let html = '<table><tr><th>Pot</th><th>Host</th><th>Signal</th><th>Net</th><th>Hops</th></tr>';
   for (const p of m.peers) {{
     const sig = p.signal;
@@ -510,7 +594,7 @@ async function refreshRadio() {{
   if (!r) return;
   const badge = document.getElementById('radioBadge');
   if (r.enabled) {{
-    badge.textContent = 'ON'; badge.className = 'badge enabled';
+    badge.innerHTML = '<span class="dot"></span> ON'; badge.className = 'badge enabled';
     document.getElementById('radioMode').textContent = 'mode: ' + (r.mode || '?');
     document.getElementById('radioFreq').textContent = 'freq: ' + ((r.frequency/1e6).toFixed(1) || '?') + ' MHz';
     document.getElementById('radioBw').textContent = 'bw: ' + ((r.bandwidth/1e3).toFixed(0) || '?') + ' kHz';
@@ -524,20 +608,20 @@ async function refreshRadio() {{
 
 async function toggleSat() {{
   const badge = document.getElementById('satBadge');
-  const on = badge.textContent === 'ON';
+  const on = badge.textContent.includes('ON');
   const r = await api('POST', '/cpip/mesh/sat', {{ action: on ? 'disable' : 'enable' }});
   if (r) showToast(r.status || 'Toggled');
   await refreshSat();
-  document.getElementById('satToggleBtn').textContent = badge.textContent === 'ON' ? 'Disable' : 'Enable';
+  document.getElementById('satToggleBtn').textContent = badge.textContent.includes('ON') ? 'Disable' : 'Enable';
 }}
 
 async function toggleMobile() {{
   const badge = document.getElementById('mobBadge');
-  const on = badge.textContent === 'ON';
+  const on = badge.textContent.includes('ON');
   const r = await api('POST', '/cpip/mesh/mobile', {{ action: on ? 'disable' : 'enable' }});
   if (r) showToast(r.status || 'Toggled');
   await refreshMobile();
-  document.getElementById('mobToggleBtn').textContent = badge.textContent === 'ON' ? 'Disable' : 'Enable';
+  document.getElementById('mobToggleBtn').textContent = badge.textContent.includes('ON') ? 'Disable' : 'Enable';
 }}
 
 async function toggleStealth() {{
@@ -549,7 +633,7 @@ async function toggleStealth() {{
 }}
 
 async function scanMesh() {{
-  showToast('Scanning...');
+  showToast('Scanning…');
   try {{
     const d = await api('GET', '/cpip/discover');
     if (d && d.pots) showToast(`Found ${{d.count}} pot(s)`);
@@ -615,12 +699,12 @@ async function refreshSchedules() {{
   const s = await api('GET', '/cpip/schedules');
   if (!s) return;
   const el = document.getElementById('scheduleList');
-  if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem">None</div>'; return; }}
+  if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--dim);font-size:0.7rem">None</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th>Recur</th><th></th></tr>';
   for (const sc of s.schedules) {{
     html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
-    html += `<td>${{sc.recurring ? 'Daily' : '-'}}</td>`;
-    html += `<td><button class="btn outline small" data-sid="${{esc(sc.id)}}">X</button></td></tr>`;
+    html += `<td>${{sc.recurring ? 'Daily' : '—'}}</td>`;
+    html += `<td><button class="btn small outline" data-sid="${{esc(sc.id)}}">✕</button></td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
   el.querySelectorAll('[data-sid]').forEach(btn => {{
@@ -657,11 +741,11 @@ async function encodeCovert() {{
   const r = await api('POST', '/cpip/mesh/encode', {{ message: msg, dst, recipe }});
   if (!r || r.status !== 'encoded') return;
   const header = r.accept_additions_header;
-  document.getElementById('covertResult').innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem">
-    <div style="color:var(--muted)">Accept-Additions header:</div>
-    <div class="mono" style="font-size:0.7rem;word-break:break-all;margin-top:0.3rem">${{esc(header)}}</div>
-    <div style="color:var(--muted);margin-top:0.3rem">Recipe: ${{esc(r.recipe)}} | ${{esc(r.encoded_length)}} bytes</div>
-    <div style="margin-top:0.3rem"><button class="btn small outline" onclick="navigator.clipboard.writeText('${{esc(header)}}');showToast('Copied')">Copy</button></div>
+  document.getElementById('covertResult').innerHTML = `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);margin-top:0.4rem;border:1px solid var(--border)">
+    <div style="color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Accept-Additions header</div>
+    <div class="mono" style="font-size:0.65rem;word-break:break-all;color:var(--green)">${{esc(header)}}</div>
+    <div style="color:var(--dim);margin-top:0.3rem;font-size:0.6rem">Recipe: ${{esc(r.recipe)}} | ${{esc(r.encoded_length)}} bytes</div>
+    <div style="margin-top:0.4rem"><button class="btn small outline" onclick="navigator.clipboard.writeText('${{esc(header)}}');showToast('Copied')">Copy</button></div>
   </div>`;
   const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
   history.unshift({{ message: msg.slice(0, 80), dst: dst || 'any', recipe, header: header.slice(0, 60) + '…', time: new Date().toLocaleString() }});
@@ -673,10 +757,10 @@ async function encodeCovert() {{
 function renderCovertHistory() {{
   const el = document.getElementById('covertHistory');
   const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
-  if (!history.length) {{ el.innerHTML = '<div style="color:var(--muted)">No messages sent yet</div>'; return; }}
+  if (!history.length) {{ el.innerHTML = '<div style="color:var(--dim)">No messages sent yet</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>To</th><th>Message</th><th>Recipe</th><th>Header</th></tr>';
   for (const h of history) {{
-    html += `<tr><td style="font-size:0.7rem">${{esc(h.time)}}</td><td>${{esc(h.dst)}}</td><td style="font-size:0.7rem">${{esc(h.message)}}</td><td>${{esc(h.recipe)}}</td><td class="mono" style="font-size:0.65rem">${{esc(h.header)}}</td></tr>`;
+    html += `<tr><td style="font-size:0.65rem">${{esc(h.time)}}</td><td>${{esc(h.dst)}}</td><td style="font-size:0.65rem">${{esc(h.message)}}</td><td>${{esc(h.recipe)}}</td><td class="mono" style="font-size:0.6rem">${{esc(h.header)}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -687,8 +771,8 @@ async function decodeCovert() {{
   const r = await api('POST', '/cpip/mesh/decode', {{ accept_additions: header }});
   if (!r) return;
   document.getElementById('decodeResult').innerHTML = r.status === 'decoded'
-    ? `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem"><div style="color:#88ff88">Decoded:</div><div style="margin-top:0.3rem">${{esc(r.message)}}</div></div>`
-    : `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;margin-top:0.3rem;color:var(--muted)">${{esc(r.message)}}</div>`;
+    ? `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid rgba(0,230,138,0.2)"><div style="color:var(--green);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Decoded</div><div style="margin-top:0.2rem">${{esc(r.message)}}</div></div>`
+    : `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid var(--border);color:var(--dim)">${{esc(r.message)}}</div>`;
 }}
 
 async function refreshItf() {{
@@ -696,31 +780,31 @@ async function refreshItf() {{
   if (!d || d.error) return;
   const badge = document.getElementById('itfBadge');
   if (d.stealth) {{
-    badge.textContent = 'ITF: STEALTH'; badge.className = 'badge enabled';
+    badge.innerHTML = '<span class="dot"></span> STEALTH'; badge.className = 'badge enabled';
   }} else {{
     badge.textContent = 'ITF'; badge.className = 'badge idle';
   }}
   document.getElementById('itf418').textContent = d['418_teapot'] ? 'ACTIVE' : 'INACTIVE';
-  document.getElementById('itf418').style.color = d['418_teapot'] ? 'var(--accent)' : 'var(--muted)';
+  document.getElementById('itf418').style.color = d['418_teapot'] ? 'var(--accent)' : 'var(--dim)';
   document.getElementById('itfStealth').textContent = d.stealth ? 'ON' : 'OFF';
-  document.getElementById('itfStealth').style.color = d.stealth ? '#00ff88' : 'var(--muted)';
+  document.getElementById('itfStealth').style.color = d.stealth ? 'var(--green)' : 'var(--dim)';
   document.getElementById('itfHop').textContent = d.port_hopping ? 'ON' : 'OFF';
-  document.getElementById('itfHop').style.color = d.port_hopping ? '#00ff88' : 'var(--muted)';
+  document.getElementById('itfHop').style.color = d.port_hopping ? 'var(--green)' : 'var(--dim)';
   document.getElementById('itfHopInterval').textContent = d.port_hopping ? d.hop_interval + 's interval' : '';
   document.getElementById('itfLatent').textContent = d.latent_ports?.length ? d.latent_ports.join(', ') : 'None';
   document.getElementById('itfBlackCount').textContent = d.blacklisted_addrs || 0;
   const el = document.getElementById('itfBlacklist');
-  if (!d.blacklist?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No addresses blacklisted</div>'; return; }}
+  if (!d.blacklist?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No addresses blacklisted</div>'; return; }}
   let html = '<table><tr><th>IP Address</th><th></th></tr>';
   for (const addr of d.blacklist) {{
-    html += `<tr><td class="mono">${{esc(addr)}}</td><td><button class="btn outline small" onclick="whitelistAddr('${{esc(addr)}}')">Whitelist</button></td></tr>`;
+    html += `<tr><td class="mono">${{esc(addr)}}</td><td><button class="btn small outline" onclick="whitelistAddr('${{esc(addr)}}')">Whitelist</button></td></tr>`;
   }}
   el.innerHTML = html;
   const tcEl = document.getElementById('itfTools');
   const tcCount = document.getElementById('itfToolsCount');
   if (!d.tools_detected || !Object.keys(d.tools_detected).length) {{
     tcCount.textContent = '(0)';
-    tcEl.innerHTML = '<div style="color:var(--muted)">No tools detected yet</div>';
+    tcEl.innerHTML = '<div style="color:var(--dim)">No tools detected yet</div>';
     return;
   }}
   tcCount.textContent = `(${{Object.keys(d.tools_detected).length}})`;
@@ -729,7 +813,7 @@ async function refreshItf() {{
   for (const [tool, info] of sorted) {{
     const ls = info.last_seen ? new Date(info.last_seen * 1000).toLocaleTimeString() : '—';
     const addrs = info.addrs?.join(', ') || '—';
-    thtml += `<tr><td>${{esc(tool)}}</td><td>${{info.count}}</td><td>${{esc(ls)}}</td><td style="font-size:0.7rem" class="mono">${{esc(addrs)}}</td></tr>`;
+    thtml += `<tr><td>${{esc(tool)}}</td><td>${{info.count}}</td><td>${{esc(ls)}}</td><td style="font-size:0.65rem" class="mono">${{esc(addrs)}}</td></tr>`;
   }}
   thtml += '</table>'; tcEl.innerHTML = thtml;
 }}
@@ -744,6 +828,7 @@ async function whitelistAddr(addr) {{
 }}
 
 async function clearBlacklist() {{
+  if (!confirm('Clear entire blacklist?')) return;
   const r = await api('POST', '/cpip/defense', {{ action: 'clear' }});
   if (r && r.status === 'blacklist_cleared') showToast('Blacklist cleared');
   refreshItf();
@@ -754,11 +839,11 @@ async function probeAddr() {{
   if (!addr) {{ showToast('Enter an IP address'); return; }}
   const r = await api('POST', '/cpip/defense', {{ action: 'probe', addr }});
   const el = document.getElementById('itfProbeResult');
-  if (!r || r.status !== 'probed') {{ el.innerHTML = '<div style="color:var(--muted)">Probe failed</div>'; return; }}
-  const bl = r.blacklisted ? '<span style="color:var(--accent)">BLACKLISTED</span>' : '<span style="color:#00ff88">CLEAN</span>';
-  el.innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:4px;font-size:0.75rem">
+  if (!r || r.status !== 'probed') {{ el.innerHTML = '<div style="color:var(--dim)">Probe failed</div>'; return; }}
+  const bl = r.blacklisted ? '<span style="color:var(--danger)">BLACKLISTED</span>' : '<span style="color:var(--green)">CLEAN</span>';
+  el.innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:var(--radius-sm);font-size:0.7rem;border:1px solid var(--border)">
     <div>${{esc(r.addr)}} — ${{bl}}</div>
-    <div style="color:var(--muted);margin-top:0.2rem">Probes: ${{r.probe_count}} | Remaining: ${{r.remaining_seconds}}s</div>
+    <div style="color:var(--dim);margin-top:0.2rem">Probes: ${{r.probe_count}} | Remaining: ${{r.remaining_seconds}}s</div>
   </div>`;
 }}
 
@@ -766,8 +851,8 @@ function connectSSE() {{
   const badge = document.getElementById('sseBadge');
   const log = document.getElementById('eventLog');
   const evt = new EventSource('/cpip/events');
-  evt.onopen = () => {{ badge.textContent = 'SSE: OK'; badge.className = 'badge enabled'; }};
-  evt.onerror = () => {{ badge.textContent = 'SSE: ERR'; badge.className = 'badge disabled'; }};
+  evt.onopen = () => {{ badge.innerHTML = '<span class="dot"></span> OK'; badge.className = 'badge enabled'; }};
+  evt.onerror = () => {{ badge.textContent = 'ERR'; badge.className = 'badge disabled'; }};
   evt.onmessage = (e) => {{
     try {{
       const d = JSON.parse(e.data);

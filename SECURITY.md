@@ -1,55 +1,72 @@
 # Security Policy
 
+> **Cryptographic Primitives**: CPIP v3 uses FIPS-compliant cryptographic primitives
+> for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
+> RSA-KEM-2048 (FIPS 186-4 / SP 800-56B), HKDF-SHA256, and HMAC-SHA256.
+> All constant-time operations use the `cryptography` library. The `secrets`
+> module replaces `random` for all security-relevant randomness.
+>
+> **Post-Quantum KEM**: 1nf1D3L's Kyber (Non-FIPS ML-KEM-768 variant) is available
+> via `b4dm4n-cw` / `inf1del_kyber.py`. Parameters: n=256, k=3, q=3329, η₁=3, η₂=3,
+> du=10, dv=4, domain tag "1NF1D3L-KYBER-V1". Hybrid mode: ECDH P-256 + 1nf1D3L Kyber.
+> **Not FIPS 203 compliant by design** — wider noise distribution (η=3), custom domain
+> separation tags, NTT twiddle perturbation, coffee recipe binding. Suitable for
+> research, red-teaming, coffee protocols, and survival scenarios.
+
 ## Cryptographic Architecture
 
-CPIP v2.2+ uses a layered cryptographic architecture designed for hostile
-signal environments:
+CPIP v3.0+ uses a layered cryptographic architecture built on FIPS-compliant
+primitives, with optional post-quantum KEM layer, designed for hostile signal environments:
 
-### Encryption (Coffee Blend Cipher v2)
-- **Key derivation**: HKDF-SHA256 with domain-separated info strings (replaces MD5)
-- **Stream cipher**: SHA-256 counter mode with S-box substitution layer
-- **IV/Nonce**: Random 16-byte IV per encryption (prevents identical-plaintext attacks)
-- **Authentication**: HMAC-SHA256 authentication tag on every ciphertext (detects tampering)
-- **Format**: `IV (16B) || ciphertext || HMAC-SHA256 (32B)`
-
-### CoffeeCipher v2 Format
-- **Structure**: `IV(16B) || ciphertext || HMAC-SHA256(32B)`
-- **IV**: Fresh random 16-byte IV generated per encryption
+### Encryption (CoffeeCipher v3 / AES-256-GCM)
+- **Cipher**: AES-256-GCM (FIPS 197) with 12-byte nonce and 16-byte authentication tag
 - **Key derivation**: HKDF-SHA256 with domain-separated info strings
-- **Authentication**: HMAC-SHA256 tag appended to ciphertext for integrity verification
-- **Decryption**: HMAC verified before decryption; tampered ciphertext is rejected
+- **Nonce**: 12-byte random nonce per encryption (prevents identical-plaintext attacks)
+- **Authentication**: GCM authentication tag on every ciphertext (detects tampering)
+- **Format**: `nonce (12B) || ciphertext || GCM-tag (16B)`
+
+### CoffeeCipher v3 Format
+- **Structure**: `nonce(12B) || ciphertext || GCM-tag(16B)`
+- **Nonce**: Fresh random 12-byte nonce generated per encryption via `secrets` module
+- **Key derivation**: HKDF-SHA256 with domain-separated info strings
+- **Authentication**: GCM tag appended to ciphertext for integrity verification
+- **Decryption**: GCM tag verified before decryption; tampered ciphertext is rejected
+- **Backward compatibility**: Reads v1 and v2 Coffee Blend Cipher messages transparently
 
 ### End-to-End Encryption (E2EE)
-- **Key agreement**: ECDH (Ed25519) + ML-KEM hybrid KEM
-- **Key derivation**: HKDF-SHA256 from combined ECDH + ML-KEM shared secrets
-- **Post-quantum security**: ML-KEM provides PQ key agreement via SHA-3-based construction
-- **Hybrid guarantee**: Secure if EITHER classical OR post-quantum component holds
+- **Classical hybrid**: ECDH P-256 (FIPS 186-4) + RSA-KEM-2048 hybrid KEM
+- **Post-quantum hybrid**: ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (Non-FIPS ML-KEM-768 variant)
+- **Key derivation**: HKDF-SHA256 from combined shared secrets
+- **Hybrid guarantee**: Secure if EITHER classical OR PQ component holds
 
-### ML-KEM (Post-Quantum Key Encapsulation)
+### 1nf1D3L's Kyber (Non-FIPS Post-Quantum KEM)
+- **Variant**: ML-KEM-768 with 1nf1D3L modifications (η=3, custom domain tags, NTT perturbation)
+- **Parameters**: n=256, k=3, q=3329, η₁=3, η₂=3, du=10, dv=4
+- **Domain separation**: "1NF1D3L-KYBER-V1" on all hash/KDF inputs
+- **NTT twiddle perturbation**: Per-session random twiddle factors for side-channel resistance
+- **Coffee recipe binding**: Recipe string (espresso, cappuccino, etc.) mixed into KDF
+- **Key confirmation**: Re-encapsulation check (implicit rejection via KDF with z)
+- **Sizes**: PK=1184B, SK=2400B, CT=1120B, SS=32B
+- **Hybrid (ECDH+Kyber)**: PK≈1251B, SK≈2432B, CT≈1187B, SS=32B
 
-The ML-KEM implementation in CPIP is **not** a true FIPS 203 lattice-based Kyber
-implementation. It is a SHA-3-based Fujisaki-Okamoto KEM construction that
-provides post-quantum security through hash-based primitives:
+### RSA-KEM-2048 (Key Encapsulation)
 
-- **Public key derivation**: SHA-3-256 hash of the seed (not lattice key generation)
-- **Ciphertext**: One-time-pad XOR construction (seed XOR'd with SHA-3-derived pad)
-- **IND-CCA2 security**: Fujisaki-Okamoto re-encryption check validates ciphertext integrity
-- **Security basis**: Relies on SHA-3 preimage/collision resistance, not lattice hardness
-- **Result**: A hash-based PQ KEM — not real Kyber, but honest in its construction
+The RSA-KEM implementation in CPIP uses FIPS-compliant primitives:
+
+- **Key generation**: 2048-bit RSA keys (FIPS 186-4)
+- **Encapsulation**: RSA-KEM with OAEP padding (SP 800-56B)
+- **Key derivation**: HKDF-SHA256 from RSA-KEM shared secret
+- **Security basis**: RSA-OAEP with SHA-256 — FIPS 186-4 / SP 800-56B compliant
 
 ### Signatures
-- **Classical**: Ed25519 (Curve25519) — pure Python implementation
-  - The `_recover_x` sign bit bug has been **fixed**; ECDH and signatures now work
-    correctly end-to-end
-  - Still **NOT constant-time** — timing side-channels remain
-- **Post-quantum**: ML-KEM encapsulation provides PQ key agreement
+- **Classical**: ECDSA P-256 (FIPS 186-4) via `cryptography` library — constant-time
+- **Key exchange**: ECDH P-256 (FIPS 186-4) via `cryptography` library — constant-time
 - **Mesh message authentication**: HMAC-SHA256 domain-separated tags
 
 ### Hash Functions
 - **Primary**: SHA-256 (key derivation, identity, HMAC)
-- **Secondary**: SHA-3-256 (domain-separated hashing, audit chain)
 - **Node identity**: SHA-256 (replaces MD5)
-- **Audit log**: SHA-3-256 with tamper-evident chaining
+- **Audit log**: SHA-256 with tamper-evident chaining
 
 ### Message Security
 - **Timestamp validation**: Mesh messages rejected if >300 seconds old (replay protection)
@@ -57,14 +74,16 @@ provides post-quantum security through hash-based primitives:
 - **Cover traffic**: Randomized padding to defeat traffic analysis
 
 ### Data at Rest
-- **Persistence**: Encrypted with CoffeeCipher v2 + HMAC integrity verification
+- **Persistence**: Encrypted with CoffeeCipher v3 (AES-256-GCM) + HMAC integrity verification
 - **Key material**: Derived from node secret with HKDF domain separation
 - **Plaintext**: Purged from message store after re-encryption
-- **Format**: v2 encrypted persistence format; v1 data loads with backward-compatible
-  migration path (v1 is transparently upgraded on next write)
+- **Format**: v3 encrypted persistence format; v1/v2 data loads with backward-compatible
+  migration path (v1/v2 is transparently upgraded on next write)
 
 ## Network Security
 
+- **TLS/SSL**: Built-in HTTPS support with auto-generated self-signed certificates or custom certs. HTTP→HTTPS redirect available.
+- **HSTS**: `Strict-Transport-Security: max-age=31536000; includeSubDomains` header when SSL is active
 - **HTTP rate limiting**: 100 requests per 60 seconds per IP address
 - **Request size limit**: 64 KB maximum request body
 - **Security headers**:
@@ -87,12 +106,11 @@ CPIP is designed for operation in hostile signal environments:
 
 | Threat | Mitigation |
 |--------|-----------|
-| Quantum computing (Shor's) | ML-KEM hybrid KEM (SHA-3-based) |
-| Passive eavesdropping | E2EE with HMAC authentication |
-| Message tampering | HMAC-SHA256 authentication tags |
+| Passive eavesdropping | E2EE with AES-256-GCM + HMAC authentication |
+| Message tampering | HMAC-SHA256 / GCM authentication tags |
 | Replay attacks | Timestamp validation (300s window) |
 | Traffic analysis | Random padding + cover traffic |
-| Identity spoofing | Ed25519 signatures + HMAC mesh auth |
+| Identity spoofing | ECDSA P-256 signatures + HMAC mesh auth |
 | Key compromise | Emergency key rotation + secure wipe |
 | Network scanning | 418 I'm a Teapot defense + port knocking |
 | Jamming detection | Signal awareness + incident response |
@@ -108,12 +126,9 @@ CPIP is designed for operation in hostile signal environments:
 
 ## What CPIP Is NOT Designed For
 
-- FIPS 140-2/3 compliance (custom cipher construction: SHA-256 + HKDF with HMAC
-  authentication — much stronger than the previous MD4-derived stream cipher, but
-  still not FIPS-validated)
-- Protecting classified/sensitive information requiring compliance
-- Production environments requiring constant-time implementations
-- The Ed25519 implementation is NOT constant-time (timing side-channels exist)
+- FIPS 140-2/3 validation (uses FIPS-compliant algorithms but is not itself a validated module)
+- Protecting classified/sensitive information requiring formal certification
+- Environments requiring hardware security modules (HSMs)
 
 ## Incident Response
 
@@ -125,7 +140,7 @@ CPIP includes an automated incident response system with severity-based alerts:
   - **Stealth mode**: Automatically activated on jamming detection (high-severity signal anomalies)
   - **Blacklisting**: Automatic IP blacklisting on brute-force attempts
 - **Emergency mode**: Key rotation, peer notification, stealth activation
-- **Audit trail**: Tamper-evident SHA-3-256 chained audit log
+- **Audit trail**: Tamper-evident SHA-256 chained audit log
 - **Secure wipe**: Overwrites key material in memory
 
 ## Emergency Mode
@@ -167,4 +182,9 @@ CPIP includes built-in network diagnostic tools:
 - Radio transport defaults to `lora` — simulation mode requires the explicit `--sim` flag
 - Use emergency key rotation if a key may have been compromised
 - Monitor incident response alerts for signs of hostile activity
-- Understand that the Ed25519 implementation has timing side-channels
+- Understand that classical cryptographic operations use FIPS-compliant primitives
+  via the `cryptography` library (constant-time ECDSA/ECDH P-256, AES-256-GCM,
+  RSA-KEM-2048)
+- **1nf1D3L's Kyber is NOT FIPS 203 validated** — it is a Non-FIPS ML-KEM-768 variant
+  with wider noise (η=3), custom domain tags, and NTT perturbation. Use for research,
+  red-teaming, coffee protocols, and survival — not for FIPS-required deployments.

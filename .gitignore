@@ -8,6 +8,9 @@ __pycache__/
 radio/radio_if
 radio/__pycache__/
 
+# SSL certificates (auto-generated)
+.ssl/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -19,3 +22,12 @@ Thumbs.db
 # Env
 .env
 *.env
+
+# Test artifacts
+server.log
+test_*
+*.pk
+*.sk
+*.hp
+*.hs
+*.ct

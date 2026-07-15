@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cpip"
-version = "2.3.0"
+version = "3.0.0"
 description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
 readme = "README.md"
 license = {text = "Unlicense"}
@@ -26,6 +26,9 @@ cpip-server = "server:main"
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
 RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
 RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc7168"
+
+[project.dependencies]
+cryptography >= 42.0.0
 
 [tool.setuptools]
 py-modules = ["server"]

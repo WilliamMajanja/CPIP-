@@ -1,20 +1,23 @@
 FROM python:3.13-alpine
 
-LABEL description="CPIP — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168)"
-LABEL version="2.2.0"
+LABEL description="CPIP v3 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto)"
+LABEL version="3.0.0"
 
-RUN apk add --no-cache gcc make musl-dev
+RUN apk add --no-cache gcc make musl-dev openssl
 
 WORKDIR /opt/cpip
 
 COPY server.py .
 COPY htcpcp /usr/local/bin/htcpcp
 COPY radio/ radio/
+COPY web/ web/
 
 RUN chmod +x /usr/local/bin/htcpcp && \
-    make -C radio 2>/dev/null || true
+    make -C radio 2>/dev/null || true && \
+    mkdir -p /opt/cpip/.ssl && \
+    chmod 777 /opt/cpip/.ssl
 
-EXPOSE 4180 4190 4191 4195 4196
+EXPOSE 4180 4181 4190 4191 4195 4196
 
 ENV CPIP_DEVICE=hyper-text
 ENV CPIP_BIND=0.0.0.0
@@ -26,8 +29,12 @@ ENV CPIP_MOBILE=0
 ENV CPIP_COVERT=1
 ENV CPIP_COVERT_KEY=""
 ENV CPIP_NTP=0
+ENV CPIP_SSL=1
+ENV CPIP_SSL_AUTO=1
+ENV CPIP_HTTP_REDIRECT=1
+ENV CPIP_HTTP_REDIRECT_PORT=4181
 
-HEALTHCHECK --interval=30s --timeout=5s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4180/')" || exit 1
 
 CMD ["python3", "/opt/cpip/server.py"]

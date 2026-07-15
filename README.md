@@ -1,6 +1,6 @@
 # ☕ CPIP — Coffee Pot Internet Protocol
 
-> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh Extension + Multi-Transport + ITF Defense + Post-Quantum Crypto
+> RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Mesh + Multi-Transport + ITF Defense + FIPS-Compliant Crypto
 
 ```
      ( (
@@ -16,12 +16,13 @@
      V
 ```
 
-CPIP is a fully functional implementation of the Hyper Text Coffee Pot Control
+CPIP v3 is a fully functional implementation of the Hyper Text Coffee Pot Control
 Protocol that runs on Raspberry Pi. Beneath the HTCPCP brew requests runs a
 peer-to-peer mesh network with four transport layers — LAN, satellite,
-radio (LoRa/TNC), and mobile broadband — plus covert channels, Ed25519 E2EE,
-store-and-forward messaging, ITF (In The Face) active defense, pentest tool
-detection, and a full CLI client.
+radio (LoRa/TNC), and mobile broadband — plus covert channels, ECDH P-256 E2EE,
+ECDH+RSA-KEM hybrid key exchange, store-and-forward messaging, ITF (In The
+Face) active defense, pentest tool detection, incident response with automated
+mitigation, and a full CLI client.
 
 ---
 
@@ -36,7 +37,9 @@ detection, and a full CLI client.
 - [Multi-Transport Architecture](#multi-transport-architecture)
 - [Covert Channel](#covert-channel)
 - [Cryptography](#cryptography)
+- [TLS/SSL (HTTPS)](#tlsssl-https)
 - [Deployment](#deployment)
+- [Kubernetes](#kubernetes)
 - [Environment Variables](#environment-variables)
 - [API Reference](#api-reference)
 - [Architecture](#architecture)
@@ -62,14 +65,14 @@ The coffee theme provides perfect cover traffic. Every brew request can carry
 encrypted data. Every `WHEN` response is a potential message. The protocol
 looks like coffee. It is not coffee.
 
-**Your coffee pot is a mesh node. Your teapot fights back.**
+**Your coffee pot is a mesh node. Your teapot fights back. v3 — all fangs out.**
 
 ---
 
 ## Features
 
 - **HTCPCP/HTCPCP-TEA** — Full RFC 2324 + RFC 7168 (BREW, WHEN, PROPFIND, OPTIONS)
-- **Web dashboard** — 10-tab SPA: Brew, Mesh, Covert, ITF Defense, Schedule, History, Crypto, IR, Signal, Diag
+- **Web dashboard** — Refined 6-tab SPA: Brew, Mesh, Covert, ITF Defense, Schedule, History with streamlined UX/UI
 - **GPIO relay control** — Physical coffee maker control on Raspberry Pi
 - **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, E2EE
 - **4 transport layers** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G
@@ -81,16 +84,18 @@ looks like coffee. It is not coffee.
 - **Pentest tool detection** — Burp Suite, Nmap, SQLMap, Nikto & 12 more tools fingerprinted and blocked
 - **Runtime stealth toggle** — Enable/disable stealth mode without restart
 - **Blacklist management** — IP blacklist with rate-limited exponential ban duration
-- **CoffeeCipher v2** — SHA-256+HKDF authenticated encryption with HMAC integrity
-- **ML-KEM-768 post-quantum KEM** — SHA-3 Fujisaki-Okamoto construction (IND-CCA2)
-- **HybridKEM** — ECDH + ML-KEM hybrid key exchange (quantum-resistant)
-- **SHA-3-256 domain-separated hashing** — tamper-evident audit chain
-- **Ed25519 ECC** — End-to-end encryption, address book, port hopping
+- **CoffeeCipher v3 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
+- **RSA-KEM-2048** — FIPS 186-4 / SP 800-56B key encapsulation with OAEP
+- **HybridKEM** — ECDH P-256 + RSA-KEM hybrid key exchange
+- **SHA-256 domain-separated hashing** — tamper-evident audit chain
+- **ECDSA/ECDH P-256** — FIPS 186-4 end-to-end encryption, address book, port hopping
 - **Incident response** — auto-detection, severity alerts, auto-mitigation
 - **Signal awareness** — bandwidth estimation, jamming detection, link quality
 - **Emergency mode** — instant key rotation, peer notification, secure wipe
 - **Network diagnostics** — TCP/UDP ping, port scan, DNS, traceroute, interfaces
 - **HTTP security** — rate limiting, request size limits, security headers
+- **TLS/SSL (HTTPS)** — Built-in HTTPS with auto-generated self-signed certs, custom cert support, HTTP→HTTPS redirect
+- **Kubernetes self-hosting** — Production-ready K8s manifests with ConfigMap, Secret, Ingress, NetworkPolicy
 - **Encrypted persistence** — data at rest encrypted with HMAC integrity
 - **CLI client** — Full-featured `htcpcp` bash CLI
 - **mDNS advertising** — Zero-config discovery via Avahi
@@ -110,24 +115,28 @@ looks like coffee. It is not coffee.
 ## Quick Start
 
 ```bash
-# Start the server (defaults: hyper-text device, mesh enabled)
-./server.py
+# Start the server (defaults: hyper-text device, mesh enabled, HTTPS auto-cert)
+CPIP_SSL=1 CPIP_SSL_AUTO=1 ./server.py
 
-# Web dashboard: http://localhost:4180/dashboard
+# Web dashboard: https://localhost:4180/dashboard
 
 # Brew some coffee
-curl -X BREW http://localhost:4180/coffee
+curl -X BREW https://localhost:4180/coffee
 
 # Brew tea with additions
 curl -X BREW \
   -H "Accept-Additions: milk;variety=whole, sugar;variety=honey" \
-  http://localhost:4180/tea
+  https://localhost:4180/tea
 
 # Stop brewing
-curl -X WHEN http://localhost:4180/
+curl -X WHEN https://localhost:4180/
 
 # Check status
-curl http://localhost:4180/
+curl https://localhost:4180/
+
+# Or run without SSL (HTTP only)
+./server.py
+# Dashboard: http://localhost:4180/dashboard
 ```
 
 ### With extra transports
@@ -206,8 +215,8 @@ The `htcpcp` command-line client communicates with a running CPIP server.
 
 ## Web Dashboard
 
-CPIP includes a full single-page application dashboard served at `/dashboard`.
-Ten tabs provide real-time control and monitoring:
+CPIP v3 includes a refined single-page application dashboard served at `/dashboard`.
+Six tabs provide real-time control and monitoring with a streamlined, professional UI:
 
 | Tab | Features |
 |-----|----------|
@@ -217,12 +226,8 @@ Ten tabs provide real-time control and monitoring:
 | **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
 | **📜 History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
-| **🔐 Crypto** | Cipher status, key rotation, emergency mode |
-| **🚨 IR** | Incident alerts, audit chain, auto-response toggle |
-| **📡 Signal** | Bandwidth, link quality, emergency status |
-| **🔧 Diag** | Ping, port scan, DNS, traceroute, interfaces |
 
-The status bar shows live badges for: brewing state, GPIO, mesh, covert, ITF stealth status, NTP, and SSE connection. A live event log at the bottom shows real-time brew start/stop and mesh message events via Server-Sent Events.
+The status bar shows live badges with dot indicators for: brewing state, GPIO, mesh, covert, ITF stealth, NTP, and SSE connection. A live event log at the bottom shows real-time brew start/stop and mesh message events via Server-Sent Events.
 
 ---
 
@@ -288,7 +293,7 @@ without restarting the server using the API or dashboard buttons.
 ### LAN Mesh (default)
 
 Nodes discover each other via UDP heartbeats on port 4191. Messages use
-store-and-forward delivery. E2EE with Ed25519 is default. Port hopping and
+store-and-forward delivery. E2EE with ECDH P-256 is default. Port hopping and
 stealth mode are supported.
 
 **No internet connection required.** Works over:
@@ -356,50 +361,103 @@ The dashboard Covert tab provides:
 
 ## Cryptography
 
-### CoffeeCipher v2
+All cryptographic primitives in CPIP v3 use FIPS-compliant algorithms via the
+`cryptography` library, which provides constant-time implementations. The
+`secrets` module replaces `random` for all security-relevant operations.
 
-- **Key derivation**: SHA-256 + HKDF with random 16-byte IV per message
-- **Authentication**: HMAC-SHA256 authentication tag (32 bytes)
-- **Format**: `IV(16B) || ciphertext || HMAC-SHA256(32B)`
-- **Backward-compatible**: Reads v1 Coffee Blend Cipher messages transparently
+### CoffeeCipher v3 (AES-256-GCM)
 
-### Ed25519
+- **Cipher**: AES-256-GCM (FIPS 197) with 12-byte nonce and 16-byte authentication tag
+- **Key derivation**: HKDF-SHA256 with domain-separated info strings
+- **Format**: `nonce(12B) || ciphertext || GCM-tag(16B)`
+- **Backward-compatible**: Reads v1 and v2 Coffee Blend Cipher messages transparently
 
-- Key exchange: Curve25519 Diffie-Hellman
-- Signatures: Ed25519
-- Pure Python implementation with fixed sign-bit recovery
-- Working ECDH and signatures
-- **NOT constant-time** — vulnerable to timing side-channels
+### ECDSA/ECDH P-256
 
-### ML-KEM-768
+- **Key exchange**: ECDH over NIST P-256 (FIPS 186-4) via `cryptography` library
+- **Signatures**: ECDSA with P-256 (FIPS 186-4) via `cryptography` library
+- **Constant-time**: Uses `cryptography` library's constant-time implementations
+- **Working ECDH and signatures**
 
-- SHA-3 Fujisaki-Okamoto KEM construction
-- IND-CCA2 secure
-- **NOT FIPS 203** — this is not real lattice-based Kyber; it uses SHA-3 permutations as a KEM construction
-- For production post-quantum security, use liboqs
+### RSA-KEM-2048
+
+- **Key encapsulation**: RSA-KEM with 2048-bit keys (FIPS 186-4 / SP 800-56B)
+- **Padding**: OAEP with SHA-256 label
+- **Key derivation**: HKDF-SHA256 from RSA-KEM shared secret
 
 ### HybridKEM
 
-- ECDH + ML-KEM combined key exchange
-- Secure if EITHER classical or post-quantum path holds
-- Provides quantum-resistant key agreement
+- **ECDH P-256 + RSA-KEM-2048** combined key exchange
+- **Key derivation**: HKDF-SHA256 from combined ECDH + RSA-KEM shared secrets
+- **Hybrid guarantee**: Secure if EITHER classical component holds
 
 ### HMAC-SHA256
 
 - Mesh heartbeat authentication
 - Message integrity verification
 
-### SHA-3-256
+### SHA-256
 
 - Domain-separated hashing for audit chain and identity
 
 ### Encrypted Persistence
 
-- v2 format with HMAC integrity verification
-- v1 backward-compatible load
+- v3 format with AES-256-GCM encryption and HMAC integrity verification
+- v1/v2 backward-compatible load
 - Data at rest encrypted with HMAC integrity
 
-**Note**: Still NOT FIPS 140-2/3 compliant. Ed25519 has timing side-channels.
+**Note**: All cryptographic primitives are FIPS-compliant: AES-256-GCM (FIPS 197),
+ECDSA/ECDH P-256 (FIPS 186-4), RSA-KEM-2048 (FIPS 186-4 / SP 800-56B),
+HKDF-SHA256, HMAC-SHA256.
+
+---
+
+## TLS/SSL (HTTPS)
+
+CPIP v3 includes built-in HTTPS support with three modes:
+
+### Auto Self-Signed Certificates
+
+```bash
+# Enable HTTPS with auto-generated self-signed cert
+CPIP_SSL=1 CPIP_SSL_AUTO=1 ./server.py
+```
+
+On first startup, CPIP generates a self-signed certificate in `.ssl/cert.pem` and `.ssl/key.pem` using `openssl`. If `openssl` is unavailable, it falls back to the Python `cryptography` library, and finally to a minimal stub.
+
+### Custom Certificates
+
+```bash
+# Use your own certificate
+CPIP_SSL=1 CPIP_SSL_CERT=/path/to/cert.pem CPIP_SSL_KEY=/path/to/key.pem ./server.py
+```
+
+### HTTP→HTTPS Redirect
+
+```bash
+# Redirect HTTP (port 4181) to HTTPS (port 4180)
+CPIP_SSL=1 CPIP_SSL_AUTO=1 CPIP_HTTP_REDIRECT=1 CPIP_HTTP_REDIRECT_PORT=4181 ./server.py
+```
+
+When enabled, all HTTP requests on the redirect port receive a `301 Moved Permanently` to the equivalent HTTPS URL.
+
+### Security Headers
+
+When SSL is active, CPIP adds:
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `Upgrade-Insecure-Requests: 1`
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_SSL` | `0` | Enable HTTPS (TLS) |
+| `CPIP_SSL_CERT` | — | Path to TLS certificate PEM file |
+| `CPIP_SSL_KEY` | — | Path to TLS private key PEM file |
+| `CPIP_SSL_AUTO` | `0` | Auto-generate self-signed cert on first run |
+| `CPIP_SSL_CERT_DIR` | `.ssl` | Directory for auto-generated certs |
+| `CPIP_HTTP_REDIRECT` | `0` | Enable HTTP→HTTPS redirect |
+| `CPIP_HTTP_REDIRECT_PORT` | `4181` | Port for HTTP redirect server |
 
 ---
 
@@ -434,7 +492,7 @@ Pi-Apps catalog for one-click install.
 
 ```ini
 [Unit]
-Description=CPIP v2.2 — Coffee Pot Internet Protocol
+Description=CPIP v3.0 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -460,6 +518,88 @@ make
 ```
 
 Produces `radio_if` — standalone binary, zero external dependencies.
+
+---
+
+## Kubernetes
+
+CPIP v3 includes production-ready Kubernetes manifests for self-hosting.
+
+### Quick Deploy
+
+```bash
+# Clone and deploy
+git clone https://github.com/WilliamMajanska/CPIP-.git
+cd CPIP-
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -n cpip
+kubectl logs -n cpip deployment/cpip
+```
+
+### Architecture
+
+The K8s deployment includes:
+
+| Resource | Description |
+|----------|-------------|
+| **Namespace** | `cpip` — isolated environment |
+| **ConfigMap** | Environment variables (device, ports, mesh, SSL) |
+| **Secret** | Sensitive keys (`CPIP_COVERT_KEY`) |
+| **Deployment** | Single replica with health/readiness/startup probes |
+| **Service** | ClusterIP exposing HTTP (4180), mesh UDP (4191/4195/4196) |
+| **Ingress** | nginx Ingress with TLS passthrough for `cpip.local` |
+| **NetworkPolicy** | Restrict ingress/egress to CPIP ports only |
+| **PVC** | 1Gi persistent volume for mesh data |
+
+### Configuration
+
+Edit the ConfigMap for environment variables:
+
+```bash
+kubectl edit configmap cpip-config -n cpip
+```
+
+Key settings:
+- `CPIP_SSL=1` / `CPIP_SSL_AUTO=1` — HTTPS with auto certs
+- `CPIP_MESH=1` — Enable mesh networking
+- `CPIP_SAT=1` — Enable satellite transport
+- `CPIP_COVERT_KEY` — Set in the Secret, not ConfigMap
+
+### Docker Build
+
+```bash
+docker build -t cpip:3.0.0 .
+docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
+  -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
+  cpip:3.0.0
+```
+
+### Access
+
+```bash
+# Port forward for local testing
+kubectl port-forward -n cpip deployment/cpip 4180:4180
+
+# Open dashboard
+open https://localhost:4180/dashboard
+```
+
+### Production Ingress
+
+For external access with a real domain and Let's Encrypt:
+
+```yaml
+# Add cert-manager annotation to the Ingress:
+annotations:
+  cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - cpip.yourdomain.com
+      secretName: cpip-tls-prod
+```
 
 ---
 
@@ -570,6 +710,18 @@ All configuration is via environment variables. No config files needed.
 | `CPIP_WEB_DIR` | `./web` | Web dashboard static files |
 | `CPIP_THERMOS` | `0` | Enable dead-drop aggregator |
 | `CPIP_THERMOS_MAX` | `1000000` | Max dead-drop storage (bytes) |
+
+### TLS/SSL
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_SSL` | `0` | Enable HTTPS (TLS) |
+| `CPIP_SSL_CERT` | — | Path to TLS certificate PEM file |
+| `CPIP_SSL_KEY` | — | Path to TLS private key PEM file |
+| `CPIP_SSL_AUTO` | `0` | Auto-generate self-signed cert on first run |
+| `CPIP_SSL_CERT_DIR` | `.ssl` | Directory for auto-generated certs |
+| `CPIP_HTTP_REDIRECT` | `0` | Enable HTTP→HTTPS redirect |
+| `CPIP_HTTP_REDIRECT_PORT` | `4181` | Port for HTTP redirect server |
 
 ---
 
@@ -694,8 +846,8 @@ All configuration is via environment variables. No config files needed.
 │  └──────────────┘  └──────────────┘  └──────────────┘        │
 │  ┌──────────────────┐  ┌──────────────────┐                   │
 │  │  Crypto Engine   │  │ Incident Response │                   │
-│  │ (CoffeeCipher v2,│  │ (auto-detect,     │                   │
-│  │  ML-KEM, Hybrid) │  │  alert, mitigate)│                   │
+│  │ (CoffeeCipher v3,│  │ (auto-detect,     │                   │
+│  │  RSA-KEM, Hybrid)│  │  alert, mitigate)│                   │
 │  └──────────────────┘  └──────────────────┘                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -705,10 +857,11 @@ All configuration is via environment variables. No config files needed.
 ## Project Structure
 
 ```
-├── server.py              # Main server (~6700 lines, zero deps)
+├── server.py              # Main server (~6700 lines, zero deps, v3.0)
 ├── htcpcp                 # CLI client (bash script)
 ├── deploy.sh              # Raspberry Pi deployment script
 ├── deploy_htcpcp.sh       # Minimal HTCPCP-only deployment
+├── Dockerfile             # Docker image (Alpine, SSL-enabled)
 ├── .gitignore
 ├── README.md
 ├── LICENSE
@@ -716,7 +869,10 @@ All configuration is via environment variables. No config files needed.
 ├── SECURITY.md
 ├── CODE_OF_CONDUCT.md
 ├── web/
-│   └── index.html         # Web dashboard SPA
+│   └── index.html         # Web dashboard SPA (v3)
+├── k8s/
+│   ├── deployment.yaml    # Kubernetes manifests (Deployment, Service, Ingress, etc.)
+│   └── kustomization.yaml # Kustomize configuration
 ├── radio/
 │   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, RTL-SDR receive, sim)
 │   ├── radio_if.h         # C header (structs, enums, protocol)
@@ -751,9 +907,8 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 This is free and unencumbered software released into the public domain.
 See [LICENSE](LICENSE) for details.
 
-The CoffeeCipher v2 is deliberately non-FIPS compliant and should not
-be used for any purpose requiring actual cryptographic security.
-ML-KEM-768 is not FIPS 203 (not real lattice-based Kyber).
+The CoffeeCipher v3 uses FIPS-compliant cryptographic primitives
+(AES-256-GCM, ECDSA/ECDH P-256, RSA-KEM-2048, HKDF-SHA256, HMAC-SHA256).
 
 ```
      ☕     ☕     ☕
@@ -765,4 +920,5 @@ ML-KEM-768 is not FIPS 203 (not real lattice-based Kyber).
   Brew responsibly.
   Mesh securely.
   Never trust a teapot.
+  v3 — all fangs out.
 ```

@@ -1,0 +1,331 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  CPIP v3 — Kubernetes Self-Hosting Manifests
+#  Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto)
+#
+#  Deploy:
+#    kubectl apply -f k8s/
+#
+#  Access:
+#    http://cpip.local:4180/dashboard    (HTTP)
+#    https://cpip.local:4180/dashboard   (HTTPS with SSL enabled)
+#
+#  Customize:
+#    Edit ConfigMap for environment variables
+#    Edit Secret for sensitive keys
+#    Edit Ingress for domain/TLS settings
+# ═══════════════════════════════════════════════════════════════════════
+
+---
+# ── Namespace ──────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+    app.kubernetes.io/version: "3.0.0"
+
+---
+# ── ConfigMap ─────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cpip-config
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+data:
+  CPIP_DEVICE: "hyper-text"
+  CPIP_BIND: "0.0.0.0"
+  CPIP_PORT: "4180"
+  CPIP_MESH: "1"
+  CPIP_MESH_PORT: "4191"
+  CPIP_MESH_STEALTH: "0"
+  CPIP_COVERT: "1"
+  CPIP_COVER_TRAFFIC: "1"
+  CPIP_AVAHI: "0"
+  CPIP_NTP: "1"
+  CPIP_NTP_SERVER: "pool.ntp.org"
+  CPIP_GPIO: "0"
+  CPIP_SAT: "0"
+  CPIP_SAT_PORT: "4195"
+  CPIP_RADIO: "0"
+  CPIP_MOBILE: "0"
+  CPIP_SSL: "1"
+  CPIP_SSL_AUTO: "1"
+  CPIP_HTTP_REDIRECT: "1"
+  CPIP_HTTP_REDIRECT_PORT: "4181"
+  CPIP_DEFENSE_RATE_LIMIT: "10"
+  CPIP_DEFENSE_BLACKLIST_TTL: "3600"
+  CPIP_DEFENSE_MAX_BLACKLIST: "1000"
+
+---
+# ── Secret ────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cpip-secret
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+type: Opaque
+stringData:
+  CPIP_COVERT_KEY: "CHANGE_ME_TO_A_STRONG_RANDOM_KEY_32_CHARS_MIN"
+  # Uncomment and provide your own SSL cert/key if CPIP_SSL_AUTO=0:
+  # CPIP_SSL_CERT: "/tls/cert.pem"
+  # CPIP_SSL_KEY: "/tls/key.pem"
+
+---
+# ── Persistent Volume Claim ───────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cpip-data
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+
+---
+# ── Deployment ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpip
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+    app.kubernetes.io/version: "3.0.0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cpip
+  template:
+    metadata:
+      labels:
+        app: cpip
+        app.kubernetes.io/name: cpip
+        app.kubernetes.io/version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4180"
+        prometheus.io/path: "/cpip/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: cpip
+          image: cpip:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+            - name: https
+              containerPort: 4180
+              protocol: TCP
+            - name: http-redirect
+              containerPort: 4181
+              protocol: TCP
+            - name: mesh
+              containerPort: 4191
+              protocol: UDP
+            - name: discovery
+              containerPort: 4190
+              protocol: UDP
+            - name: sat
+              containerPort: 4195
+              protocol: UDP
+            - name: mobile
+              containerPort: 4196
+              protocol: UDP
+          envFrom:
+            - configMapRef:
+                name: cpip-config
+            - secretRef:
+                name: cpip-secret
+          env:
+            - name: CPIP_MESH_PERSIST_DIR
+              value: "/data"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: ssl
+              mountPath: /opt/cpip/.ssl
+              readOnly: false
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4180
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: 4180
+            failureThreshold: 30
+            periodSeconds: 2
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cpip-data
+        - name: ssl
+          emptyDir:
+            medium: Memory
+
+---
+# ── Service ───────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: cpip
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+spec:
+  type: ClusterIP
+  selector:
+    app: cpip
+  ports:
+    - name: http
+      port: 4180
+      targetPort: 4180
+      protocol: TCP
+    - name: http-redirect
+      port: 4181
+      targetPort: 4181
+      protocol: TCP
+    - name: mesh
+      port: 4191
+      targetPort: 4191
+      protocol: UDP
+    - name: discovery
+      port: 4190
+      targetPort: 4190
+      protocol: UDP
+    - name: sat
+      port: 4195
+      targetPort: 4195
+      protocol: UDP
+    - name: mobile
+      port: 4196
+      targetPort: 4196
+      protocol: UDP
+
+---
+# ── Ingress (optional — for external access) ──────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cpip
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "cpip"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - cpip.local
+      secretName: cpip-tls
+  rules:
+    - host: cpip.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cpip
+                port:
+                  number: 4180
+
+---
+# ── NetworkPolicy (restrict traffic to CPIP ports only) ──────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cpip-netpol
+  namespace: cpip
+  labels:
+    app.kubernetes.io/name: cpip
+spec:
+  podSelector:
+    matchLabels:
+      app: cpip
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: 4180
+          protocol: TCP
+        - port: 4181
+          protocol: TCP
+        - port: 4190
+          protocol: UDP
+        - port: 4191
+          protocol: UDP
+        - port: 4195
+          protocol: UDP
+        - port: 4196
+          protocol: UDP
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - namespaceSelector: {}
+          podSelector: {}
+      ports:
+        - port: 4180
+          protocol: TCP
+        - port: 4191
+          protocol: UDP
+        - port: 4195
+          protocol: UDP
+        - port: 4196
+          protocol: UDP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 123
+          protocol: UDP

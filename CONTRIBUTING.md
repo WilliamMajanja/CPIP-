@@ -18,9 +18,7 @@ participating, you are expected to uphold its terms.
 
 ## What We Do Not Accept
 
-- Pull requests that add external Python dependencies (stdlib only)
-- Cryptographic "hardening" that moves toward FIPS compliance (this is
-  deliberately non-FIPS)
+- Pull requests that add external Python dependencies beyond `cryptography`
 - Changes that break RFC 2324 or RFC 7168 compliance
 - Removal of the 418 "I'm a teapot" defense
 
@@ -38,8 +36,8 @@ participating, you are expected to uphold its terms.
   but be consistent with the surrounding code)
 - C: `gcc -O2 -Wall -pthread` clean, zero warnings
 - Bash: `set -euo pipefail`, `bash -n` clean
-- No external dependencies. Python standard library only. gcc + POSIX only
-  for C code.
+- No external dependencies beyond `cryptography`. Python standard library + `cryptography`
+  for crypto. gcc + POSIX only for C code.
 
 ## Commit Messages
 
