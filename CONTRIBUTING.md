@@ -27,7 +27,7 @@ participating, you are expected to uphold its terms.
 1. Fork the repository.
 2. Make your changes on a feature branch.
 3. Run the server and verify it starts without errors.
-4. Test your change with the `htcpcp` CLI.
+4. Test your change with the `cpip` CLI.
 5. Submit a pull request.
 
 ## Code Style
@@ -60,9 +60,9 @@ No formal test framework is used. Verify your changes by:
 
 ```bash
 python3 server.py &
-htcpcp status
-htcpcp mesh status
-htcpcp stats
+cpip status
+cpip mesh status
+cpip stats
 ```
 
 Enable the relevant transport with env vars and check its endpoint.

@@ -58,6 +58,15 @@ data:
   CPIP_DEFENSE_RATE_LIMIT: "10"
   CPIP_DEFENSE_BLACKLIST_TTL: "3600"
   CPIP_DEFENSE_MAX_BLACKLIST: "1000"
+  CPIP_ANTI_ISP: "1"
+  CPIP_ANTI_STINGRAY: "1"
+  CPIP_ANTI_SURVEILLANCE: "1"
+  CPIP_DPI_EVASION: "1"
+  CPIP_TRAFFIC_OBFUSC: "1"
+  CPIP_METADATA_STRIP: "1"
+  CPIP_NET_NEUTRALITY: "1"
+  CPIP_NN_PROTO_MASK: "1"
+  CPIP_NN_THROTTLE_DETECT: "1"
 
 ---
 # ── Secret ────────────────────────────────────────────────────────────
@@ -70,7 +79,7 @@ metadata:
     app.kubernetes.io/name: cpip
 type: Opaque
 stringData:
-  CPIP_COVERT_KEY: "CHANGE_ME_TO_A_STRONG_RANDOM_KEY_32_CHARS_MIN"
+  CPIP_COVERT_KEY: "REPLACE_WITH_openssl_rand_hex_32"
   # Uncomment and provide your own SSL cert/key if CPIP_SSL_AUTO=0:
   # CPIP_SSL_CERT: "/tls/cert.pem"
   # CPIP_SSL_KEY: "/tls/key.pem"
@@ -174,21 +183,21 @@ spec:
               cpu: "500m"
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 4180
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /
+              path: /ready
               port: 4180
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
           startupProbe:
             httpGet:
-              path: /
+              path: /health
               port: 4180
             failureThreshold: 30
             periodSeconds: 2

@@ -4,13 +4,13 @@
 
 ```bash
 # Brew a cup of tea
-htcpcp brew tea
+cpip brew tea
 
 # Brew coffee with milk and honey
-htcpcp brew coffee "milk;variety=whole, sugar;variety=honey"
+cpip brew coffee "milk;variety=whole, sugar;variety=honey"
 
 # Brew and get the 418 treatment (teapot can't brew coffee)
-htcpcp 418
+cpip 418
 ```
 
 ## 1nf1D3L's Kyber KEM (Post-Quantum)
@@ -44,17 +44,17 @@ b4dm4n-cw art
 
 ```bash
 # Scan for peers on the LAN mesh
-htcpcp mesh scan
-htcpcp mesh peers
+cpip mesh scan
+cpip mesh peers
 
 # Send an E2EE message
-htcpcp mesh send a1b2c3d4 "Hello from the coffee pot network"
+cpip mesh send a1b2c3d4 "Hello from the coffee pot network"
 
 # Broadcast to everyone
-htcpcp mesh broadcast "Attention all pots: brew time is 15:00"
+cpip mesh broadcast "Attention all pots: brew time is 15:00"
 
 # Read your inbox
-htcpcp mesh inbox
+cpip mesh inbox
 ```
 
 ## Multi-Transport Mesh
@@ -64,9 +64,9 @@ htcpcp mesh inbox
 CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 
 # In another terminal, check each transport
-htcpcp mesh sat      # Satellite peers
-htcpcp mesh radio    # LoRa/TNC status
-htcpcp mesh mobile   # 4G/5G peers
+cpip mesh sat      # Satellite peers
+cpip mesh radio    # LoRa/TNC status
+cpip mesh mobile   # 4G/5G peers
 
 # Messages sent on any transport automatically
 # forward to all others via cross-transport routing.
@@ -76,36 +76,36 @@ htcpcp mesh mobile   # 4G/5G peers
 
 ```bash
 # Encode a secret message
-htcpcp covert encode "The coffee is ready at midnight"
+cpip covert encode "The coffee is ready at midnight"
 
 # This outputs an Accept-Additions header like:
 # milk;variety=4d69646e, syrup;variety=69676874
 
 # Decode a captured header
-htcpcp covert decode "milk;variety=4d69646e, syrup;variety=69676874"
+cpip covert decode "milk;variety=4d69646e, syrup;variety=69676874"
 
 # Brew with a hidden message (sends it to a peer)
-htcpcp covert brew "meet at the usual spot" a1b2c3d4
+cpip covert brew "meet at the usual spot" a1b2c3d4
 
 # Cover traffic runs automatically to hide real messages
-htcpcp covert status
+cpip covert status
 ```
 
 ## ECC / Address Book
 
 ```bash
 # Show your node's ECC address
-htcpcp ecc address
+cpip ecc address
 # → coffee:2w3q2ay...
 
 # Resolve an address to a POT_ID
-htcpcp ecc resolve coffee:2w3q2ay...
+cpip ecc resolve coffee:2w3q2ay...
 
 # List all known addresses
-htcpcp ecc book
+cpip ecc book
 
 # ECC status
-htcpcp ecc status
+cpip ecc status
 ```
 
 ## Dead Drops
@@ -113,32 +113,32 @@ htcpcp ecc status
 ```bash
 # Leave a message (done automatically for offline peers)
 # List available dead drops
-htcpcp deaddrop list
+cpip deaddrop list
 
 # Claim one
-htcpcp deaddrop claim <message_id>
+cpip deaddrop claim <message_id>
 ```
 
 ## ITF Defense (In The Face)
 
 ```bash
 # Check your defense posture
-htcpcp itf status
+cpip itf status
 # → 418 Teapot:    ACTIVE
 # → Stealth:       OFF
 # → Blacklisted:   3 address(es)
 
 # List blacklisted IPs
-htcpcp itf blacklist
+cpip itf blacklist
 
 # Probe check — see if an IP is banned
-htcpcp itf probe 10.0.0.5
+cpip itf probe 10.0.0.5
 
 # Whitelist a falsely blacklisted address
-htcpcp itf whitelist 10.0.0.5
+cpip itf whitelist 10.0.0.5
 
 # Emergency: clear the entire blacklist
-htcpcp itf clear
+cpip itf clear
 ```
 
 ## Satellite Mesh (Internet-Wide)
@@ -150,7 +150,7 @@ CPIP_SAT=1 CPIP_SAT_LAT=51.5 CPIP_SAT_LON=-0.12 \
   ./server.py
 
 # Check satellite status
-htcpcp mesh sat
+cpip mesh sat
 ```
 
 ## Radio Transport (LoRa)
@@ -168,7 +168,7 @@ CPIP_RADIO=1 CPIP_RADIO_MODE=lora \
 CPIP_RADIO=1 CPIP_RADIO_MODE=sim ./server.py
 
 # Check radio status
-htcpcp mesh radio
+cpip mesh radio
 ```
 
 ## Mobile Broadband (4G/5G)
@@ -180,7 +180,7 @@ CPIP_MOBILE=1 CPIP_MOBILE_IFACE=wwan0 \
   ./server.py
 
 # Check mobile status
-htcpcp mesh mobile
+cpip mesh mobile
 ```
 
 ## Prometheus Metrics
@@ -201,10 +201,10 @@ curl http://localhost:4180/cpip/metrics
 
 ```bash
 # Full status snapshot
-htcpcp stats
+cpip stats
 
 # Full configuration
-htcpcp config
+cpip config
 ```
 
 ## API Usage (curl)

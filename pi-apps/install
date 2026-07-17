@@ -4,7 +4,7 @@ set -euo pipefail
 
 APP_DIR="/opt/cpip"
 SYSTEMD_SERVICE="/etc/systemd/system/cpip.service"
-CLI_BIN="/usr/local/bin/htcpcp"
+CLI_BIN="/usr/local/bin/cpip"
 
 echo "[CPIP] Installing Coffee Pot Internet Protocol..."
 
@@ -38,10 +38,10 @@ sudo chmod +x "$APP_DIR/server.py"
 
 # Write CLI
 echo "[CPIP] Installing CLI..."
-if [ -f "$(dirname "$0")/../htcpcp" ]; then
-    sudo cp "$(dirname "$0")/../htcpcp" "$CLI_BIN"
-elif [ -f "$(dirname "$0")/../../htcpcp" ]; then
-    sudo cp "$(dirname "$0")/../../htcpcp" "$CLI_BIN"
+if [ -f "$(dirname "$0")/../cpip" ]; then
+    sudo cp "$(dirname "$0")/../cpip" "$CLI_BIN"
+elif [ -f "$(dirname "$0")/../../cpip" ]; then
+    sudo cp "$(dirname "$0")/../../cpip" "$CLI_BIN"
 fi
 sudo chmod +x "$CLI_BIN"
 
@@ -85,7 +85,7 @@ echo "════════════════════════�
 echo "  CPIP installed successfully!"
 echo ""
 echo "  Dashboard: http://$(hostname -I | awk '{print $1}'):4180/dashboard"
-echo "  CLI:       htcpcp status"
-echo "  Mesh:      htcpcp mesh scan"
+echo "  CLI:       cpip status"
+echo "  Mesh:      cpip mesh scan"
 echo "  Service:   systemctl status cpip"
 echo "══════════════════════════════════════════════════"

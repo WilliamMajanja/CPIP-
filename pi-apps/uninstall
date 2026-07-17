@@ -20,7 +20,7 @@ sudo systemctl daemon-reload
 sudo rm -rf /opt/cpip
 
 # Remove CLI
-sudo rm -f /usr/local/bin/htcpcp
+sudo rm -f /usr/local/bin/cpip
 
 echo "[CPIP] Uninstalled successfully."
 echo "[CPIP] Brew history and mesh data have been lost."

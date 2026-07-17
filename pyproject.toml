@@ -9,7 +9,7 @@ description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh netwo
 readme = "README.md"
 license = {text = "Unlicense"}
 requires-python = ">=3.10"
-keywords = ["htcpcp", "coffee", "tea", "rfc2324", "mesh", "iot"]
+keywords = ["cpip", "coffee", "tea", "rfc2324", "mesh", "iot"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Telecommunications Industry",
@@ -19,6 +19,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0"]
+
 [project.scripts]
 cpip-server = "server:main"
 
@@ -26,9 +28,6 @@ cpip-server = "server:main"
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
 RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
 RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc7168"
-
-[project.dependencies]
-cryptography >= 42.0.0
 
 [tool.setuptools]
 py-modules = ["server"]

@@ -1,0 +1,887 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CPIP_HOST="${CPIP_HOST:-localhost}"
+CPIP_PORT="${CPIP_PORT:-4180}"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+usage() {
+cat << 'HELP'
+CPIP v3.0 — Coffee Pot Internet Protocol CLI
+RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
+
+Usage:
+  cpip status                          Server status
+  cpip brew|pour [coffee|tea] [add]    Start brewing
+  cpip when                            Stop pouring
+  cpip info                            Pot metadata (PROPFIND)
+  cpip 418                            Trigger 418 (brew coffee on teapot)
+  cpip 418-alcohol                     Trigger 418 (alcohol on teapot)
+  cpip additions                       List supported additions
+  cpip config                          Show full node configuration
+  cpip stats                           Show all status at a glance
+  cpip version                         Show server version
+  cpip whoami|id                       Show local node identity
+
+  # Mesh commands
+  cpip mesh status                     Mesh network status (incl. ECC, port hop)
+  cpip mesh peers                      List mesh peers
+  cpip mesh inbox                      Read received messages
+  cpip mesh send <pot|addr> <msg>      Send message via mesh (E2EE by default)
+  cpip mesh send-raw <pot> <msg>       Send without E2EE encryption
+  cpip mesh broadcast <msg>            Broadcast to all peers
+  cpip mesh scan                       Scan for peers
+  cpip mesh routes                     Show routing table
+  cpip mesh queued                     Show store-and-forward queue
+  cpip mesh sat                        Satellite mesh status
+  cpip mesh radio                      Radio / LoRa / packet-radio status
+  cpip mesh mobile                     4G/5G / LTE / WWAN status
+
+  # ECC / Address Book
+  cpip ecc status                      ECC engine + address book status
+  cpip ecc address                     Show this node's ECC address
+  cpip ecc book                        List address book entries
+  cpip ecc resolve <addr>              Resolve ECC address to POT_ID
+
+  # Dead-drop / Thermos
+  cpip deaddrop list                   List dead-drop messages held by this node
+  cpip deaddrop claim <id>             Claim a dead-drop message
+
+  # Covert channel commands
+  cpip covert encode <msg> [dst]       Encode message in additions
+  cpip covert decode <header>          Decode message from header
+  cpip covert brew <msg> [dst]         Brew with hidden message
+  cpip covert status                   Covert channel status
+
+  # Defenses
+  cpip defense status                  418 defense status
+
+  # ITF (In The Face) — active network defense
+  cpip itf status                       Full defense posture
+  cpip itf blacklist                    List blacklisted IPs
+  cpip itf whitelist <addr>             Remove an IP from blacklist
+  cpip itf clear                        Clear entire blacklist
+  cpip itf stealth                      Show stealth mode status
+  cpip itf probe <addr>                 Check if an IP is blacklisted
+
+  # Web-of-Trust Identity
+  cpip identity                         List all known identities
+  cpip identity show <pot_id>           Show identity details
+  cpip identity publish                 Publish this node's identity
+  cpip identity vouch <pot_id> [level]  Vouch for a peer (2=marginal,3=full)
+  cpip identity graph                   Show trust graph
+
+  # Distributed DNS
+  cpip dns list                         List all registered names
+  cpip dns register <name>              Register a .pot name
+  cpip dns resolve <name>               Resolve a name to pot_id
+  cpip dns remove <name>                Remove a name registration
+
+  # Group Chat (E2EE)
+  cpip groups                           List groups
+  cpip groups create <name>             Create a new group
+  cpip groups join <group_id>           Join a group
+  cpip groups leave <group_id>          Leave a group
+  cpip groups send <group_id> <msg>     Send a message to a group
+  cpip groups history <group_id>        View group message history
+
+  # Offline Sync
+  cpip sync channels                    List active sync channels
+  cpip sync pending                     Show pending undelivered messages
+  cpip sync send <channel> <msg>        Send a sync message
+  cpip sync clocks                      Show vector clocks
+  cpip sync request <pot_id>            Request sync from a peer
+
+  # Cluster testing
+  cpip cluster start [N]                Start N-node cluster on localhost
+  cpip cluster stop                     Stop all cluster nodes
+  cpip cluster status                   Show cluster health
+
+Environment:
+  CPIP_HOST   Server hostname (default: localhost)
+  CPIP_PORT   Server port     (default: 4180)
+HELP
+}
+
+base_url() { echo "http://${CPIP_HOST}:${CPIP_PORT}"; }
+
+api() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local data="${1:-}"
+    if [ -n "$data" ]; then
+        curl -sS -X "$method" -H "Content-Type: application/json" \
+            -d "$data" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    else
+        curl -sS -X "$method" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    fi
+}
+
+req() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local header="${1:-}"
+    if [ -n "$header" ]; then
+        curl -sS -X "$method" -H "$header" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    else
+        curl -sS -X "$method" "$(base_url)${path}" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+    fi
+}
+
+req_verbose() {
+    local method="$1"; shift
+    local path="$1"; shift
+    local header="${1:-}"
+    echo ">>> $method $(base_url)${path}"
+    [ -n "$header" ] && echo ">>> $header"
+    echo "---"
+    if [ -n "$header" ]; then
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X "$method" -H "$header" \
+            "$(base_url)${path}" 2>/dev/null || die "Cannot connect to $(base_url)"
+    else
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X "$method" \
+            "$(base_url)${path}" 2>/dev/null || die "Cannot connect to $(base_url)"
+    fi
+}
+
+sub_brew() {
+    local beverage="${2:-tea}"
+    local url="/${beverage}"
+    local header=""
+    if [ $# -ge 3 ]; then
+        header="Accept-Additions: $3"
+    fi
+    echo "Brewing ${beverage}..."
+    [ -n "$header" ] && echo "Additions: $3"
+    echo "---"
+    if [ -n "$header" ]; then
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW -H "$header" \
+            "$(base_url)${url}" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST -H "$header" \
+            "$(base_url)${url}" 2>/dev/null || \
+        die "Cannot connect to $(base_url)"
+    else
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+            "$(base_url)${url}" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+            "$(base_url)${url}" 2>/dev/null || \
+        die "Cannot connect to $(base_url)"
+    fi
+}
+
+case "${1:-help}" in
+
+    # ── HTCPCP Commands ────────────────────────────────────────────────
+    status)
+        echo "Server status:"
+        echo "---"
+        req GET "/"
+        ;;
+
+    brew|pour)
+        shift
+        sub_brew "$@"
+        ;;
+
+    when)
+        echo "Stopping pour..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X WHEN "$(base_url)/" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    info)
+        echo "Pot metadata:"
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X PROPFIND "$(base_url)/" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    418)
+        echo "Triggering 418 I'm a teapot (brewing coffee on a teapot)..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW "$(base_url)/coffee" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST "$(base_url)/coffee" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    418-alcohol)
+        echo "Triggering 418 I'm a teapot (alcohol on a teapot)..."
+        echo "---"
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+            -H "Accept-Additions: alcohol;variety=rum" "$(base_url)/tea" 2>/dev/null || \
+        curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+            -H "Accept-Additions: alcohol;variety=rum" "$(base_url)/tea" 2>/dev/null || \
+            die "Cannot connect to $(base_url)"
+        ;;
+
+    additions)
+        echo "Supported addition types (RFC 2324 §2.2.2 + RFC 7168):"
+        echo ""
+        echo "  Name      Category    Varieties"
+        echo "  ----      --------    ----------"
+        echo "  milk      dairy        cream, half-and-half, whole, part-skim, skim, non-dairy"
+        echo "  syrup     sweetener    vanilla, caramel, almond, hazelnut, chocolate"
+        echo "  sugar     sweetener    white, brown, raw, honey, artificial"
+        echo "  spice     flavoring    cinnamon, cardamom, nutmeg, clove"
+        echo "  alcohol   alcohol      whisky, rum, kahlua, aquavit, brandy (hyper-text only)"
+        ;;
+
+    version)
+        echo "CPIP / HTCPCP version:"
+        echo "---"
+        curl -sS -I "$(base_url)/" 2>/dev/null | grep -i "^server:" || \
+            api GET "/cpip/config" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version','?'))" 2>/dev/null || \
+            echo "unknown"
+        ;;
+
+    whoami|id)
+        echo "This node:"
+        echo "---"
+        api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'POT_ID:   {d.get(\"pot_id\",\"?\")}')
+print(f'Address:  {d.get(\"node_address\",\"?\")}')
+print(f'Hostname: {d.get(\"hostname\",\"?\")}')
+print(f'Device:   {d.get(\"device\",\"?\")}')
+print(f'Version:  {d.get(\"version\",\"?\")}')
+" 2>/dev/null || api GET "/cpip/config"
+        ;;
+
+    config)
+        echo "Node configuration:"
+        echo "---"
+        api GET "/cpip/config" | python3 -m json.tool 2>/dev/null || api GET "/cpip/config"
+        ;;
+
+    stats)
+        echo "=== CPIP Stats ==="
+        echo "---"
+        echo "--- Node ---"
+        api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  POT_ID:   {d.get(\"pot_id\",\"?\")}')
+print(f'  Address:  {d.get(\"node_address\",\"?\")}')
+print(f'  Hostname: {d.get(\"hostname\",\"?\")}')
+print(f'  Device:   {d.get(\"device\",\"?\")}')
+print(f'  Version:  {d.get(\"version\",\"?\")}')
+print(f'  Mesh:     {\"enabled\" if d.get(\"mesh_enabled\") else \"disabled\"} (port {d.get(\"mesh_port\",\"?\")})')
+print(f'  Covert:   {\"enabled\" if d.get(\"covert_enabled\") else \"disabled\"}')
+print(f'  Thermos:  {\"enabled\" if d.get(\"thermos_enabled\") else \"disabled\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Mesh ---"
+        api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+peers = d.get('peers', {})
+inbox = d.get('inbox', [])
+print(f'  Peers:    {len(peers)}')
+print(f'  Inbox:    {len(inbox)} message(s)')
+print(f'  Hops:     {d.get(\"max_hops\",0)}')
+print(f'  Stealth:  {\"ON\" if d.get(\"stealth\") else \"OFF\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Satellite ---"
+        api GET "/cpip/mesh/sat" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Port:     {d.get(\"port\",\"?\")}')
+    print(f'  Peers:    {d.get(\"peers_known\",0)}')
+    print(f'  Relay:    {\"yes\" if d.get(\"relay\") else \"no\"}')
+" 2>/dev/null
+        echo ""
+        echo "--- Radio ---"
+        api GET "/cpip/mesh/radio" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Mode:     {d.get(\"mode\",\"?\")}')
+    freq = d.get(\"frequency\", 0)
+    if freq and isinstance(freq, (int, float)):
+        print(f'  Freq:     {freq/1000000:.3f} MHz')
+    print(f'  SF:       {d.get(\"sf\",\"?\")}')
+" 2>/dev/null
+        echo ""
+        echo "--- Mobile ---"
+        api GET "/cpip/mesh/mobile" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'  Status:   {\"ON\" if d.get(\"enabled\") else \"OFF\"}')
+if d.get('enabled'):
+    print(f'  Port:     {d.get(\"port\",\"?\")}')
+    print(f'  IFace:    {d.get(\"interface\",\"?\")}')
+    print(f'  Peers:    {d.get(\"peers_known\",0)}')
+" 2>/dev/null
+        ;;
+
+    # ── Mesh Commands ──────────────────────────────────────────────────
+    mesh)
+        case "${2:-status}" in
+            status)
+                echo "Mesh network status (ECC + port hop + keep warm):"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/status"
+                ;;
+            peers)
+                echo "Mesh peers:"
+                echo "---"
+                api GET "/cpip/mesh/peers"
+                ;;
+            inbox)
+                echo "Mesh inbox (E2EE messages auto-decrypted at server):"
+                echo "---"
+                api GET "/cpip/mesh/inbox" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/inbox"
+                ;;
+            send)
+                if [ $# -lt 4 ]; then
+                    die "Usage: cpip mesh send <pot_id_or_address> <message>"
+                fi
+                local dst="$3"
+                local msg="$4"
+                echo "Sending E2EE message to ${dst}..."
+                echo "---"
+                api POST "/cpip/mesh/send" "{\"dst\":\"${dst}\",\"data\":\"${msg}\"}"
+                ;;
+            send-raw)
+                if [ $# -lt 4 ]; then
+                    die "Usage: cpip mesh send-raw <pot_id> <message>"
+                fi
+                local dst="$3"
+                local msg="$4"
+                echo "Sending plaintext message to ${dst} (no E2EE)..."
+                echo "---"
+                api POST "/cpip/mesh/send" "{\"dst\":\"${dst}\",\"data\":\"${msg}\",\"e2ee\":false}"
+                ;;
+            broadcast)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip mesh broadcast <message>"
+                fi
+                local msg="$3"
+                echo "Broadcasting message..."
+                echo "---"
+                api POST "/cpip/mesh/broadcast" "{\"data\":\"${msg}\"}"
+                ;;
+            scan)
+                echo "Scanning mesh for peers..."
+                echo "---"
+                api GET "/cpip/mesh/peers"
+                ;;
+            routes)
+                echo "Mesh routing table:"
+                echo "---"
+                api GET "/cpip/mesh/routes"
+                ;;
+            sat)
+                echo "Satellite mesh status:"
+                echo "---"
+                api GET "/cpip/mesh/sat" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/sat"
+                ;;
+            radio)
+                echo "Radio / LoRa / packet-radio status:"
+                echo "---"
+                api GET "/cpip/mesh/radio" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/radio"
+                ;;
+            mobile)
+                echo "Mobile broadband (4G/5G / LTE / WWAN) status:"
+                echo "---"
+                api GET "/cpip/mesh/mobile" | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/mobile"
+                ;;
+            queued)
+                echo "Store-and-forward queue:"
+                echo "---"
+                api GET "/cpip/mesh/queued" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
+                    api GET "/cpip/mesh/queued" 2>/dev/null || echo "(no queued endpoint or empty)"
+                ;;
+            *)
+                die "Unknown mesh command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── ECC / Address Book ─────────────────────────────────────────────
+    ecc)
+        case "${2:-status}" in
+            status)
+                echo "ECC engine status:"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ecc = d.get('ecc', {})
+print(f'Algorithm:     {ecc.get(\"algorithm\")}')
+print(f'Constant-time: {ecc.get(\"constant_time\")}')
+print(f'Node address:  {ecc.get(\"node_address\")}')
+print(f'Pubkey:        {(ecc.get(\"node_pubkey\") or \"\")[:32]}...')
+print(f'Port hopping:  {d.get(\"port_hopping\")}')
+print(f'Keep warm:     {d.get(\"keep_warm\")}')
+" 2>/dev/null || api GET "/cpip/mesh/status"
+                ;;
+            address)
+                echo "This node's ECC address:"
+                echo "---"
+                api GET "/cpip/config" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('node_address', 'unknown'))
+" 2>/dev/null
+                ;;
+            book)
+                echo "Address book (ECC address → POT_ID):"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ab = d.get('address_book', {})
+if not ab:
+    print('(empty)')
+else:
+    for addr, info in ab.items():
+        print(f'  {addr}  →  {info.get(\"pot_id\",\"?\")}  ({info.get(\"hostname\",\"?\")})')
+" 2>/dev/null
+                ;;
+            resolve)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip ecc resolve <address>"
+                fi
+                local addr="$3"
+                echo "Resolving ECC address:"
+                echo "---"
+                api GET "/cpip/config" > /dev/null  # ensure connected
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+ab = d.get('address_book', {})
+target = '$addr'
+entry = ab.get(target)
+if entry:
+    print(f'  Address: {target}')
+    print(f'  POT_ID:  {entry.get(\"pot_id\")}')
+    print(f'  Host:    {entry.get(\"hostname\")}')
+else:
+    print(f'  Unknown address: {target}')
+    print('  (address book has:', ', '.join(ab.keys()) or 'nothing)')
+" 2>/dev/null
+                ;;
+            *)
+                die "Unknown ecc command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Dead-drop / Thermos ────────────────────────────────────────────
+    deaddrop)
+        case "${2:-list}" in
+            list)
+                echo "Dead-drop messages held by this node:"
+                echo "---"
+                api GET "/cpip/mesh/deaddrop?action=list"
+                ;;
+            claim)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip deaddrop claim <message_id>"
+                fi
+                local mid="$3"
+                echo "Claiming dead-drop message ${mid}..."
+                echo "---"
+                api POST "/cpip/mesh/deaddrop/claim" "{\"message_id\":\"${mid}\"}"
+                ;;
+            *)
+                die "Unknown deaddrop command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Covert Commands ────────────────────────────────────────────────
+    covert)
+        case "${2:-status}" in
+            encode)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip covert encode <message> [dst_pot] [--ecc]"
+                fi
+                local msg="$3"
+                local dst="${4:-}"
+                local ecc_flag="${5:-}"
+                local data="{\"message\":\"${msg}\"}"
+                [ -n "$dst" ] && data="{\"message\":\"${msg}\",\"dst\":\"${dst}\"}"
+                [ "$ecc_flag" = "--ecc" ] && data=$(echo "$data" | python3 -c "import sys,json; d=json.load(sys.stdin); d['ecc']=True; print(json.dumps(d))")
+                echo "Encoding covert message..."
+                echo "---"
+                api POST "/cpip/mesh/encode" "$data" | python3 -m json.tool 2>/dev/null || \
+                    api POST "/cpip/mesh/encode" "$data"
+                ;;
+            decode)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip covert decode <header_value>"
+                fi
+                local header="$3"
+                echo "Decoding covert message from header..."
+                echo "---"
+                api POST "/cpip/mesh/decode" "{\"accept_additions\":\"${header}\"}"
+                ;;
+            brew)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip covert brew <message> [dst_pot]"
+                fi
+                msg="$3"
+                dst="${4:-}"
+                data="{\"message\":\"${msg}\"}"
+                [ -n "$dst" ] && data="{\"message\":\"${msg}\",\"dst\":\"${dst}\"}"
+                echo "Brewing with covert message..."
+                echo "---"
+                encoded=$(api POST "/cpip/mesh/encode" "$data" 2>/dev/null || die "Failed to encode")
+                header_val=$(echo "$encoded" | python3 -c "import sys,json; print(json.load(sys.stdin).get('accept_additions_header',''))" 2>/dev/null)
+                if [ -z "$header_val" ]; then
+                    die "Failed to get covert additions header"
+                fi
+                echo "Covert header: $header_val"
+                echo ""
+                curl -sS -w "\n---\nHTTP %{http_code}\n" -X BREW \
+                    -H "Accept-Additions: ${header_val}" \
+                    "$(base_url)/tea" 2>/dev/null || \
+                curl -sS -w "\n---\nHTTP %{http_code}\n" -X POST \
+                    -H "Accept-Additions: ${header_val}" \
+                    "$(base_url)/tea" 2>/dev/null || \
+                die "Cannot connect to $(base_url)"
+                ;;
+            status)
+                echo "Covert channel status:"
+                echo "---"
+                api GET "/cpip/mesh/status"
+                ;;
+            *)
+                die "Unknown covert command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Defense ─────────────────────────────────────────────────────────
+    defense)
+        case "${2:-status}" in
+            status)
+                echo "418 I'm a Teapot defense status:"
+                echo "---"
+                api GET "/cpip/mesh/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+defense = d.get('defense', {})
+print(f'418 active:     {defense.get(\"418_teapot\")}')
+print(f'Blacklisted:    {defense.get(\"blacklisted_addrs\")} addresses')
+print(f'Port hopping:   {d.get(\"port_hopping\")}')
+print(f'Keep warm:      {d.get(\"keep_warm\")}')
+" 2>/dev/null || api GET "/cpip/mesh/status"
+                ;;
+            *)
+                die "Unknown defense command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── ITF (In The Face) — active network defense ────────────────────
+    itf)
+        case "${2:-status}" in
+            status)
+                echo "ITF Defense Posture:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'418 Teapot:    {\"ACTIVE\" if d.get(\"418_teapot\") else \"disabled\"}')
+print(f'Stealth:       {\"ON\" if d.get(\"stealth\") else \"OFF\"}')
+print(f'Port hop:      {\"ON\" if d.get(\"port_hopping\") else \"OFF\"}')
+print(f'Hop interval:  {d.get(\"hop_interval\",0)}s')
+print(f'Latent ports:  {d.get(\"latent_ports\",[])}')
+print(f'Blacklisted:   {d.get(\"blacklisted_addrs\",0)} address(es)')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            blacklist)
+                echo "Blacklisted addresses:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+bl = d.get('blacklist', [])
+if bl:
+    for addr in bl:
+        print(f'  {addr}')
+else:
+    print('(empty — no addresses blacklisted)')
+print(f'Total: {len(bl)}')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            whitelist)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip itf whitelist <ip_address>"
+                fi
+                addr="$3"
+                echo "Removing ${addr} from blacklist..."
+                echo "---"
+                api POST "/cpip/defense" "{\"action\":\"whitelist\",\"addr\":\"${addr}\"}"
+                ;;
+            clear)
+                echo "Clearing entire blacklist..."
+                echo "---"
+                api POST "/cpip/defense" "{\"action\":\"clear\"}"
+                ;;
+            stealth)
+                echo "Stealth mode status:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Stealth: {\"ON (no broadcast heartbeats)\" if d.get(\"stealth\") else \"OFF (broadcast enabled)\"}')
+print(f'Port hop: {\"ON\" if d.get(\"port_hopping\") else \"OFF\"}')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            probe)
+                if [ $# -lt 3 ]; then
+                    die "Usage: cpip itf probe <ip_address>"
+                fi
+                addr="$3"
+                echo "Checking ${addr}:"
+                echo "---"
+                api GET "/cpip/defense" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+target = '$addr'
+bl = d.get('blacklist', [])
+if target in bl:
+    print(f'  {target} → BLACKLISTED (418 teapot response)')
+else:
+    print(f'  {target} → NOT blacklisted (allowed)')
+" 2>/dev/null || api GET "/cpip/defense"
+                ;;
+            *)
+                die "Unknown itf command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Identity / Web-of-Trust ────────────────────────────────────────
+    identity)
+        case "${2:-list}" in
+            list)
+                echo "Known identities:"
+                echo "---"
+                api GET "/cpip/identity" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+trust_names = {0:'Unknown',1:'Seen',2:'Marginal',3:'Full',4:'Ultimate'}
+for pid, info in d.items():
+    t = info.get('trust_level', 0)
+    print(f'  {pid}  [{trust_names.get(t, str(t))}]')
+if not d:
+    print('  (none)')
+" 2>/dev/null || api GET "/cpip/identity"
+                ;;
+            show)
+                [ $# -lt 3 ] && die "Usage: cpip identity show <pot_id>"
+                api GET "/cpip/identity/$3" | python3 -m json.tool 2>/dev/null || api GET "/cpip/identity/$3"
+                ;;
+            publish)
+                echo "Publishing identity to mesh..."
+                api POST "/cpip/identity/publish" "{}"
+                ;;
+            vouch)
+                [ $# -lt 3 ] && die "Usage: cpip identity vouch <pot_id> [level]"
+                level="${4:-2}"
+                echo "Vouching for $3 (level $level)..."
+                api POST "/cpip/identity/trust" "{\"target\":\"$3\",\"trust_level\":$level}"
+                ;;
+            graph)
+                echo "Trust graph:"
+                echo "---"
+                api GET "/cpip/identity/trust-graph" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+edges = d.get('edges', [])
+nodes = d.get('nodes', {})
+print(f'  Nodes: {len(nodes)}  Edges: {len(edges)}')
+for e in edges:
+    print(f'  {e[\"from\"]} --[{e[\"level\"]}]--> {e[\"to\"]}')
+if not edges:
+    print('  (no trust edges)')
+" 2>/dev/null || api GET "/cpip/identity/trust-graph"
+                ;;
+            *)
+                die "Unknown identity command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Distributed DNS ────────────────────────────────────────────────
+    dns)
+        case "${2:-list}" in
+            list)
+                echo "Name registry:"
+                echo "---"
+                api GET "/cpip/dns" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for name, rec in d.items():
+    print(f'  {name}  →  {rec.get(\"pot_id\",\"?\")}  (seq {rec.get(\"sequence\",0)})')
+if not d:
+    print('  (no registrations)')
+" 2>/dev/null || api GET "/cpip/dns"
+                ;;
+            register)
+                [ $# -lt 3 ] && die "Usage: cpip dns register <name>"
+                echo "Registering name $3..."
+                api POST "/cpip/dns/register" "{\"name\":\"$3\"}"
+                ;;
+            resolve)
+                [ $# -lt 3 ] && die "Usage: cpip dns resolve <name>"
+                echo "Resolving $3..."
+                api POST "/cpip/dns/resolve" "{\"name\":\"$3\"}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+if 'error' in d:
+    print(f'  Error: {d[\"error\"]}')
+else:
+    print(f'  Name:      {d.get(\"name\")}')
+    print(f'  Pot ID:    {d.get(\"pot_id\")}')
+    print(f'  Expires:   {d.get(\"expires\",\"?\")}')
+    print(f'  Sequence:  {d.get(\"sequence\",0)}')
+" 2>/dev/null || api POST "/cpip/dns/resolve" "{\"name\":\"$3\"}"
+                ;;
+            remove)
+                [ $# -lt 3 ] && die "Usage: cpip dns remove <name>"
+                echo "Removing $3..."
+                api POST "/cpip/dns/remove" "{\"name\":\"$3\"}"
+                ;;
+            *)
+                die "Unknown dns command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Group Chat ─────────────────────────────────────────────────────
+    groups)
+        case "${2:-list}" in
+            list)
+                echo "Groups:"
+                echo "---"
+                api GET "/cpip/groups" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+groups = d.get('groups', [])
+for g in groups:
+    print(f'  {g[\"id\"]}  {g[\"name\"]}  ({g[\"members\"]} members, v{g[\"key_version\"]})')
+if not groups:
+    print('  (no groups)')
+" 2>/dev/null || api GET "/cpip/groups"
+                ;;
+            create)
+                [ $# -lt 3 ] && die "Usage: cpip groups create <name>"
+                echo "Creating group '$3'..."
+                api POST "/cpip/groups/create" "{\"name\":\"$3\"}"
+                ;;
+            join)
+                [ $# -lt 3 ] && die "Usage: cpip groups join <group_id>"
+                echo "Joining group $3..."
+                api POST "/cpip/groups/join" "{\"group_id\":\"$3\"}"
+                ;;
+            leave)
+                [ $# -lt 3 ] && die "Usage: cpip groups leave <group_id>"
+                echo "Leaving group $3..."
+                api POST "/cpip/groups/leave" "{\"group_id\":\"$3\"}"
+                ;;
+            send)
+                [ $# -lt 4 ] && die "Usage: cpip groups send <group_id> <message>"
+                echo "Sending to group $3..."
+                api POST "/cpip/groups/send" "{\"group_id\":\"$3\",\"message\":\"$4\"}"
+                ;;
+            history)
+                [ $# -lt 3 ] && die "Usage: cpip groups history <group_id>"
+                echo "Message history for $3:"
+                echo "---"
+                api POST "/cpip/groups/$3/messages" '{"since":0}' | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+msgs = d.get('messages', [])
+for m in msgs:
+    ts = m.get('timestamp', 0)
+    from datetime import datetime
+    t = datetime.fromtimestamp(ts).strftime('%H:%M:%S') if ts else '?'
+    print(f'  [{t}] {m.get(\"sender\",\"?\")}: {m.get(\"payload\",(\"(encrypted)\"))}')
+if not msgs:
+    print('  (no messages)')
+" 2>/dev/null || api POST "/cpip/groups/$3/messages" '{"since":0}'
+                ;;
+            *)
+                die "Unknown groups command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Offline Sync ───────────────────────────────────────────────────
+    sync)
+        case "${2:-channels}" in
+            channels)
+                echo "Sync channels:"
+                echo "---"
+                api GET "/cpip/sync/channels" | python3 -m json.tool 2>/dev/null || api GET "/cpip/sync/channels"
+                ;;
+            pending)
+                echo "Pending messages:"
+                echo "---"
+                api GET "/cpip/sync/pending" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+msgs = d.get('messages', [])
+for m in msgs:
+    print(f'  [{m.get(\"id\")}] {m.get(\"channel\")} from {m.get(\"sender\")}: {m.get(\"payload\",\"\")[:60]}')
+print(f'Total: {d.get(\"count\",0)}')
+" 2>/dev/null || api GET "/cpip/sync/pending"
+                ;;
+            send)
+                [ $# -lt 4 ] && die "Usage: cpip sync send <channel> <message>"
+                echo "Sending to channel $3..."
+                api POST "/cpip/sync/send" "{\"channel\":\"$3\",\"payload\":\"$4\"}"
+                ;;
+            clocks)
+                echo "Vector clocks:"
+                echo "---"
+                api GET "/cpip/sync/clocks" | python3 -m json.tool 2>/dev/null || api GET "/cpip/sync/clocks"
+                ;;
+            request)
+                [ $# -lt 3 ] && die "Usage: cpip sync request <pot_id>"
+                echo "Requesting sync from $3..."
+                api POST "/cpip/sync/request" "{\"peer_id\":\"$3\"}"
+                ;;
+            *)
+                die "Unknown sync command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Cluster ────────────────────────────────────────────────────────
+    cluster)
+        SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+        exec "${SCRIPT_DIR}/cluster.sh" "${2:-help}" "${3:-3}"
+        ;;
+
+    # ── Help ────────────────────────────────────────────────────────────
+    help|--help|-h)
+        usage
+        ;;
+
+    *)
+        die "Unknown command: $1\nRun 'cpip help' for usage."
+        ;;
+esac

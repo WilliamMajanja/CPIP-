@@ -24,6 +24,11 @@ from server import (
     CoffeeCipher, Ed25519, MLKEM, HybridKEM, SecureHash,
     IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
     CovertChannel,
+    PQCKEM, HQC128, HQC192, HQC256,
+    McEliece348864, McEliece348864f, McEliece460896, McEliece460896f,
+    McEliece6688128, McEliece6688128f, McEliece6960119, McEliece6960119f,
+    McEliece8192128, McEliece8192128f,
+    MLKEM512, MLKEM768, MLKEM1024,
 )
 
 
@@ -120,62 +125,65 @@ class TestEd25519(unittest.TestCase):
 
 
 class TestMLKEM(unittest.TestCase):
-    """RSA-KEM key encapsulation (FIPS 186-4 / SP 800-56B)."""
+    """ML-KEM-768 key encapsulation (FIPS 203 / ML-KEM-768).
+    
+    Uses the pqcrypto ML-KEM-768 implementation via MLKEM768 wrapper.
+    """
 
     def test_keygen(self):
-        pk, sk = MLKEM.keygen()
+        pk, sk = MLKEM768.generate_keypair()
         self.assertGreater(len(pk), 0)
         self.assertGreater(len(sk), 0)
 
     def test_encaps_decaps_match(self):
-        pk, sk = MLKEM.keygen()
-        ct, ss_enc = MLKEM.encaps(pk)
-        ss_dec = MLKEM.decaps(sk, ct)
-        self.assertEqual(ss_enc, ss_dec, "RSA-KEM shared secrets must match")
+        pk, sk = MLKEM768.generate_keypair()
+        ct, ss_enc = MLKEM768.encapsulate(pk)
+        ss_dec = MLKEM768.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "ML-KEM-768 shared secrets must match")
 
     def test_encaps_decaps_multiple_iterations(self):
         for _ in range(3):
-            pk, sk = MLKEM.keygen()
-            ct, ss_enc = MLKEM.encaps(pk)
-            ss_dec = MLKEM.decaps(sk, ct)
+            pk, sk = MLKEM768.generate_keypair()
+            ct, ss_enc = MLKEM768.encapsulate(pk)
+            ss_dec = MLKEM768.decapsulate(sk, ct)
             self.assertEqual(ss_enc, ss_dec)
 
     def test_different_keys_different_secrets(self):
-        pk1, sk1 = MLKEM.keygen()
-        pk2, sk2 = MLKEM.keygen()
-        _, ss1 = MLKEM.encaps(pk1)
-        _, ss2 = MLKEM.encaps(pk2)
+        pk1, sk1 = MLKEM768.generate_keypair()
+        pk2, sk2 = MLKEM768.generate_keypair()
+        _, ss1 = MLKEM768.encapsulate(pk1)
+        _, ss2 = MLKEM768.encapsulate(pk2)
         self.assertNotEqual(ss1, ss2)
 
     def test_tampered_ciphertext_rejected(self):
-        pk, sk = MLKEM.keygen()
-        ct, ss_enc = MLKEM.encaps(pk)
+        pk, sk = MLKEM768.generate_keypair()
+        ct, ss_enc = MLKEM768.encapsulate(pk)
         tampered = bytes(b ^ 0x01 for b in ct[:8]) + ct[8:]
-        ss_dec = MLKEM.decaps(sk, tampered)
+        ss_dec = MLKEM768.decapsulate(sk, tampered)
         self.assertNotEqual(ss_enc, ss_dec, "tampered ct must produce different secret")
 
     def test_deterministic_decaps(self):
-        pk, sk = MLKEM.keygen()
-        ct, _ = MLKEM.encaps(pk)
-        ss1 = MLKEM.decaps(sk, ct)
-        ss2 = MLKEM.decaps(sk, ct)
+        pk, sk = MLKEM768.generate_keypair()
+        ct, _ = MLKEM768.encapsulate(pk)
+        ss1 = MLKEM768.decapsulate(sk, ct)
+        ss2 = MLKEM768.decapsulate(sk, ct)
         self.assertEqual(ss1, ss2)
 
     def test_wrong_secret_key_rejected(self):
-        pk1, sk1 = MLKEM.keygen()
-        _, sk2 = MLKEM.keygen()
-        ct, ss_enc = MLKEM.encaps(pk1)
-        ss_dec = MLKEM.decaps(sk2, ct)
+        pk1, sk1 = MLKEM768.generate_keypair()
+        _, sk2 = MLKEM768.generate_keypair()
+        ct, ss_enc = MLKEM768.encapsulate(pk1)
+        ss_dec = MLKEM768.decapsulate(sk2, ct)
         self.assertNotEqual(ss_enc, ss_dec)
 
     def test_encapsulation_produces_32byte_secret(self):
-        pk, sk = MLKEM.keygen()
-        ct, ss = MLKEM.encaps(pk)
+        pk, sk = MLKEM768.generate_keypair()
+        ct, ss = MLKEM768.encapsulate(pk)
         self.assertEqual(len(ss), 32)
 
 
 class TestHybridKEM(unittest.TestCase):
-    """Hybrid ECDH P-256 + RSA-KEM key exchange."""
+    """Hybrid ECDH P-256 + ML-KEM-768 key exchange."""
 
     def test_generate_keypair(self):
         hpk, hsk = HybridKEM.generate_keypair()
@@ -604,6 +612,228 @@ class TestPersistenceEncryption(unittest.TestCase):
         ct_p = CoffeeCipher.encrypt(b"test", base_key=key, recipe="persistence")
         ct_e = CoffeeCipher.encrypt(b"test", base_key=key, recipe="espresso")
         self.assertNotEqual(ct_p, ct_e)
+
+
+class TestPQCKEMs(unittest.TestCase):
+    """Non-FIPS Post-Quantum KEMs (HQC, McEliece, ML-KEM variants)."""
+    
+    @classmethod
+    def setUpClass(cls):
+        # Import the new KEM classes
+        import sys
+        sys.path.insert(0, os.path.dirname(__file__))
+        from server import (
+            PQCKEM, HQC128, HQC192, HQC256,
+            McEliece348864, McEliece348864f, McEliece460896, McEliece460896f,
+            McEliece6688128, McEliece6688128f, McEliece6960119, McEliece6960119f,
+            McEliece8192128, McEliece8192128f,
+            MLKEM512, MLKEM768, MLKEM1024
+        )
+        cls.PQCKEM = PQCKEM
+        cls.HQC128 = HQC128
+        cls.HQC192 = HQC192
+        cls.HQC256 = HQC256
+        cls.McEliece348864 = McEliece348864
+        cls.McEliece348864f = McEliece348864f
+        cls.McEliece460896 = McEliece460896
+        cls.McEliece460896f = McEliece460896f
+        cls.McEliece6688128 = McEliece6688128
+        cls.McEliece6688128f = McEliece6688128f
+        cls.McEliece6960119 = McEliece6960119
+        cls.McEliece6960119f = McEliece6960119f
+        cls.McEliece8192128 = McEliece8192128
+        cls.McEliece8192128f = McEliece8192128f
+        cls.MLKEM512 = MLKEM512
+        cls.MLKEM768 = MLKEM768
+        cls.MLKEM1024 = MLKEM1024
+    
+    def test_pqc_kem_available(self):
+        """Test that pqcrypto is available."""
+        self.assertTrue(self.PQCKEM.is_available(), "pqcrypto should be available")
+    
+    def test_hqc128_roundtrip(self):
+        """Test HQC-128 keygen, encaps, decaps."""
+        kem = self.HQC128
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "HQC-128 shared secrets must match")
+    
+    def test_hqc192_roundtrip(self):
+        """Test HQC-192 keygen, encaps, decaps."""
+        kem = self.HQC192
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "HQC-192 shared secrets must match")
+    
+    def test_hqc256_roundtrip(self):
+        """Test HQC-256 keygen, encaps, decaps."""
+        kem = self.HQC256
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "HQC-256 shared secrets must match")
+    
+    def test_mceliece348864_roundtrip(self):
+        """Test Classic McEliece 348864 keygen, encaps, decaps."""
+        kem = self.McEliece348864
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "McEliece348864 shared secrets must match")
+    
+    def test_mceliece460896_roundtrip(self):
+        """Test Classic McEliece 460896 keygen, encaps, decaps."""
+        kem = self.McEliece460896
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "McEliece460896 shared secrets must match")
+    
+    def test_mceliece6688128_roundtrip(self):
+        """Test Classic McEliece 6688128 keygen, encaps, decaps."""
+        kem = self.McEliece6688128
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "McEliece6688128 shared secrets must match")
+    
+    def test_mceliece6960119_roundtrip(self):
+        """Test Classic McEliece 6960119 keygen, encaps, decaps."""
+        kem = self.McEliece6960119
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "McEliece6960119 shared secrets must match")
+    
+    def test_mceliece8192128_roundtrip(self):
+        """Test Classic McEliece 8192128 keygen, encaps, decaps."""
+        kem = self.McEliece8192128
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "McEliece8192128 shared secrets must match")
+    
+    def test_mlkem512_roundtrip(self):
+        """Test ML-KEM-512 keygen, encaps, decaps."""
+        kem = self.MLKEM512
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "ML-KEM-512 shared secrets must match")
+    
+    def test_mlkem768_roundtrip(self):
+        """Test ML-KEM-768 keygen, encaps, decaps."""
+        kem = self.MLKEM768
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "ML-KEM-768 shared secrets must match")
+    
+    def test_mlkem1024_roundtrip(self):
+        """Test ML-KEM-1024 keygen, encaps, decaps."""
+        kem = self.MLKEM1024
+        pk, sk = kem.generate_keypair()
+        self.assertEqual(len(pk), kem.PUBLIC_KEY_SIZE)
+        self.assertEqual(len(sk), kem.SECRET_KEY_SIZE)
+        
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertEqual(len(ct), kem.CIPHERTEXT_SIZE)
+        self.assertEqual(len(ss_enc), kem.SHARED_KEY_SIZE)
+        
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, "ML-KEM-1024 shared secrets must match")
+    
+    def test_different_kems_different_secrets(self):
+        """Test that different KEMs produce different shared secrets for same keypair."""
+        # Each KEM should produce different shared secrets even with same input patterns
+        hqc128_pk, hqc128_sk = self.HQC128.generate_keypair()
+        mce_pk, mce_sk = self.McEliece348864.generate_keypair()
+        
+        _, hqc_ss = self.HQC128.encapsulate(hqc128_pk)
+        _, mce_ss = self.McEliece348864.encapsulate(mce_pk)
+        
+        self.assertNotEqual(hqc_ss, mce_ss, "Different KEMs should produce different secrets")
+    
+    def test_tampered_ciphertext_rejected(self):
+        """Test that tampered ciphertexts are handled (raise or return fake key)."""
+        pk, sk = self.HQC128.generate_keypair()
+        ct, ss_enc = self.HQC128.encapsulate(pk)
+        
+        # Tamper with ciphertext
+        tampered = bytearray(ct)
+        tampered[0] ^= 0x01
+        
+        # Some KEMs raise on decryption failure, others use implicit rejection
+        # Just verify it doesn't crash silently and produces some output or raises
+        try:
+            ss_dec = self.HQC128.decapsulate(sk, bytes(tampered))
+            # If it returns, verify output length
+            self.assertEqual(len(ss_dec), self.HQC128.SHARED_KEY_SIZE)
+        except RuntimeError:
+            # Acceptable: KEM raises on decryption failure
+            pass
 
 
 if __name__ == "__main__":

@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  cpip:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cpip
+    restart: unless-stopped
+    ports:
+      - "4180:4180"
+      - "4180:4180/udp"
+      - "4181:4181"
+      - "4191:4191/udp"
+      - "4190:4190/udp"
+    volumes:
+      - cpip-data:/data
+      - cpip-ssl:/opt/cpip/.ssl
+    environment:
+      CPIP_DEVICE: "hyper-text"
+      CPIP_PORT: "4180"
+      CPIP_BIND: "0.0.0.0"
+      CPIP_MESH: "1"
+      CPIP_MESH_PORT: "4191"
+      CPIP_COVERT: "1"
+      CPIP_COVER_TRAFFIC: "1"
+      CPIP_SSL: "1"
+      CPIP_SSL_AUTO: "1"
+      CPIP_ANTI_ISP: "1"
+      CPIP_ANTI_STINGRAY: "1"
+      CPIP_ANTI_SURVEILLANCE: "1"
+      CPIP_DPI_EVASION: "1"
+      CPIP_TRAFFIC_OBFUSC: "1"
+      CPIP_METADATA_STRIP: "1"
+      CPIP_NET_NEUTRALITY: "1"
+      CPIP_NN_PROTO_MASK: "1"
+      CPIP_NN_THROTTLE_DETECT: "1"
+      CPIP_AVAHI: "0"
+      CPIP_NTP: "1"
+      CPIP_GPIO: "0"
+      CPIP_COVERT_KEY: ""
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4180/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+          cpus: "0.1"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  cpip-data:
+    driver: local
+  cpip-ssl:
+    driver: local

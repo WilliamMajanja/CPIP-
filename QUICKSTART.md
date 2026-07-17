@@ -12,21 +12,21 @@ curl -X BREW http://localhost:4180/coffee
 curl -X WHEN http://localhost:4180/
 
 # 4. Use the CLI
-./htcpcp status
-./htcpcp brew tea "milk;variety=whole"
-./htcpcp when
+./cpip status
+./cpip brew tea "milk;variety=whole"
+./cpip when
 
 # 5. Check the mesh
-./htcpcp mesh status
-./htcpcp mesh peers
-./htcpcp mesh scan
+./cpip mesh status
+./cpip mesh peers
+./cpip mesh scan
 
 # 6. Send a covert message
-./htcpcp covert encode "hello world"
+./cpip covert encode "hello world"
 
 # 7. Check defenses
-./htcpcp itf status
-./htcpcp itf blacklist
+./cpip itf status
+./cpip itf blacklist
 
 # 8. Post-Quantum KEM (1nf1D3L's Kyber)
 ./b4dm4n_cw.py keygen -o mykeys
@@ -46,10 +46,10 @@ curl -X WHEN http://localhost:4180/
 CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 
 # Check each transport
-./htcpcp mesh sat
-./htcpcp mesh radio
-./htcpcp mesh mobile
-./htcpcp stats
+./cpip mesh sat
+./cpip mesh radio
+./cpip mesh mobile
+./cpip stats
 ```
 
 ## Docker

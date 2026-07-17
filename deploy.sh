@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Pot Internet Protocol v3.0
-#  RFC 2324 + RFC 7168 + Ed25519 ECC + ML-KEM-768 + Mesh + 418 Defense
+#  CPIP — Coffee Pot Internet Protocol v4.0
+#  RFC 2324 + RFC 7168 + ECDSA/ECDH P-256 + ML-KEM-768 + Mesh + 418 Defense
+#  Anti-ISP + Anti-Stingray + Anti-Palantir/Pegasus + Anti-DPI + Net Neutrality
 #  Full hardware install for Raspberry Pi Zero WH
 #  Zero simulation. Post-quantum ready. All fangs.
 # ═══════════════════════════════════════════════════════════════════════
@@ -20,10 +21,10 @@ fail()  { printf "${RED}[X]%s %s${NC}\n" "" "$1"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_SRC="${SCRIPT_DIR}/server.py"
-CLI_SRC="${SCRIPT_DIR}/htcpcp"
+CLI_SRC="${SCRIPT_DIR}/cpip"
 
 [ ! -f "$SERVER_SRC" ] && fail "server.py not found at $SERVER_SRC"
-[ ! -f "$CLI_SRC" ] && fail "htcpcp CLI not found at $CLI_SRC"
+[ ! -f "$CLI_SRC" ] && fail "cpip CLI not found at $CLI_SRC"
 
 info "Checking Python3..."
 if ! command -v python3 &>/dev/null; then
@@ -67,10 +68,10 @@ chmod +x /opt/cpip/server.py
 ok "server.py installed"
 
 # ── Install CLI ──────────────────────────────────────────────────────
-info "Installing CLI -> /usr/local/bin/htcpcp"
-cp "$CLI_SRC" /usr/local/bin/htcpcp
-chmod +x /usr/local/bin/htcpcp
-ok "htcpcp CLI installed"
+info "Installing CLI -> /usr/local/bin/cpip"
+cp "$CLI_SRC" /usr/local/bin/cpip
+chmod +x /usr/local/bin/cpip
+ok "cpip CLI installed"
 
 # ── Install web dashboard (if web/ directory exists) ─────────────────
 if [ -d "${SCRIPT_DIR}/web" ]; then
@@ -96,7 +97,7 @@ fi
 info "Creating systemd service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v3.0 — Coffee Pot Internet Protocol (ECC + Mesh + 418 + Multi-Transport)
+Description=CPIP v4.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 
@@ -157,7 +158,7 @@ print(Ed25519.pubkey_to_address(pk))
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v3.0 Deployed — Post-Quantum Ready${NC}"
+echo -e "${GREEN}  CPIP v4.0 Deployed — Counter-Surveillance Active${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"
@@ -175,7 +176,7 @@ echo "  Hash       : SHA-256 + SHA-3-256"
 echo "  Incident IR: Auto-detection + mitigation"
 echo "  GPIO       : RPi.GPIO Pin 17 (hardware only — no simulation)"
 echo "  Server     : /opt/cpip/server.py"
-echo "  CLI        : /usr/local/bin/htcpcp"
+echo "  CLI        : /usr/local/bin/cpip"
 echo "  Service    : cpip.service"
 echo ""
 echo -e "${CYAN}  Dashboard:${NC}"
@@ -183,19 +184,19 @@ echo "    https://${IP_ADDR}:4180/dashboard"
 echo "    http://${IP_ADDR}:4181 → redirects to HTTPS"
 echo ""
 echo -e "${CYAN}  CLI Commands:${NC}"
-echo "    htcpcp status                    # Server status"
-echo "    htcpcp brew coffee               # Brew coffee"
-echo "    htcpcp brew tea                  # Brew tea"
-echo "    htcpcp when                      # Stop brewing"
-echo "    htcpcp info                      # Pot metadata"
-echo "    htcpcp mesh scan                 # Scan mesh for peers"
-echo "    htcpcp mesh peers                # List mesh peers"
-echo "    htcpcp mesh inbox                # Read mesh messages"
-echo "    htcpcp mesh send <pot> <msg>     # Send mesh message"
-echo "    htcpcp mesh broadcast <msg>      # Broadcast to mesh"
-echo "    htcpcp covert encode <msg>       # Encode covert message (ECC)"
-echo "    htcpcp covert decode <header>    # Decode covert header"
-echo "    htcpcp covert brew <msg>         # Brew with hidden message"
+echo "    cpip status                    # Server status"
+echo "    cpip brew coffee               # Brew coffee"
+echo "    cpip brew tea                  # Brew tea"
+echo "    cpip when                      # Stop brewing"
+echo "    cpip info                      # Pot metadata"
+echo "    cpip mesh scan                 # Scan mesh for peers"
+echo "    cpip mesh peers                # List mesh peers"
+echo "    cpip mesh inbox                # Read mesh messages"
+echo "    cpip mesh send <pot> <msg>     # Send mesh message"
+echo "    cpip mesh broadcast <msg>      # Broadcast to mesh"
+echo "    cpip covert encode <msg>       # Encode covert message (ECC)"
+echo "    cpip covert decode <header>    # Decode covert header"
+echo "    cpip covert brew <msg>         # Brew with hidden message"
 echo ""
 echo -e "${CYAN}  Env Overrides:${NC}"
 echo "    CPIP_SSL=0             # Disable TLS (HTTP only)"

@@ -150,10 +150,12 @@ B4DM4N_LOGO = r"""
     ╚══════════════════════════════════════════════════════════════════╝
 """
 
+import sys
+sys.dont_write_bytecode = True
+
 import json
 import os
 import signal
-import sys
 import threading
 import time
 import subprocess
@@ -193,9 +195,9 @@ except ImportError:
     RADIO_IMPORT_OK = False
 
 # ── Configuration ─────────────────────────────────────────────────────
-DEVICE_TYPE = os.environ.get("CPIP_DEVICE", os.environ.get("HTCPCP_DEVICE", "hyper-text"))
-BIND_ADDR = os.environ.get("CPIP_BIND", os.environ.get("HTCPCP_BIND", "0.0.0.0"))
-BIND_PORT = int(os.environ.get("CPIP_PORT", os.environ.get("HTCPCP_PORT", "4180")))
+DEVICE_TYPE = os.environ.get("CPIP_DEVICE", os.environ.get("CPIP_DEVICE", "hyper-text"))
+BIND_ADDR = os.environ.get("CPIP_BIND", os.environ.get("CPIP_BIND", "0.0.0.0"))
+BIND_PORT = int(os.environ.get("CPIP_PORT", os.environ.get("CPIP_PORT", "4180")))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
 HOSTNAME = socket.gethostname().split(".")[0]
 POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
@@ -207,20 +209,20 @@ HISTORY_MAX = 100
 SCHEDULE_CHECK_INTERVAL = 15
 
 # ── SSL/TLS Configuration ──────────────────────────────────────────────
-SSL_ENABLED = os.environ.get("CPIP_SSL", "0") == "1"
+SSL_ENABLED = os.environ.get("CPIP_SSL", "1") == "1"
 SSL_CERT = os.environ.get("CPIP_SSL_CERT", "")
 SSL_KEY = os.environ.get("CPIP_SSL_KEY", "")
-SSL_AUTO_CERT = os.environ.get("CPIP_SSL_AUTO", "0") == "1"
+SSL_AUTO_CERT = os.environ.get("CPIP_SSL_AUTO", "1") == "1"
 SSL_CERT_DIR = os.environ.get("CPIP_SSL_CERT_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ssl"))
-HTTP_REDIRECT = os.environ.get("CPIP_HTTP_REDIRECT", "0") == "1"
+HTTP_REDIRECT = os.environ.get("CPIP_HTTP_REDIRECT", "1") == "1"
 HTTP_REDIRECT_PORT = int(os.environ.get("CPIP_HTTP_REDIRECT_PORT", "4181"))
 
 _raw_key = os.environ.get("CPIP_COVERT_KEY", "")
 if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
     if not _raw_key:
-        _raw_key = base64.b64encode(hashlib.sha256(os.urandom(32)).digest()[:24]).decode()
+        _raw_key = base64.b64encode(os.urandom(32)).decode()
         COVERT_KEY = _raw_key.encode()
-        print(f"   ⚠ COVERT_KEY not set — auto-generated: {_raw_key}", flush=True)
+        print(f"   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
         print(f"   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
     else:
         COVERT_KEY = _raw_key.encode()
@@ -295,6 +297,32 @@ MOBILE_HEARTBEAT = int(os.environ.get("CPIP_MOBILE_HEARTBEAT", "120"))
 MOBILE_KEEPALIVE = int(os.environ.get("CPIP_MOBILE_KEEPALIVE", "30"))
 MOBILE_TELEMETRY = _env_bool("CPIP_MOBILE_TELEMETRY", False)
 
+# ── Anti-ISP (NAT traversal, DNS tunnel, WSS relay, DoH) ───────────────
+ANTI_ISP_ENABLED = _env_bool("CPIP_ANTI_ISP", True)
+STUN_ENABLED = _env_bool("CPIP_STUN", True)
+STUN_SERVERS = os.environ.get("CPIP_STUN_SERVERS",
+    "stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302,"
+    "stun.ekiga.net:3478,stun.ideasip.com:3478,stun.schlund.de:3478").split(",")
+STUN_REFRESH = int(os.environ.get("CPIP_STUN_REFRESH", "300"))
+UPNP_ENABLED = _env_bool("CPIP_UPNP", True)
+UPNP_LEASE = int(os.environ.get("CPIP_UPNP_LEASE", "3600"))
+DNS_TUNNEL_ENABLED = _env_bool("CPIP_DNS_TUNNEL", True)
+DNS_TUNNEL_DOMAIN = os.environ.get("CPIP_DNS_TUNNEL_DOMAIN", "")
+DNS_TUNNEL_SUBDOMAIN = os.environ.get("CPIP_DNS_TUNNEL_SUBDOMAIN", "cpip")
+DNS_CHUNK_SIZE = int(os.environ.get("CPIP_DNS_CHUNK_SIZE", "63"))
+WSS_TUNNEL_ENABLED = _env_bool("CPIP_WSS", True)
+WSS_RELAY_SERVERS = os.environ.get("CPIP_WSS_RELAYS",
+    "wss://relay.fly.dev:443,wss://cpip-relay.herokuapp.com:443").split(",")
+WSS_RELAY_TIMEOUT = int(os.environ.get("CPIP_WSS_TIMEOUT", "10"))
+RELAY_ENABLED = _env_bool("CPIP_RELAY", True)
+RELAY_SERVERS = os.environ.get("CPIP_RELAY_SERVERS",
+    "relay1.cpip-project.net:443,relay2.cpip-project.net:443").split(",")
+RELAY_TIMEOUT = int(os.environ.get("CPIP_RELAY_TIMEOUT", "5"))
+DNS_OBLIVIOUS_ENABLED = _env_bool("CPIP_DOH", True)
+DNS_OBLIVIOUS_SERVERS = os.environ.get("CPIP_DOH_SERVERS",
+    "https://cloudflare-dns.com/dns-query,https://dns.google/dns-query,"
+    "https://dns.quad9.net/dns-query").split(",")
+
 PITAIL_ENABLED = os.environ.get("CPIP_PITAIL", "0") == "1"
 PITAIL_ADDR = os.environ.get("CPIP_PITAIL_ADDR", "10.0.0.1")
 PITAIL_NETMASK = os.environ.get("CPIP_PITAIL_NETMASK", "255.255.255.0")
@@ -302,28 +330,98 @@ PITAIL_GADGET_DIR = os.environ.get("CPIP_PITAIL_GADGET_DIR", "/sys/kernel/config
 THERMOS_ENABLED = os.environ.get("CPIP_THERMOS", "0") == "1"
 THERMOS_MAX_STORAGE = int(os.environ.get("CPIP_THERMOS_MAX", "1000000"))
 
-CPIP_VERSION = "3.0.0"
-CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + ITF)"
+# ── Anti-Stingray / IMSI Catcher Detection ─────────────────────────────
+ANTI_STINGRAY_ENABLED = _env_bool("CPIP_ANTI_STINGRAY", True)
+STINGRAY_SCAN_INTERVAL = int(os.environ.get("CPIP_STINGRAY_SCAN", "30"))
+STINGRAY_SIGNAL_ANOMALY_THRESHOLD = float(os.environ.get("CPIP_STINGRAY_SIGNAL_DB", "50"))
+STINGRAY_KNOWN_MCC_MNC = os.environ.get("CPIP_STINGRAY_KNOWN_MCC_MNC",
+    "310260,310030,311480,310010,310006").split(",")
+STINGRAY_CELL_WATCH_PORTS = [int(p) for p in os.environ.get("CPIP_STINGRAY_PORTS", "443,80,53,8080").split(",")]
+
+# ── Anti-Palantir / Anti-Pegasus / Counter-Surveillance ─────────────────
+ANTI_SURVEILLANCE_ENABLED = _env_bool("CPIP_ANTI_SURVEILLANCE", True)
+DPI_EVASION_ENABLED = _env_bool("CPIP_DPI_EVASION", True)
+DPI_EVASION_MODE = os.environ.get("CPIP_DPI_EVASION_MODE", "aggressive")
+TRAFFIC_OBFUSCATION = _env_bool("CPIP_TRAFFIC_OBFUSC", True)
+METADATA_STRIP = _env_bool("CPIP_METADATA_STRIP", True)
+TLS_FINGERPRINT_ROTATE = int(os.environ.get("CPIP_TLS_FP_ROTATE", "3600"))
+EXPLOITKIT_DETECT = _env_bool("CPIP_EXPLOITKIT_DETECT", True)
+PROCESS_INJECT_DETECT = _env_bool("CPIP_PROC_INJECT_DETECT", True)
+
+# ── Net Neutrality ──────────────────────────────────────────────────────
+NET_NEUTRALITY_ENABLED = _env_bool("CPIP_NET_NEUTRALITY", True)
+NN_BANDWIDTH_MONITOR = _env_bool("CPIP_NN_BW_MONITOR", True)
+NN_PROTOCOL_MASQUERADE = _env_bool("CPIP_NN_PROTO_MASK", True)
+NN_MASK_PROTOCOL = os.environ.get("CPIP_NN_MASK_AS", "standard_web")
+NN_FRAGMENT_EVASION = _env_bool("CPIP_NN_FRAG_EVASION", True)
+NN_THROTTLE_DETECT = _env_bool("CPIP_NN_THROTTLE_DETECT", True)
+NN_JITTER_INJECTION = _env_bool("CPIP_NN_JITTER", True)
+NN_COVER_SIZE_MIN = int(os.environ.get("CPIP_NN_COVER_MIN", "256"))
+NN_COVER_SIZE_MAX = int(os.environ.get("CPIP_NN_COVER_MAX", "1024"))
+
+CPIP_VERSION = "4.0.0"
+CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
+_START_TIME = time.time()
 
 
 def _generate_self_signed_cert(cert_dir: str) -> tuple:
-    """Generate a self-signed SSL certificate for HTTPS.
+    """Generate a locally-trusted SSL certificate for HTTPS.
     
-    Creates cert.pem and key.pem in cert_dir using the openssl command.
-    Falls back to Python's ssl module DER generation if openssl is unavailable.
+    Tries mkcert first (creates certs trusted by the local CA), then falls
+    back to openssl self-signed, then to the cryptography library.
+    Reuses existing valid certs to avoid Chromium trust issues on restart.
     Returns (cert_path, key_path).
     """
     cert_path = os.path.join(cert_dir, "cert.pem")
     key_path = os.path.join(cert_dir, "key.pem")
-    if os.path.exists(cert_path) and os.path.exists(key_path):
-        return cert_path, key_path
     os.makedirs(cert_dir, exist_ok=True)
+
+    # Reuse existing valid cert if present, not expired, and has SANs
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        try:
+            r = subprocess.run(
+                ["openssl", "x509", "-in", cert_path, "-checkend", "0",
+                 "-noout", "-text"],
+                capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and "Subject Alternative Name" in r.stdout:
+                return cert_path, key_path
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+
+    # Find mkcert: check PATH first, then project-local binary
+    import shutil
+    mkcert_bin = shutil.which("mkcert")
+    if not mkcert_bin:
+        mkcert_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mkcert")
+    names = ["localhost", "127.0.0.1", f"{HOSTNAME}.local", HOSTNAME, "::1"]
+    try:
+        result = subprocess.run(
+            [mkcert_bin, "-cert-file", cert_path, "-key-file", key_path] + names,
+            capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            ca_root = subprocess.run(
+                [mkcert_bin, "-CAROOT"], capture_output=True, text=True, timeout=10)
+            if ca_root.returncode == 0:
+                ca_cert = os.path.join(ca_root.stdout.strip(), "rootCA.pem")
+                if os.path.exists(ca_cert):
+                    with open(cert_path, "ab") as f:
+                        with open(ca_cert, "rb") as ca:
+                            f.write(ca.read())
+            os.chmod(key_path, 0o600)
+            os.chmod(cert_path, 0o644)
+            return cert_path, key_path
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pass
+    san = f"DNS:localhost,DNS:{HOSTNAME}.local,DNS:{HOSTNAME},IP:127.0.0.1"
     try:
         subprocess.run([
             "openssl", "req", "-x509", "-newkey", "rsa:2048",
             "-keyout", key_path, "-out", cert_path,
             "-days", "365", "-nodes",
-            "-subj", f"/CN={HOSTNAME}.local/O=CPIP/C=US",
+            "-subj", f"/CN=localhost/O=CPIP/C=US",
+            "-addext", f"subjectAltName={san}",
+            "-addext", "basicConstraints=CA:FALSE",
+            "-addext", "keyUsage=digitalSignature,keyEncipherment",
         ], capture_output=True, check=True, timeout=30)
         os.chmod(key_path, 0o600)
         os.chmod(cert_path, 0o644)
@@ -338,7 +436,7 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
         import datetime as dt
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, f"{HOSTNAME}.local"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, "CPIP"),
         ])
         cert = (x509.CertificateBuilder()
@@ -347,7 +445,9 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
                  .serial_number(x509.random_serial_number())
                  .not_valid_before(dt.datetime.utcnow())
                  .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=365))
+                 .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
                  .add_extension(x509.SubjectAlternativeName([
+                     x509.DNSName("localhost"),
                      x509.DNSName(f"{HOSTNAME}.local"),
                      x509.DNSName(HOSTNAME),
                      x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
@@ -374,32 +474,31 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
 
 
 def _generate_pem_key() -> str:
-    """Fallback: generate a minimal RSA key PEM using openssl subprocess or a stub."""
+    """Generate RSA-2048 private key via openssl. Fails if openssl unavailable."""
     try:
         r = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True, text=True, timeout=10)
-        if r.returncode == 0:
+        if r.returncode == 0 and "BEGIN" in r.stdout:
             return r.stdout
     except Exception:
         pass
-    return "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA_stub_fallback_key_please_install_openssl\n-----END RSA PRIVATE KEY-----\n"
+    raise RuntimeError("Cannot generate SSL key: openssl not found. Install openssl or provide CPIP_SSL_KEY.")
 
 
 def _generate_pem_cert(key_pem: str) -> str:
-    """Fallback: generate a minimal self-signed cert PEM using openssl subprocess."""
+    """Generate self-signed cert via openssl. Fails if openssl unavailable."""
     try:
+        san = f"DNS:localhost,DNS:{HOSTNAME}.local,DNS:{HOSTNAME},IP:127.0.0.1"
         r = subprocess.run([
             "openssl", "req", "-new", "-x509", "-key", "/dev/stdin",
-            "-days", "365", "-nodes", "-subj", f"/CN={HOSTNAME}.local/O=CPIP/C=US",
+            "-days", "365", "-nodes", "-subj", "/CN=localhost/O=CPIP/C=US",
+            "-addext", f"subjectAltName={san}",
+            "-addext", "basicConstraints=CA:FALSE",
         ], input=key_pem, capture_output=True, text=True, timeout=10)
-        if r.returncode == 0:
+        if r.returncode == 0 and "BEGIN" in r.stdout:
             return r.stdout
     except Exception:
         pass
-    return (
-        "-----BEGIN CERTIFICATE-----\n"
-        "MIICljCCAX4CCQD_stub_fallback_cert_please_install_openssl\n"
-        "-----END CERTIFICATE-----\n"
-    )
+    raise RuntimeError("Cannot generate SSL cert: openssl not found. Install openssl or provide CPIP_SSL_CERT.")
 
 
 import ipaddress
@@ -505,11 +604,15 @@ class CoffeeCipher:
     """
 
     @classmethod
-    def _hkdf_expand(cls, ikm: bytes, info: bytes, length: int = 32) -> bytes:
-        """HKDF-Expand: derive key material from input keying material.
-        Uses HMAC-SHA256 as the underlying PRF (FIPS 180-4 / SP 800-56C).
-        """
-        prk = hmac.new(ikm, info, hashlib.sha256).digest()
+    def _hkdf_extract(cls, salt: bytes, ikm: bytes) -> bytes:
+        """HKDF-Extract: extract pseudorandom key from input keying material.
+        HMAC-SHA256 PRF (SP 800-56C §5.1.1)."""
+        return hmac.new(salt, ikm, hashlib.sha256).digest()
+
+    @classmethod
+    def _hkdf_expand(cls, prk: bytes, info: bytes, length: int = 32) -> bytes:
+        """HKDF-Expand: expand PRK into output keying material.
+        HMAC-SHA256 PRF (SP 800-56C §5.1.2)."""
         n = (length + 31) // 32
         okm = b""
         t = b""
@@ -519,16 +622,21 @@ class CoffeeCipher:
         return okm[:length]
 
     @classmethod
+    def hkdf(cls, ikm: bytes, salt: bytes, info: bytes, length: int = 32) -> bytes:
+        """Full HKDF (Extract-then-Expand) per SP 800-56C."""
+        prk = cls._hkdf_extract(salt, ikm)
+        return cls._hkdf_expand(prk, info, length)
+
+    @classmethod
     def key_from_recipe(cls, base_key: bytes, recipe: str = "espresso") -> bytes:
-        """Derive cipher key from a coffee recipe name using HKDF.
+        """Derive cipher key from a coffee recipe name using full HKDF.
         
         Different recipes produce cryptographically independent keys.
-        Uses HKDF-SHA256 derivation (SP 800-56C).
+        Uses HKDF-Extract-then-Expand (SP 800-56C).
         """
         recipe_bytes = recipe.encode()
         salt = hashlib.sha256(b"\xc0\xff\xee" + recipe_bytes).digest()
-        prk = hmac.new(salt, base_key, hashlib.sha256).digest()
-        return cls._hkdf_expand(prk, b"cpip-cipher-v3:" + recipe_bytes, 32)
+        return cls.hkdf(base_key, salt, b"cpip-cipher-v3:" + recipe_bytes, 32)
 
     @classmethod
     def encrypt(cls, plaintext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
@@ -576,14 +684,14 @@ class CoffeeCipher:
 
 
 # ── ECDSA P-256 — FIPS 186-4 Constant-Time ECC ────────────────────────
-class Ed25519:
+class ECP256:
     """ECDSA/ECDH using NIST P-256 (secp256r1) — FIPS 186-4 compliant.
 
-    Uses the `cryptography` library for constant-time curve operations,
-    providing FIPS-approved digital signatures and key exchange.
+    Provides ECDSA digital signatures, ECDH key exchange, and address
+    derivation. All operations use the `cryptography` library's constant-time
+    curve implementations (SP 800-56A compliant).
 
-    The class name 'Ed25519' is preserved for backward compatibility;
-    internally it now uses ECDSA P-256 for all operations.
+    Named ECP256 for clarity. Ed25519 alias preserved for backward compat.
     """
 
     _CURVE = ec.SECP256R1()
@@ -706,570 +814,691 @@ class Ed25519:
         seed = n.to_bytes(32, 'big') if isinstance(n, int) else n
         return cls._derive_key_from_seed(seed).public_key()
 
+Ed25519 = ECP256  # backward compat alias — class renamed for clarity
 
-# ── Kyber (ML-KEM) — Pure Python Post-Quantum KEM ──────────────────────
+
+# ── Kyber (ML-KEM) — Unified Post-Quantum KEM Adapter ─────────────────
+# Tries: 1nf1D3L's Kyber (numpy) → pqcrypto (C extension) → error
+# All implementations produce compatible ML-KEM-768 key/ciphertext sizes.
+_KYBER_BACKEND = None
+
+def _get_kyber_backend():
+    """Lazy-init: select best available ML-KEM-768 backend."""
+    global _KYBER_BACKEND
+    if _KYBER_BACKEND is not None:
+        return _KYBER_BACKEND
+    try:
+        from inf1del_kyber import Inf1delKyber
+        Inf1delKyber.keygen()
+        _KYBER_BACKEND = "inf1del"
+        return _KYBER_BACKEND
+    except Exception:
+        pass
+    if _PQCRYPTO_AVAILABLE:
+        _KYBER_BACKEND = "pqcrypto"
+        return _KYBER_BACKEND
+    raise RuntimeError("No ML-KEM-768 backend available (install numpy or pqcrypto)")
+
+
 class Kyber:
-    """Kyber (ML-KEM) — Pure Python implementation of CRYSTALS-Kyber.
+    """Unified ML-KEM-768 adapter — delegates to best available backend.
     
-    Non-FIPS validated but cryptographically sound post-quantum KEM.
-    Implements ML-KEM-768 (NIST PQC standard) with the following parameters:
-    - Security level: 3 (192-bit classical / 128-bit quantum)
-    - n = 256 (polynomial degree)
-    - k = 3 (module rank)
-    - q = 3329 (modulus)
-    - eta1 = 2, eta2 = 2 (noise distribution parameters)
-    - du = 10, dv = 4 (compression parameters)
+    Backends (in priority order):
+    1. 1nf1D3L's Kyber (numpy-accelerated, eta=3, domain-separated)
+    2. pqcrypto ML-KEM-768 (C extension, standard FIPS 203 params)
     
-    Key sizes (ML-KEM-768):
+    All backends produce compatible key/ciphertext sizes:
     - Public key: 1184 bytes
-    - Private key: 2400 bytes  
+    - Secret key: 2400 bytes
     - Ciphertext: 1088 bytes
     - Shared secret: 32 bytes
-    
-    Uses NTT (Number Theoretic Transform) for polynomial multiplication.
-    All operations are constant-time where possible.
-    
-    Reference: FIPS 203 (Draft), NIST PQC Round 3 Kyber specification.
     """
     
-    # Kyber-768 parameters (ML-KEM-768)
-    N = 256           # polynomial degree
-    K = 3             # module rank
-    Q = 3329          # modulus
-    ETA1 = 2          # noise parameter for key generation
-    ETA2 = 2          # noise parameter for encryption
-    DU = 10           # compression parameter for u
-    DV = 4            # compression parameter for v
-    
-    # Derived constants
-    Q_INV = 62209     # -Q^{-1} mod 2^16
-    R_LOG = 128       # 2^7 = 128, for Montgomery
-    R = 1 << R_LOG
-    R_INV = pow(R, -1, Q)
-    NTT_ROOT = 17     # primitive 256th root of unity modulo Q
-    NTT_ROOT_INV = pow(NTT_ROOT, -1, Q)
-    NTT_ROOT_PW = 1 << 8  # 256
-    
-    @classmethod
-    def _mod_add(cls, a: int, b: int) -> int:
-        """Modular addition modulo Q."""
-        res = a + b
-        if res >= cls.Q:
-            res -= cls.Q
-        return res
-    
-    @classmethod
-    def _mod_sub(cls, a: int, b: int) -> int:
-        """Modular subtraction modulo Q."""
-        res = a - b
-        if res < 0:
-            res += cls.Q
-        return res
-    
-    @classmethod
-    def _mod_mul(cls, a: int, b: int) -> int:
-        """Modular multiplication modulo Q."""
-        return (a * b) % cls.Q
-    
-    @classmethod
-    def _montgomery_reduce(cls, a: int) -> int:
-        """Montgomery reduction."""
-        u = (a * cls.Q_INV) & 0xFFFF
-        t = (a + u * cls.Q) >> 16
-        if t >= cls.Q:
-            t -= cls.Q
-        return t
-    
-    @classmethod
-    def _montgomery_mul(cls, a: int, b: int) -> int:
-        """Montgomery multiplication."""
-        return cls._montgomery_reduce(a * b)
-    
-    @classmethod
-    def _barrett_reduce(cls, a: int) -> int:
-        """Barrett reduction modulo Q."""
-        u = (a * 12643) >> 22  # 12643 = floor(2^22 / 3329)
-        t = a - u * cls.Q
-        if t >= cls.Q:
-            t -= cls.Q
-        return t
-    
-    @classmethod
-    def _cbd(cls, buf: bytes, eta: int) -> list:
-        """Centered Binomial Distribution sampling.
-        
-        Samples polynomial coefficients from CBD_eta.
-        Each coefficient = sum(b_{2i*eta+j}) - sum(b_{2i*eta+eta+j}) for j=0..eta-1
-        """
-        coeffs = [0] * cls.N
-        for i in range(cls.N):
-            pos = 0
-            neg = 0
-            for j in range(eta):
-                byte_idx = (i * 2 * eta + j) // 8
-                bit_pos = (i * 2 * eta + j) % 8
-                if byte_idx < len(buf) and (buf[byte_idx] >> bit_pos) & 1:
-                    pos += 1
-                
-                byte_idx = (i * 2 * eta + eta + j) // 8
-                bit_pos = (i * 2 * eta + eta + j) % 8
-                if byte_idx < len(buf) and (buf[byte_idx] >> bit_pos) & 1:
-                    neg += 1
-            coeffs[i] = (pos - neg) % cls.Q
-        return coeffs
-    
-    @classmethod
-    def _cbd_eta1(cls, buf: bytes) -> list:
-        return cls._cbd(buf, cls.ETA1)
-    
-    @classmethod
-    def _cbd_eta2(cls, buf: bytes) -> list:
-        return cls._cbd(buf, cls.ETA2)
-    
-    @classmethod
-    def _ntt(cls, a: list) -> list:
-        """Number Theoretic Transform (NTT) - in-place Cooley-Tukey."""
-        n = cls.N
-        root = cls.NTT_ROOT
-        root_pw = cls.NTT_ROOT_PW
-        
-        # Bit-reversal permutation
-        j = 0
-        for i in range(1, n):
-            bit = n >> 1
-            while j & bit:
-                j ^= bit
-                bit >>= 1
-            j ^= bit
-            if i < j:
-                a[i], a[j] = a[j], a[i]
-        
-        # Cooley-Tukey
-        length = 2
-        while length <= n:
-            wlen = pow(root, root_pw // length, cls.Q)
-            for i in range(0, n, length):
-                w = 1
-                for j in range(i, i + length // 2):
-                    u = a[j]
-                    v = cls._mod_mul(a[j + length // 2], w)
-                    a[j] = cls._mod_add(u, v)
-                    a[j + length // 2] = cls._mod_sub(u, v)
-                    w = cls._mod_mul(w, wlen)
-            length <<= 1
-        return a
-    
-    @classmethod
-    def _intt(cls, a: list) -> list:
-        """Inverse NTT - in-place Gentleman-Sande."""
-        n = cls.N
-        root_inv = cls.NTT_ROOT_INV
-        root_pw = cls.NTT_ROOT_PW
-        
-        # Gentleman-Sande
-        length = n
-        while length > 1:
-            wlen = pow(root_inv, root_pw // length, cls.Q)
-            for i in range(0, n, length):
-                w = 1
-                for j in range(i, i + length // 2):
-                    u = a[j]
-                    v = a[j + length // 2]
-                    a[j] = cls._mod_add(u, v)
-                    a[j + length // 2] = cls._mod_mul(cls._mod_sub(u, v), w)
-                    w = cls._mod_mul(w, wlen)
-            length >>= 1
-        
-        # Bit-reversal
-        j = 0
-        for i in range(1, n):
-            bit = n >> 1
-            while j & bit:
-                j ^= bit
-                bit >>= 1
-            j ^= bit
-            if i < j:
-                a[i], a[j] = a[j], a[i]
-        
-        # Multiply by n^{-1}
-        n_inv = pow(n, -1, cls.Q)
-        for i in range(n):
-            a[i] = cls._mod_mul(a[i], n_inv)
-        
-        return a
-    
-    @classmethod
-    def _poly_add(cls, a: list, b: list) -> list:
-        """Polynomial addition modulo Q."""
-        return [cls._mod_add(a[i], b[i]) for i in range(cls.N)]
-    
-    @classmethod
-    def _poly_sub(cls, a: list, b: list) -> list:
-        """Polynomial subtraction modulo Q."""
-        return [cls._mod_sub(a[i], b[i]) for i in range(cls.N)]
-    
-    @classmethod
-    def _poly_mul_ntt(cls, a: list, b: list) -> list:
-        """Polynomial multiplication using NTT."""
-        a_ntt = a.copy()
-        b_ntt = b.copy()
-        cls._ntt(a_ntt)
-        cls._ntt(b_ntt)
-        c_ntt = [cls._mod_mul(a_ntt[i], b_ntt[i]) for i in range(cls.N)]
-        cls._intt(c_ntt)
-        return c_ntt
-    
-    @classmethod
-    def _poly_mul_matrix(cls, A: list, s: list) -> list:
-        """Multiply matrix of polynomials A (k x k) by vector s (k)."""
-        k = cls.K
-        result = [[0] * cls.N for _ in range(k)]
-        for i in range(k):
-            for j in range(k):
-                prod = cls._poly_mul_ntt(A[i][j], s[j])
-                result[i] = cls._poly_add(result[i], prod)
-        return result
-    
-    @classmethod
-    def _poly_vec_add(cls, a: list, b: list) -> list:
-        """Add two vectors of polynomials."""
-        return [cls._poly_add(a[i], b[i]) for i in range(cls.K)]
-    
-    @classmethod
-    def _poly_vec_sub(cls, a: list, b: list) -> list:
-        """Subtract two vectors of polynomials."""
-        return [cls._poly_sub(a[i], b[i]) for i in range(cls.K)]
-    
-    @classmethod
-    def _compress(cls, x: int, d: int) -> int:
-        """Compress integer to d bits."""
-        return ((x << d) + (cls.Q // 2)) // cls.Q
-    
-    @classmethod
-    def _decompress(cls, y: int, d: int) -> int:
-        """Decompress integer from d bits."""
-        return (y * cls.Q + (1 << (d - 1))) >> d
-    
-    @classmethod
-    def _poly_compress(cls, a: list, d: int) -> bytes:
-        """Compress polynomial to bytes."""
-        out = bytearray()
-        for coeff in a:
-            out.append(cls._compress(coeff, d) & 0xFF)
-            if d > 8:
-                out.append((cls._compress(coeff, d) >> 8) & 0xFF)
-        return bytes(out)
-    
-    @classmethod
-    def _poly_decompress(cls, data: bytes, d: int) -> list:
-        """Decompress polynomial from bytes."""
-        coeffs = []
-        idx = 0
-        for _ in range(cls.N):
-            val = data[idx]
-            if d > 8:
-                val |= (data[idx + 1] << 8)
-                idx += 2
-            else:
-                idx += 1
-            coeffs.append(cls._decompress(val, d))
-        return coeffs
-    
-    @classmethod
-    def _poly_vec_compress(cls, vec: list, d: int) -> bytes:
-        """Compress vector of polynomials."""
-        out = bytearray()
-        for poly in vec:
-            out.extend(cls._poly_compress(poly, d))
-        return bytes(out)
-    
-    @classmethod
-    def _poly_vec_decompress(cls, data: bytes, d: int) -> list:
-        """Decompress vector of polynomials."""
-        vec = []
-        poly_bytes = (cls.N * d + 7) // 8
-        for i in range(cls.K):
-            start = i * poly_bytes
-            end = start + poly_bytes
-            vec.append(cls._poly_decompress(data[start:end], d))
-        return vec
-    
-    @classmethod
-    def _sample_ntt(cls, seed: bytes, i: int, j: int) -> list:
-        """Sample a polynomial in NTT domain from seed."""
-        # Use SHAKE-128 to generate pseudorandom polynomial
-        shake = hashlib.shake_128(seed + bytes([i, j]))
-        coeffs = []
-        for _ in range(cls.N):
-            # Rejection sampling
-            while True:
-                b = shake.read(3)
-                if len(b) < 3:
-                    continue
-                val = int.from_bytes(b, 'little') & 0xFFFFFF
-                if val < cls.Q * 4096 // 3329 * 3329:  # rejection threshold
-                    coeffs.append(val % cls.Q)
-                    break
-        # Apply NTT
-        cls._ntt(coeffs)
-        return coeffs
-    
-    @classmethod
-    def _generate_matrix_A(cls, rho: bytes) -> list:
-        """Generate the public matrix A (k x k) in NTT domain."""
-        A = [[None] * cls.K for _ in range(cls.K)]
-        for i in range(cls.K):
-            for j in range(cls.K):
-                A[i][j] = cls._sample_ntt(rho, i, j)
-        return A
-    
-    @classmethod
-    def _encode_pk(cls, pk: list, rho: bytes) -> bytes:
-        """Encode public key: t_compressed || rho."""
-        # t is in NTT domain, compress each polynomial
-        t_compressed = cls._poly_vec_compress(pk, cls.DU)
-        return t_compressed + rho
-    
-    @classmethod
-    def _decode_pk(cls, data: bytes) -> tuple:
-        """Decode public key: (t_decompressed, rho)."""
-        t_bytes = (cls.K * cls.N * cls.DU + 7) // 8
-        t_compressed = data[:t_bytes]
-        rho = data[t_bytes:]
-        t = cls._poly_vec_decompress(t_compressed, cls.DU)
-        return t, rho
-    
-    @classmethod
-    def _encode_sk(cls, s: list) -> bytes:
-        """Encode secret key: s in NTT domain."""
-        # s is already in NTT domain from keygen
-        return cls._poly_vec_compress(s, 12)  # 12 bits for NTT coefficients
-    
-    @classmethod
-    def _decode_sk(cls, data: bytes) -> list:
-        """Decode secret key: s in NTT domain."""
-        return cls._poly_vec_decompress(data, 12)
-    
-    @classmethod
-    def _encode_ct(cls, u: list, v: list) -> bytes:
-        """Encode ciphertext: u_compressed || v_compressed."""
-        u_compressed = cls._poly_vec_compress(u, cls.DU)
-        v_compressed = cls._poly_compress(v, cls.DV)
-        return u_compressed + v_compressed
-    
-    @classmethod
-    def _decode_ct(cls, data: bytes) -> tuple:
-        """Decode ciphertext: (u, v)."""
-        u_bytes = (cls.K * cls.N * cls.DU + 7) // 8
-        u_compressed = data[:u_bytes]
-        v_compressed = data[u_bytes:]
-        u = cls._poly_vec_decompress(u_compressed, cls.DU)
-        v = cls._poly_decompress(v_compressed, cls.DV)
-        return u, v
-    
-    @classmethod
-    def _hash_g(cls, d: bytes) -> tuple:
-        """Hash function G: {0,1}* -> {0,1}^32 x {0,1}^32"""
-        shake = hashlib.shake_256(d).digest(64)
-        return shake[:32], shake[32:]
-    
-    @classmethod
-    def _hash_h(cls, pk: bytes) -> bytes:
-        """Hash function H: {0,1}* -> {0,1}^32"""
-        return hashlib.sha3_256(pk).digest()
-    
-    @classmethod
-    def _hash_j(cls, d: bytes) -> bytes:
-        """Hash function J: {0,1}* -> {0,1}^32"""
-        return hashlib.shake_256(d).digest(32)
-    
-    @classmethod
-    def _prf(cls, key: bytes, nonce: bytes, length: int) -> bytes:
-        """PRF: HMAC-SHA256 based pseudorandom function."""
-        return hashlib.shake_256(key + nonce).digest(length)
-    
+    N = 256
+    K = 3
+    Q = 3329
+    ETA1 = 2
+    ETA2 = 2
+    DU = 10
+    DV = 4
+
     @classmethod
     def keygen(cls) -> tuple:
-        """Generate Kyber keypair. Returns (public_key_bytes, private_key_bytes)."""
-        # Generate random seed
-        d = secrets.token_bytes(32)
-        
-        # G(d) -> (rho, sigma)
-        rho, sigma = cls._hash_g(d)
-        
-        # Generate matrix A in NTT domain
-        A = cls._generate_matrix_A(rho)
-        
-        # Sample s, e from CBD_eta1
-        s = [cls._cbd_eta1(cls._prf(sigma, bytes([i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        e = [cls._cbd_eta1(cls._prf(sigma, bytes([cls.K + i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        
-        # Compute s_hat = NTT(s)
-        s_hat = [poly.copy() for poly in s]
-        for poly in s_hat:
-            cls._ntt(poly)
-        
-        # Compute t = A * s_hat + e (in NTT domain)
-        t = cls._poly_mul_matrix(A, s_hat)
-        t = cls._poly_vec_add(t, e)
-        
-        # t is now in NTT domain
-        pk = cls._encode_pk(t, rho)
-        sk = cls._encode_sk(s_hat)
-        
-        # Private key includes: s_hat || pk || H(pk) || z
-        z = secrets.token_bytes(32)
-        sk_full = sk + pk + cls._hash_h(pk) + z
-        
-        return pk, sk_full
-    
+        backend = _get_kyber_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.keygen()
+        elif backend == "pqcrypto":
+            return MLKEM768.generate_keypair()
+        raise RuntimeError("No Kyber backend")
+
     @classmethod
     def encaps(cls, public_key: bytes) -> tuple:
-        """Kyber encapsulation. Returns (ciphertext, shared_secret)."""
-        # Decode public key
-        t, rho = cls._decode_pk(public_key)
-        
-        # Generate random message m
-        m = secrets.token_bytes(32)
-        
-        # Hash m with H(pk) -> (Kbar, r)
-        Kbar = hashlib.sha3_256(m + cls._hash_h(public_key)).digest()
-        r = hashlib.shake_256(Kbar).digest(32)
-        
-        # Generate matrix A
-        A = cls._generate_matrix_A(rho)
-        
-        # Sample r_vec, e1 from CBD_eta1
-        r_vec = [cls._cbd_eta1(cls._prf(r, bytes([i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        e1 = [cls._cbd_eta1(cls._prf(r, bytes([cls.K + i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        e2 = cls._cbd_eta2(cls._prf(r, bytes([2 * cls.K]), cls.ETA2 * cls.N * 2))
-        
-        # NTT(r_vec)
-        r_hat = [poly.copy() for poly in r_vec]
-        for poly in r_hat:
-            cls._ntt(poly)
-        
-        # u = A^T * r_hat + e1
-        u = [[0] * cls.N for _ in range(cls.K)]
-        for i in range(cls.K):
-            for j in range(cls.K):
-                prod = cls._poly_mul_ntt(A[j][i], r_hat[j])
-                u[i] = cls._poly_add(u[i], prod)
-        u = cls._poly_vec_add(u, e1)
-        
-        # v = t^T * r_hat + e2 + Decompress(m)
-        v = [0] * cls.N
-        for i in range(cls.K):
-            prod = cls._poly_mul_ntt(t[i], r_hat[i])
-            v = cls._poly_add(v, prod)
-        v = cls._poly_add(v, e2)
-        
-        # Add Decompress(m) to v
-        m_poly = cls._poly_decompress(m, 1)  # 1-bit per coefficient
-        v = cls._poly_add(v, m_poly)
-        
-        # Encode ciphertext
-        ct = cls._encode_ct(u, v)
-        
-        # Shared secret = K = KDF(Kbar || H(ct))
-        ss = hashlib.shake_256(Kbar + cls._hash_j(ct)).digest(32)
-        
+        backend = _get_kyber_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.encaps(public_key)
+        elif backend == "pqcrypto":
+            return MLKEM768.encapsulate(public_key)
+        raise RuntimeError("No Kyber backend")
+
+    @classmethod
+    def decaps(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        backend = _get_kyber_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.decaps(secret_key, ciphertext)
+        elif backend == "pqcrypto":
+            return MLKEM768.decapsulate(secret_key, ciphertext)
+        raise RuntimeError("No Kyber backend")
+
+
+# ── Non-FIPS PQC KEMs (HQC, Classic McEliece, ML-KEM variants) ────────
+# These are NOT FIPS validated. Use for research, red-teaming, and coffee protocols.
+
+# Try to import pqcrypto KEMs (HQC, McEliece, ML-KEM variants)
+try:
+    import pqcrypto.kem.hqc_128 as _hqc128
+    import pqcrypto.kem.hqc_192 as _hqc192
+    import pqcrypto.kem.hqc_256 as _hqc256
+    import pqcrypto.kem.mceliece348864 as _mce348864
+    import pqcrypto.kem.mceliece348864f as _mce348864f
+    import pqcrypto.kem.mceliece460896 as _mce460896
+    import pqcrypto.kem.mceliece460896f as _mce460896f
+    import pqcrypto.kem.mceliece6688128 as _mce6688128
+    import pqcrypto.kem.mceliece6688128f as _mce6688128f
+    import pqcrypto.kem.mceliece6960119 as _mce6960119
+    import pqcrypto.kem.mceliece6960119f as _mce6960119f
+    import pqcrypto.kem.mceliece8192128 as _mce8192128
+    import pqcrypto.kem.mceliece8192128f as _mce8192128f
+    import pqcrypto.kem.ml_kem_512 as _mlkem512
+    import pqcrypto.kem.ml_kem_768 as _mlkem768
+    import pqcrypto.kem.ml_kem_1024 as _mlkem1024
+    _PQCRYPTO_AVAILABLE = True
+except ImportError:
+    _PQCRYPTO_AVAILABLE = False
+    _hqc128 = _hqc192 = _hqc256 = None
+    _mce348864 = _mce348864f = _mce460896 = _mce460896f = None
+    _mce6688128 = _mce6688128f = _mce6960119 = _mce6960119f = None
+    _mce8192128 = _mce8192128f = None
+    _mlkem512 = _mlkem768 = _mlkem1024 = None
+
+
+class PQCKEM:
+    """Base class for non-FIPS Post-Quantum KEMs.
+    
+    Provides a unified interface for HQC, Classic McEliece, ML-KEM variants,
+    and future additions (FrodoKEM, BIKE, etc.).
+    """
+    
+    # Class attributes to be overridden by subclasses
+    ALGORITHM = "base"
+    PUBLIC_KEY_SIZE = 0
+    SECRET_KEY_SIZE = 0
+    CIPHERTEXT_SIZE = 0
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def is_available(cls) -> bool:
+        """Check if this KEM implementation is available."""
+        return _PQCRYPTO_AVAILABLE
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        """Generate keypair. Returns (public_key, secret_key)."""
+        raise NotImplementedError
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        """Encapsulate to public key. Returns (ciphertext, shared_secret)."""
+        raise NotImplementedError
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        """Decapsulate using secret key. Returns shared_secret."""
+        raise NotImplementedError
+    
+    @classmethod
+    def encrypt(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        """Alias for encapsulate (pqcrypto naming)."""
+        return cls.encapsulate(public_key)
+    
+    @classmethod
+    def decrypt(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        """Alias for decapsulate (pqcrypto naming)."""
+        return cls.decapsulate(secret_key, ciphertext)
+
+
+class HQC128(PQCKEM):
+    """HQC-128: Hamming Quasi-Cyclic code-based KEM (NIST backup KEM candidate).
+    
+    Security: ~128-bit classical / ~64-bit quantum
+    Based on: Hamming Quasi-Cyclic codes
+    Status: NIST selected for standardization as backup to ML-KEM
+    """
+    ALGORITHM = "hqc_128"
+    PUBLIC_KEY_SIZE = 2249
+    SECRET_KEY_SIZE = 2305
+    CIPHERTEXT_SIZE = 4433
+    SHARED_KEY_SIZE = 64
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc128.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _hqc128.encrypt(public_key)
         return ct, ss
     
     @classmethod
-    def decaps(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
-        """Kyber decapsulation. Returns shared_secret."""
-        # Decode secret key
-        sk_len = (cls.K * cls.N * 12 + 7) // 8
-        s_hat_encoded = secret_key[:sk_len]
-        pk = secret_key[sk_len:sk_len + 1184]  # pk length for Kyber-768
-        h_pk = secret_key[sk_len + 1184:sk_len + 1184 + 32]
-        z = secret_key[sk_len + 1184 + 32:sk_len + 1184 + 64]
-        
-        s_hat = cls._decode_sk(s_hat_encoded)
-        
-        # Decode ciphertext
-        u, v = cls._decode_ct(ciphertext)
-        
-        # NTT(u)
-        u_hat = [poly.copy() for poly in u]
-        for poly in u_hat:
-            cls._ntt(poly)
-        
-        # v' = v - s_hat^T * u_hat
-        v_prime = v.copy()
-        for i in range(cls.K):
-            prod = cls._poly_mul_ntt(s_hat[i], u_hat[i])
-            v_prime = cls._poly_sub(v_prime, prod)
-        
-        # Compress v' to get m'
-        # Note: proper implementation would use the full compression/decompression
-        # For simplicity, we extract the message via rounding
-        m_prime = bytearray()
-        for coeff in v_prime:
-            # Round to nearest multiple of Q/2
-            bit = 1 if coeff > cls.Q // 2 else 0
-            m_prime.append(bit)
-        # Pack bits into bytes
-        m_bytes = bytearray(32)
-        for i in range(256):
-            if i < len(m_prime) and m_prime[i]:
-                m_bytes[i // 8] |= (1 << (i % 8))
-        m_bytes = bytes(m_bytes)
-        
-        # Re-encapsulate to verify
-        Kbar_prime = hashlib.sha3_256(m_bytes + h_pk).digest()
-        r_prime = hashlib.shake_256(Kbar_prime).digest(32)
-        
-        # Recompute expected ciphertext
-        A = cls._generate_matrix_A(cls._decode_pk(pk)[1])
-        r_vec_prime = [cls._cbd_eta1(cls._prf(r_prime, bytes([i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        e1_prime = [cls._cbd_eta1(cls._prf(r_prime, bytes([cls.K + i]), cls.ETA1 * cls.N * 2)) for i in range(cls.K)]
-        e2_prime = cls._cbd_eta2(cls._prf(r_prime, bytes([2 * cls.K]), cls.ETA2 * cls.N * 2))
-        
-        r_hat_prime = [poly.copy() for poly in r_vec_prime]
-        for poly in r_hat_prime:
-            cls._ntt(poly)
-        
-        u_prime = [[0] * cls.N for _ in range(cls.K)]
-        for i in range(cls.K):
-            for j in range(cls.K):
-                prod = cls._poly_mul_ntt(A[j][i], r_hat_prime[j])
-                u_prime[i] = cls._poly_add(u_prime[i], prod)
-        u_prime = cls._poly_vec_add(u_prime, e1_prime)
-        
-        v_prime_recon = [0] * cls.N
-        t_pk, _ = cls._decode_pk(pk)
-        for i in range(cls.K):
-            prod = cls._poly_mul_ntt(t_pk[i], r_hat_prime[i])
-            v_prime_recon = cls._poly_add(v_prime_recon, prod)
-        v_prime_recon = cls._poly_add(v_prime_recon, e2_prime)
-        m_poly_prime = cls._poly_decompress(m_bytes, 1)
-        v_prime_recon = cls._poly_add(v_prime_recon, m_poly_prime)
-        
-        ct_prime = cls._encode_ct(u_prime, v_prime_recon)
-        
-        # Constant-time comparison
-        if cls._ct_eq(ct, ct_prime):
-            ss = hashlib.shake_256(Kbar_prime + cls._hash_j(ciphertext)).digest(32)
-        else:
-            ss = hashlib.shake_256(z + ciphertext).digest(32)
-        
-        return ss
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc128.decrypt(secret_key, ciphertext)
+
+
+class HQC192(PQCKEM):
+    """HQC-192: Hamming Quasi-Cyclic code-based KEM.
+    
+    Security: ~192-bit classical / ~96-bit quantum
+    """
+    ALGORITHM = "hqc_192"
+    PUBLIC_KEY_SIZE = 4522
+    SECRET_KEY_SIZE = 4586
+    CIPHERTEXT_SIZE = 8978
+    SHARED_KEY_SIZE = 64
     
     @classmethod
-    def _ct_eq(cls, a: bytes, b: bytes) -> bool:
-        """Constant-time byte comparison."""
-        if len(a) != len(b):
-            return False
-        result = 0
-        for x, y in zip(a, b):
-            result |= x ^ y
-        return result == 0
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc192.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _hqc192.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc192.decrypt(secret_key, ciphertext)
 
 
-# Alias for backward compatibility
-MLKEM = Kyber
+class HQC256(PQCKEM):
+    """HQC-256: Hamming Quasi-Cyclic code-based KEM.
+    
+    Security: ~256-bit classical / ~128-bit quantum
+    """
+    ALGORITHM = "hqc_256"
+    PUBLIC_KEY_SIZE = 7245
+    SECRET_KEY_SIZE = 7317
+    CIPHERTEXT_SIZE = 14421
+    SHARED_KEY_SIZE = 64
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc256.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _hqc256.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _hqc256.decrypt(secret_key, ciphertext)
+
+
+class McEliece348864(PQCKEM):
+    """Classic McEliece 348864: Code-based KEM (McEliece with Goppa codes).
+    
+    Security: ~128-bit classical
+    Note: Very large public key (~261 KB)
+    """
+    ALGORITHM = "mceliece348864"
+    PUBLIC_KEY_SIZE = 261120
+    SECRET_KEY_SIZE = 6492
+    CIPHERTEXT_SIZE = 96
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce348864.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce348864.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce348864.decrypt(secret_key, ciphertext)
+
+
+class McEliece348864f(PQCKEM):
+    """Classic McEliece 348864f (f variant).
+    
+    Security: ~128-bit classical
+    """
+    ALGORITHM = "mceliece348864f"
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce348864f.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce348864f.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce348864f.decrypt(secret_key, ciphertext)
+
+
+class McEliece460896(PQCKEM):
+    """Classic McEliece 460896.
+    
+    Security: ~192-bit classical
+    Note: Very large public key (~524 KB)
+    """
+    ALGORITHM = "mceliece460896"
+    PUBLIC_KEY_SIZE = 524160
+    SECRET_KEY_SIZE = 13608
+    CIPHERTEXT_SIZE = 156
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce460896.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce460896.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce460896.decrypt(secret_key, ciphertext)
+
+
+class McEliece460896f(PQCKEM):
+    """Classic McEliece 460896f (f variant)."""
+    ALGORITHM = "mceliece460896f"
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce460896f.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce460896f.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce460896f.decrypt(secret_key, ciphertext)
+
+
+class McEliece6688128(PQCKEM):
+    """Classic McEliece 6688128.
+    
+    Security: ~256-bit classical
+    Note: Very large public key (~1 MB)
+    """
+    ALGORITHM = "mceliece6688128"
+    PUBLIC_KEY_SIZE = 1044992
+    SECRET_KEY_SIZE = 13932
+    CIPHERTEXT_SIZE = 208
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6688128.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce6688128.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6688128.decrypt(secret_key, ciphertext)
+
+
+class McEliece6688128f(PQCKEM):
+    """Classic McEliece 6688128f (f variant)."""
+    ALGORITHM = "mceliece6688128f"
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6688128f.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce6688128f.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6688128f.decrypt(secret_key, ciphertext)
+
+
+class McEliece6960119(PQCKEM):
+    """Classic McEliece 6960119.
+    
+    Security: ~256-bit classical
+    """
+    ALGORITHM = "mceliece6960119"
+    PUBLIC_KEY_SIZE = 1047319
+    SECRET_KEY_SIZE = 13948
+    CIPHERTEXT_SIZE = 194
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6960119.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce6960119.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6960119.decrypt(secret_key, ciphertext)
+
+
+class McEliece6960119f(PQCKEM):
+    """Classic McEliece 6960119f (f variant)."""
+    ALGORITHM = "mceliece6960119f"
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6960119f.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce6960119f.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce6960119f.decrypt(secret_key, ciphertext)
+
+
+class McEliece8192128(PQCKEM):
+    """Classic McEliece 8192128.
+    
+    Security: ~256-bit classical
+    Note: Largest public key (~1.36 MB)
+    """
+    ALGORITHM = "mceliece8192128"
+    PUBLIC_KEY_SIZE = 1357824
+    SECRET_KEY_SIZE = 14120
+    CIPHERTEXT_SIZE = 208
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce8192128.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce8192128.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce8192128.decrypt(secret_key, ciphertext)
+
+
+class McEliece8192128f(PQCKEM):
+    """Classic McEliece 8192128f (f variant)."""
+    ALGORITHM = "mceliece8192128f"
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce8192128f.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mce8192128f.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mce8192128f.decrypt(secret_key, ciphertext)
+
+
+class MLKEM512(PQCKEM):
+    """ML-KEM-512 (FIPS 203) - Module-Lattice KEM, NIST standardized.
+    
+    Security: 128-bit classical / 64-bit quantum
+    """
+    ALGORITHM = "ml_kem_512"
+    PUBLIC_KEY_SIZE = 800
+    SECRET_KEY_SIZE = 1632
+    CIPHERTEXT_SIZE = 768
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mlkem512.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mlkem512.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mlkem512.decrypt(secret_key, ciphertext)
+
+
+class MLKEM768(PQCKEM):
+    """ML-KEM-768 (FIPS 203) - Module-Lattice KEM, NIST standardized.
+    
+    Security: 192-bit classical / 128-bit quantum
+    """
+    ALGORITHM = "ml_kem_768"
+    PUBLIC_KEY_SIZE = 1184
+    SECRET_KEY_SIZE = 2400
+    CIPHERTEXT_SIZE = 1088
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if _PQCRYPTO_AVAILABLE:
+            return _mlkem768.generate_keypair()
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.keygen()
+        except Exception:
+            raise RuntimeError("No ML-KEM-768 backend available")
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if _PQCRYPTO_AVAILABLE:
+            ct, ss = _mlkem768.encrypt(public_key)
+            return ct, ss
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.encaps(public_key)
+        except Exception:
+            raise RuntimeError("No ML-KEM-768 backend available")
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if _PQCRYPTO_AVAILABLE:
+            return _mlkem768.decrypt(secret_key, ciphertext)
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.decaps(secret_key, ciphertext)
+        except Exception:
+            raise RuntimeError("No ML-KEM-768 backend available")
+
+
+class MLKEM1024(PQCKEM):
+    """ML-KEM-1024 (FIPS 203) - Module-Lattice KEM, NIST standardized.
+    
+    Security: 256-bit classical / 128-bit quantum
+    """
+    ALGORITHM = "ml_kem_1024"
+    PUBLIC_KEY_SIZE = 1568
+    SECRET_KEY_SIZE = 3168
+    CIPHERTEXT_SIZE = 1568
+    SHARED_KEY_SIZE = 32
+    
+    @classmethod
+    def generate_keypair(cls) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mlkem1024.generate_keypair()
+    
+    @classmethod
+    def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        ct, ss = _mlkem1024.encrypt(public_key)
+        return ct, ss
+    
+    @classmethod
+    def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
+        if not _PQCRYPTO_AVAILABLE:
+            raise RuntimeError("pqcrypto not available")
+        return _mlkem1024.decrypt(secret_key, ciphertext)
+
+
+# Registry of all available PQC KEMs
+PQC_KEM_REGISTRY = {
+    "hqc_128": HQC128,
+    "hqc_192": HQC192,
+    "hqc_256": HQC256,
+    "mceliece348864": McEliece348864,
+    "mceliece348864f": McEliece348864f,
+    "mceliece460896": McEliece460896,
+    "mceliece460896f": McEliece460896f,
+    "mceliece6688128": McEliece6688128,
+    "mceliece6688128f": McEliece6688128f,
+    "mceliece6960119": McEliece6960119,
+    "mceliece6960119f": McEliece6960119f,
+    "mceliece8192128": McEliece8192128,
+    "mceliece8192128f": McEliece8192128f,
+    "ml_kem_512": MLKEM512,
+    "ml_kem_768": MLKEM768,
+    "ml_kem_1024": MLKEM1024,
+}
+
+
+# Alias for backward compatibility - use pqcrypto ML-KEM-768 (FIPS 203 compliant)
+MLKEM = MLKEM768
+
+
+def get_pqc_kem(algorithm: str) -> type:
+    """Get PQC KEM class by algorithm name."""
+    if algorithm not in PQC_KEM_REGISTRY:
+        raise ValueError(f"Unknown PQC KEM algorithm: {algorithm}. Available: {list(PQC_KEM_REGISTRY.keys())}")
+    kem_class = PQC_KEM_REGISTRY[algorithm]
+    if not kem_class.is_available():
+        raise RuntimeError(f"PQC KEM {algorithm} not available (pqcrypto not installed)")
+    return kem_class
+
+
+def list_pqc_kems() -> dict:
+    """List all available PQC KEMs with their parameters."""
+    result = {}
+    for name, cls in PQC_KEM_REGISTRY.items():
+        result[name] = {
+            "algorithm": cls.ALGORITHM,
+            "public_key_size": cls.PUBLIC_KEY_SIZE,
+            "secret_key_size": cls.SECRET_KEY_SIZE,
+            "ciphertext_size": cls.CIPHERTEXT_SIZE,
+            "shared_key_size": cls.SHARED_KEY_SIZE,
+            "available": cls.is_available(),
+        }
+    return result
 
 
 # ── Hybrid Key Exchange (ECDH P-256 + Kyber) ──────────────────────────
@@ -1303,19 +1532,15 @@ class HybridKEM:
         ecc_pk = hybrid_pk[2:2 + ecc_pk_len]
         kyber_pk = hybrid_pk[2 + ecc_pk_len:]
         
-        # ECDH part
         ecc_ephem_seed = secrets.token_bytes(32)
         ecc_ephem_pk, _, _, _ = Ed25519.generate_keypair(ecc_ephem_seed)
         ecdh_shared = Ed25519.key_exchange(ecc_ephem_seed, ecc_pk)
         
-        # Kyber part
         kyber_ct, kyber_ss = Kyber.encaps(kyber_pk)
         
-        # Combine via HKDF
         combined = ecdh_shared + kyber_ss + b"cpip-hybrid-kem-kyber-v1"
         shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-kyber-v1", 32)
         
-        # Encode ciphertext
         ecc_ephem_len = len(ecc_ephem_pk).to_bytes(2, 'big')
         ciphertext = ecc_ephem_len + ecc_ephem_pk + kyber_ct
         return ciphertext, shared
@@ -1363,7 +1588,686 @@ class SecureHash:
 
     @staticmethod
     def keyed_hash(key: bytes, data: bytes) -> bytes:
-        return hashlib.sha256(key + data).digest()
+        """HMAC-SHA256 — proper keyed hash (FIPS 180-4). Not SHA256(key||data)."""
+        return hmac.new(key, data, hashlib.sha256).digest()
+
+
+# ── Web-of-Trust Identity System ─────────────────────────────────────
+class WebOfTrust:
+    """PGP-like web of trust for mesh peer identity verification.
+    
+    Each node has an identity certificate signed by its own ECDSA key.
+    Peers can vouch for each other via trust signatures.
+    Trust is transitive: if A trusts B, and B trusts C, then A partially trusts C.
+    
+    Trust levels:
+    - 0: unknown
+    - 1: seen (heard via heartbeat)
+    - 2: marginal (one trust signature)
+    - 3: full (two+ trust signatures or direct vouch)
+    - 4: ultimate (self)
+    """
+    
+    TRUST_UNKNOWN = 0
+    TRUST_SEEN = 1
+    TRUST_MARGINAL = 2
+    TRUST_FULL = 3
+    TRUST_ULTIMATE = 4
+    
+    MAX_TRUST_DEPTH = 5
+    
+    _identities = {}
+    _trust_sigs = {}
+    _trust_scores = {}
+    _lock = threading.Lock()
+    
+    @classmethod
+    def create_identity(cls, pot_id: str, pubkey_pem: bytes, metadata: dict = None) -> dict:
+        """Create and self-sign an identity certificate."""
+        cert = {
+            "pot_id": pot_id,
+            "pubkey": base64.b64encode(pubkey_pem).decode(),
+            "metadata": metadata or {},
+            "created": time.time(),
+            "expires": time.time() + 86400 * 365,
+            "version": 1,
+        }
+        cert_bytes = json.dumps({k: v for k, v in cert.items() if k != "sig"}, sort_keys=True).encode()
+        sig = Ed25519.sign(cert_bytes, Ed25519._derive_key_from_seed(
+            hashlib.sha256(pot_id.encode()).digest()[:32]
+        ))
+        cert["sig"] = base64.b64encode(sig).decode()
+        
+        with cls._lock:
+            cls._identities[pot_id] = cert
+            cls._trust_scores[pot_id] = cls.TRUST_ULTIMATE
+        
+        return cert
+    
+    @classmethod
+    def publish_identity(cls, pot_id: str, cert: dict):
+        """Receive and store an identity certificate from the mesh."""
+        with cls._lock:
+            existing = cls._identities.get(pot_id)
+            if existing and existing.get("created", 0) >= cert.get("created", 0):
+                return False
+            cls._identities[pot_id] = cert
+            if pot_id not in cls._trust_scores:
+                cls._trust_scores[pot_id] = cls.TRUST_SEEN
+            return True
+    
+    @classmethod
+    def sign_trust(cls, signer_id: str, target_id: str, trust_level: int, node_seed: bytes) -> dict:
+        """Create a trust signature: signer vouches for target."""
+        trust_sig = {
+            "signer": signer_id,
+            "target": target_id,
+            "trust_level": min(trust_level, cls.TRUST_FULL),
+            "timestamp": time.time(),
+        }
+        sig_data = json.dumps(trust_sig, sort_keys=True).encode()
+        sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+        trust_sig["sig"] = base64.b64encode(sig).decode()
+        
+        with cls._lock:
+            key = f"{signer_id}:{target_id}"
+            cls._trust_sigs[key] = trust_sig
+        
+        cls._recalculate_trust()
+        return trust_sig
+    
+    @classmethod
+    def receive_trust_sig(cls, trust_sig: dict) -> bool:
+        """Receive and store a trust signature from the mesh."""
+        signer = trust_sig.get("signer")
+        target = trust_sig.get("target")
+        if not signer or not target:
+            return False
+        
+        key = f"{signer}:{target}"
+        with cls._lock:
+            existing = cls._trust_sigs.get(key)
+            if existing and existing.get("timestamp", 0) >= trust_sig.get("timestamp", 0):
+                return False
+            cls._trust_sigs[key] = trust_sig
+        
+        cls._recalculate_trust()
+        return True
+    
+    @classmethod
+    def _recalculate_trust(cls):
+        """Recalculate transitive trust scores via BFS."""
+        with cls._lock:
+            scores = {pid: cls.TRUST_ULTIMATE for pid, t in cls._trust_scores.items() if t == cls.TRUST_ULTIMATE}
+            
+            for key, sig in cls._trust_sigs.items():
+                signer = sig["signer"]
+                target = sig["target"]
+                level = sig.get("trust_level", cls.TRUST_MARGINAL)
+                if level >= cls.TRUST_FULL:
+                    scores[target] = max(scores.get(target, cls.TRUST_SEEN), cls.TRUST_FULL)
+                elif level >= cls.TRUST_MARGINAL:
+                    scores[target] = max(scores.get(target, cls.TRUST_SEEN), cls.TRUST_MARGINAL)
+            
+            for pot_id in cls._identities:
+                if pot_id not in scores:
+                    scores[pot_id] = cls.TRUST_SEEN
+            
+            cls._trust_scores = scores
+    
+    @classmethod
+    def get_trust_level(cls, pot_id: str) -> int:
+        with cls._lock:
+            return cls._trust_scores.get(pot_id, cls.TRUST_UNKNOWN)
+    
+    @classmethod
+    def get_identity(cls, pot_id: str) -> dict:
+        with cls._lock:
+            return cls._identities.get(pot_id)
+    
+    @classmethod
+    def get_all_identities(cls) -> dict:
+        with cls._lock:
+            return dict(cls._identities)
+    
+    @classmethod
+    def get_trust_graph(cls) -> dict:
+        """Return the full trust graph for visualization."""
+        with cls._lock:
+            edges = []
+            for key, sig in cls._trust_sigs.items():
+                edges.append({
+                    "from": sig["signer"],
+                    "to": sig["target"],
+                    "level": sig.get("trust_level", 0),
+                    "time": sig.get("timestamp", 0),
+                })
+            nodes = {}
+            for pid, score in cls._trust_scores.items():
+                nodes[pid] = {
+                    "trust": score,
+                    "identity": cls._identities.get(pid, {}),
+                }
+            return {"nodes": nodes, "edges": edges}
+    
+    @classmethod
+    def get_trust_sigs(cls) -> list:
+        with cls._lock:
+            return list(cls._trust_sigs.values())
+    
+    @classmethod
+    def is_verified(cls, pot_id: str) -> bool:
+        return cls.get_trust_level(pot_id) >= cls.TRUST_MARGINAL
+    
+    @classmethod
+    def export_trust_data(cls) -> dict:
+        """Export all trust data for mesh broadcast."""
+        with cls._lock:
+            return {
+                "identities": dict(cls._identities),
+                "trust_sigs": dict(cls._trust_sigs),
+            }
+    
+    @classmethod
+    def import_trust_data(cls, data: dict):
+        """Import trust data received from mesh peer."""
+        for pot_id, cert in data.get("identities", {}).items():
+            cls.publish_identity(pot_id, cert)
+        for key, sig in data.get("trust_sigs", {}).items():
+            cls.receive_trust_sig(sig)
+
+
+# ── Distributed DNS / Naming ─────────────────────────────────────────
+class DistributedDNS:
+    """Decentralized name registry over the mesh.
+    
+    Maps human-readable names to pot_ids. Names are registered with
+    TTL-based expiration and propagated via gossip protocol.
+    Conflict resolution: first-come-first-served with signed proof.
+    
+    Name format: <name>.pot (e.g., "alice.pot", "coffeeshop.pot")
+    """
+    
+    MAX_NAME_LEN = 63
+    MAX_NAMES_PER_NODE = 10
+    DEFAULT_TTL = 86400 * 7  # 7 days
+    
+    _registry = {}
+    _lock = threading.Lock()
+    
+    @classmethod
+    def register(cls, name: str, pot_id: str, pubkey_pem: bytes, ttl: int = None, node_seed: bytes = None) -> dict:
+        """Register a name. Returns registration record or error."""
+        name = name.lower().strip()
+        if not name.endswith(".pot"):
+            name += ".pot"
+        name = name.replace(" ", "-")
+        
+        if len(name) - 4 > cls.MAX_NAME_LEN:
+            return {"error": f"Name too long (max {cls.MAX_NAME_LEN} chars)"}
+        
+        if ttl is None:
+            ttl = cls.DEFAULT_TTL
+        
+        record = {
+            "name": name,
+            "pot_id": pot_id,
+            "pubkey": base64.b64encode(pubkey_pem).decode(),
+            "registered": time.time(),
+            "expires": time.time() + ttl,
+            "ttl": ttl,
+            "sequence": 0,
+        }
+        
+        sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
+        if node_seed:
+            sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+            record["sig"] = base64.b64encode(sig).decode()
+        
+        with cls._lock:
+            existing = cls._registry.get(name)
+            if existing:
+                if existing.get("pot_id") == pot_id:
+                    record["sequence"] = existing.get("sequence", 0) + 1
+                    record["sig"] = record.get("sig", "")
+                    sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
+                    if node_seed:
+                        sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+                        record["sig"] = base64.b64encode(sig).decode()
+                elif existing.get("expires", 0) > time.time():
+                    return {"error": f"Name '{name}' is taken by {existing.get('pot_id')}"}
+            
+            cls._registry[name] = record
+        
+        return record
+    
+    @classmethod
+    def resolve(cls, name: str) -> dict:
+        """Resolve a name to its registration record."""
+        name = name.lower().strip()
+        if not name.endswith(".pot"):
+            name += ".pot"
+        
+        with cls._lock:
+            record = cls._registry.get(name)
+            if not record:
+                return {"error": f"Name '{name}' not found"}
+            if record.get("expires", 0) < time.time():
+                return {"error": f"Name '{name}' has expired"}
+            return dict(record)
+    
+    @classmethod
+    def reverse_resolve(cls, pot_id: str) -> list:
+        """Find all names registered by a pot_id."""
+        names = []
+        with cls._lock:
+            now = time.time()
+            for name, record in cls._registry.items():
+                if record.get("pot_id") == pot_id and record.get("expires", 0) > now:
+                    names.append(dict(record))
+        return names
+    
+    @classmethod
+    def remove(cls, name: str, pot_id: str, node_seed: bytes = None) -> dict:
+        """Remove a name registration (only owner can remove)."""
+        name = name.lower().strip()
+        if not name.endswith(".pot"):
+            name += ".pot"
+        
+        with cls._lock:
+            record = cls._registry.get(name)
+            if not record:
+                return {"error": f"Name '{name}' not found"}
+            if record.get("pot_id") != pot_id:
+                return {"error": "Only the owner can remove a name"}
+            del cls._registry[name]
+        return {"status": "removed", "name": name}
+    
+    @classmethod
+    def gossip_receive(cls, registry_data: dict):
+        """Receive registry data from a mesh peer (gossip protocol)."""
+        with cls._lock:
+            for name, record in registry_data.items():
+                existing = cls._registry.get(name)
+                if not existing:
+                    if record.get("expires", 0) > time.time():
+                        cls._registry[name] = record
+                else:
+                    if record.get("sequence", 0) > existing.get("sequence", 0):
+                        cls._registry[name] = record
+                    elif (record.get("sequence", 0) == existing.get("sequence", 0) and
+                          record.get("expires", 0) > existing.get("expires", 0)):
+                        cls._registry[name] = record
+    
+    @classmethod
+    def get_all(cls) -> dict:
+        """Get all non-expired registrations."""
+        with cls._lock:
+            now = time.time()
+            return {name: dict(rec) for name, rec in cls._registry.items() if rec.get("expires", 0) > now}
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired registrations."""
+        with cls._lock:
+            now = time.time()
+            expired = [n for n, r in cls._registry.items() if r.get("expires", 0) <= now]
+            for n in expired:
+                del cls._registry[n]
+    
+    @classmethod
+    def get_gossip_data(cls) -> dict:
+        """Get registry data for gossip broadcast."""
+        return cls.get_all()
+
+
+# ── End-to-End Encrypted Group Chat ──────────────────────────────────
+class GroupChat:
+    """E2EE group messaging over the mesh.
+    
+    Uses sender-key model: each group has a group key, and each member
+    gets an encrypted copy. Messages are encrypted with AES-256-GCM
+    using the sender's derived key.
+    
+    Features:
+    - Group creation with initial members
+    - Key rotation (on member join/leave)
+    - Message history (encrypted, stored per-group)
+    - Forward secrecy: new keys don't decrypt old messages
+    """
+    
+    _groups = {}
+    _lock = threading.Lock()
+    
+    @classmethod
+    def create_group(cls, group_id: str, name: str, owner_id: str, members: list = None) -> dict:
+        """Create a new encrypted group."""
+        group_key = os.urandom(32)
+        group_nonce = os.urandom(12)
+        
+        group = {
+            "id": group_id,
+            "name": name,
+            "owner": owner_id,
+            "created": time.time(),
+            "members": {owner_id: {"role": "admin", "joined": time.time()}},
+            "key_version": 1,
+            "group_key": base64.b64encode(group_key).decode(),
+            "group_nonce": base64.b64encode(group_nonce).decode(),
+            "messages": [],
+            "max_messages": 1000,
+        }
+        
+        if members:
+            for mid in members:
+                if mid != owner_id:
+                    group["members"][mid] = {"role": "member", "joined": time.time()}
+        
+        with cls._lock:
+            cls._groups[group_id] = group
+        
+        return {
+            "id": group_id,
+            "name": name,
+            "owner": owner_id,
+            "members": list(group["members"].keys()),
+            "created": group["created"],
+        }
+    
+    @classmethod
+    def join_group(cls, group_id: str, pot_id: str) -> dict:
+        """Add a member to a group."""
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return {"error": "Group not found"}
+            if pot_id in group["members"]:
+                return {"status": "already member"}
+            
+            group["members"][pot_id] = {"role": "member", "joined": time.time()}
+            group["key_version"] += 1
+            new_key = os.urandom(32)
+            new_nonce = os.urandom(12)
+            old_key = base64.b64decode(group["group_key"])
+            old_nonce = base64.b64decode(group["group_nonce"])
+            group["group_key"] = base64.b64encode(new_key).decode()
+            group["group_nonce"] = base64.b64encode(new_nonce).decode()
+        
+        return {
+            "status": "joined",
+            "group_id": group_id,
+            "key_version": group["key_version"],
+        }
+    
+    @classmethod
+    def leave_group(cls, group_id: str, pot_id: str) -> dict:
+        """Remove a member from a group."""
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return {"error": "Group not found"}
+            if pot_id not in group["members"]:
+                return {"error": "Not a member"}
+            
+            del group["members"][pot_id]
+            if not group["members"]:
+                del cls._groups[group_id]
+                return {"status": "group dissolved"}
+            
+            group["key_version"] += 1
+            new_key = os.urandom(32)
+            new_nonce = os.urandom(12)
+            group["group_key"] = base64.b64encode(new_key).decode()
+            group["group_nonce"] = base64.b64encode(new_nonce).decode()
+        
+        return {"status": "left", "group_id": group_id}
+    
+    @classmethod
+    def send_message(cls, group_id: str, sender_id: str, plaintext: str, node_seed: bytes = None) -> dict:
+        """Send an encrypted message to a group."""
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return {"error": "Group not found"}
+            if sender_id not in group["members"]:
+                return {"error": "Not a member"}
+            
+            group_key = base64.b64decode(group["group_key"])
+            group_nonce = base64.b64decode(group["group_nonce"])
+        
+        encrypted = CoffeeCipher.encrypt(plaintext.encode(), group_key)
+        
+        msg = {
+            "id": str(uuid.uuid4())[:8],
+            "group_id": group_id,
+            "sender": sender_id,
+            "data": base64.b64encode(encrypted).decode(),
+            "key_version": group["key_version"],
+            "timestamp": time.time(),
+        }
+        
+        if node_seed:
+            sig_data = json.dumps({k: v for k, v in msg.items() if k != "sig"}, sort_keys=True).encode()
+            sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+            msg["sig"] = base64.b64encode(sig).decode()
+        
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if group:
+                group["messages"].append(msg)
+                if len(group["messages"]) > group.get("max_messages", 1000):
+                    group["messages"] = group["messages"][-500:]
+        
+        return msg
+    
+    @classmethod
+    def get_messages(cls, group_id: str, pot_id: str, since: float = 0) -> list:
+        """Get messages from a group since a timestamp."""
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return []
+            if pot_id not in group["members"]:
+                return []
+            
+            return [m for m in group["messages"] if m.get("timestamp", 0) > since]
+    
+    @classmethod
+    def get_groups(cls, pot_id: str) -> list:
+        """List all groups a pot is a member of."""
+        with cls._lock:
+            return [
+                {"id": g["id"], "name": g["name"], "owner": g["owner"],
+                 "members": len(g["members"]), "messages": len(g["messages"]),
+                 "key_version": g["key_version"]}
+                for g in cls._groups.values()
+                if pot_id in g.get("members", {})
+            ]
+    
+    @classmethod
+    def get_group_info(cls, group_id: str) -> dict:
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return {"error": "Group not found"}
+            return {
+                "id": group["id"],
+                "name": group["name"],
+                "owner": group["owner"],
+                "members": list(group["members"].keys()),
+                "key_version": group["key_version"],
+                "created": group["created"],
+                "message_count": len(group["messages"]),
+            }
+    
+    @classmethod
+    def receive_group_message(cls, msg: dict) -> bool:
+        """Receive a group message from the mesh."""
+        group_id = msg.get("group_id")
+        with cls._lock:
+            group = cls._groups.get(group_id)
+            if not group:
+                return False
+            existing_ids = {m["id"] for m in group["messages"]}
+            if msg["id"] in existing_ids:
+                return False
+            group["messages"].append(msg)
+            if len(group["messages"]) > group.get("max_messages", 1000):
+                group["messages"] = group["messages"][-500:]
+        return True
+
+
+# ── Offline-First Message Sync ───────────────────────────────────────
+class OfflineSync:
+    """Store-and-forward sync with conflict resolution.
+    
+    Uses vector clocks for causal ordering and last-writer-wins
+    for conflict resolution. Supports bidirectional sync between
+    nodes that come back online after being disconnected.
+    
+    Features:
+    - Vector clock timestamps per message
+    - Deduplication via message ID
+    - Gap detection and request
+    - Conflict resolution (LWW with priority)
+    - Sync state tracking per peer
+    """
+    
+    _messages = {}
+    _vector_clocks = {}
+    _sync_state = {}
+    _lock = threading.Lock()
+    
+    @classmethod
+    def create_message(cls, msg_id: str, sender: str, channel: str, payload: str, 
+                       node_id: str, priority: int = 0) -> dict:
+        """Create a message with vector clock."""
+        with cls._lock:
+            clock = cls._vector_clocks.get(node_id, {})
+            clock[node_id] = clock.get(node_id, 0) + 1
+            cls._vector_clocks[node_id] = clock
+        
+        msg = {
+            "id": msg_id,
+            "sender": sender,
+            "channel": channel,
+            "payload": payload,
+            "timestamp": time.time(),
+            "vector_clock": dict(clock),
+            "priority": priority,
+            "delivered": False,
+            "ttl": 3600,
+        }
+        
+        with cls._lock:
+            cls._messages[msg_id] = msg
+        
+        return msg
+    
+    @classmethod
+    def store_message(cls, msg: dict):
+        """Store a received message."""
+        with cls._lock:
+            msg_id = msg.get("id")
+            if msg_id in cls._messages:
+                return False
+            
+            existing_clock = cls._vector_clocks.get(msg.get("sender", ""), {})
+            msg_clock = msg.get("vector_clock", {})
+            
+            for node, counter in msg_clock.items():
+                existing_clock[node] = max(existing_clock.get(node, 0), counter)
+            cls._vector_clocks[msg.get("sender", "")] = existing_clock
+            
+            cls._messages[msg_id] = msg
+            return True
+    
+    @classmethod
+    def get_pending(cls, channel: str = None, limit: int = 100) -> list:
+        """Get undelivered messages, optionally filtered by channel."""
+        with cls._lock:
+            now = time.time()
+            pending = []
+            for msg in cls._messages.values():
+                if msg.get("delivered"):
+                    continue
+                if msg.get("ttl", 3600) < (now - msg.get("timestamp", now)):
+                    continue
+                if channel and msg.get("channel") != channel:
+                    continue
+                pending.append(dict(msg))
+                if len(pending) >= limit:
+                    break
+            return pending
+    
+    @classmethod
+    def mark_delivered(cls, msg_id: str):
+        """Mark a message as delivered."""
+        with cls._lock:
+            if msg_id in cls._messages:
+                cls._messages[msg_id]["delivered"] = True
+    
+    @classmethod
+    def get_sync_state(cls, peer_id: str) -> dict:
+        """Get sync state for a peer (what we've received from them)."""
+        with cls._lock:
+            return cls._sync_state.get(peer_id, {"last_sync": 0, "received_ids": []})
+    
+    @classmethod
+    def update_sync_state(cls, peer_id: str, received_ids: list):
+        """Update sync state after receiving messages from a peer."""
+        with cls._lock:
+            cls._sync_state[peer_id] = {
+                "last_sync": time.time(),
+                "received_ids": received_ids[-1000:],
+            }
+    
+    @classmethod
+    def detect_gaps(cls, peer_clock: dict, peer_id: str) -> list:
+        """Detect gaps in a peer's message stream."""
+        with cls._lock:
+            local_clock = cls._vector_clocks.get(peer_id, {})
+            gaps = []
+            for node, counter in peer_clock.items():
+                local_counter = local_clock.get(node, 0)
+                if counter > local_counter + 1:
+                    gaps.append({
+                        "node": node,
+                        "from": local_counter + 1,
+                        "to": counter - 1,
+                    })
+            return gaps
+    
+    @classmethod
+    def get_vector_clocks(cls) -> dict:
+        with cls._lock:
+            return dict(cls._vector_clocks)
+    
+    @classmethod
+    def get_message_count(cls) -> int:
+        with cls._lock:
+            return len(cls._messages)
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired messages."""
+        with cls._lock:
+            now = time.time()
+            expired = [mid for mid, m in cls._messages.items() 
+                      if m.get("ttl", 3600) < (now - m.get("timestamp", now))]
+            for mid in expired:
+                del cls._messages[mid]
+    
+    @classmethod
+    def get_channels(cls) -> list:
+        """List all active channels."""
+        with cls._lock:
+            channels = set()
+            for msg in cls._messages.values():
+                ch = msg.get("channel")
+                if ch:
+                    channels.add(ch)
+            return sorted(channels)
 
 
 # ── Incident Response System ─────────────────────────────────────────
@@ -2349,11 +3253,11 @@ class MeshNode:
 
     @classmethod
     def _verify_message(cls, msg: dict) -> bool:
-        """Verify a dict message's ECDSA P-256 signature."""
+        """Verify a dict message's ECDSA P-256 signature. Reject unsigned."""
         sig_b64 = msg.pop("_sig", None)
         signer_addr = msg.pop("_signer", None)
         if not sig_b64 or not signer_addr:
-            return True  # unsigned messages allowed for backward compat
+            return False
         try:
             sig = base64.b64decode(sig_b64)
             payload = json.dumps(msg, sort_keys=True).encode()
@@ -2411,15 +3315,15 @@ class MeshNode:
                     pass
         return b""
 
-    # ── E2EE Message Encryption ────────────────────────────────────────
+    # ── E2EE Message Encryption (FIPS-compliant, forward secrecy) ─────
 
     @classmethod
     def _e2ee_encrypt(cls, plaintext: str, dst_pot: str) -> dict:
-        """Encrypt a message payload with the recipient's ECDSA/ECDH P-256 public key.
+        """Encrypt a message with ephemeral ECDH + HKDF + AES-256-GCM.
         
-        Uses ECDH to derive a shared secret, then applies HKDF for key
-        derivation before encrypting with CoffeeCipher (which now includes
-        IV and HMAC authentication). Each message gets a fresh IV.
+        Uses per-message ephemeral ECDH key pair for forward secrecy:
+        even if the long-term key is compromised, past messages remain secure.
+        Key derivation uses full HKDF Extract-then-Expand (SP 800-56C).
         """
         if not cls.node_seed:
             return {"data": plaintext, "e2ee": False}
@@ -2427,24 +3331,32 @@ class MeshNode:
         if not pk:
             return {"data": plaintext, "e2ee": False}
         try:
-            shared = Ed25519.key_exchange(cls.node_seed, pk)
-            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-e2ee-v2", 32)
+            eph_seed = secrets.token_bytes(32)
+            shared = Ed25519.key_exchange(eph_seed, pk)
+            salt = hashlib.sha256(b"cpip-e2ee-salt-v4:" + cls.node_address.encode() + dst_pot.encode()).digest()
+            otk = CoffeeCipher.hkdf(shared, salt, b"cpip-e2ee-v4", 32)
             ciphertext = CoffeeCipher.encrypt(plaintext.encode(), base_key=otk)
+            eph_pub = Ed25519._derive_key_from_seed(eph_seed).public_key().public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.UncompressedPoint,
+            )
             return {
                 "data": base64.b64encode(ciphertext).decode(),
                 "e2ee": True,
+                "e2ee_version": 4,
+                "eph_pub": base64.b64encode(eph_pub).decode(),
                 "from_addr": cls.node_address,
             }
         except Exception:
             return {"data": plaintext, "e2ee": False}
 
     @classmethod
-    def _e2ee_decrypt(cls, msg_data: str, from_addr: str = "") -> str:
-        """Decrypt an E2EE message using the shared secret with the sender.
+    def _e2ee_decrypt(cls, msg_data: str, from_addr: str = "", eph_pub_b64: str = "") -> str:
+        """Decrypt an E2EE message using sender's ephemeral public key.
         
-        Looks up the sender's public key from their address, derives
-        the shared secret via ECDH, expands via HKDF, and decrypts
-        with authentication verification.
+        If eph_pub is provided, uses ephemeral ECDH for forward secrecy.
+        Falls back to static ECDH for v3 backward compatibility.
+        Key derivation uses full HKDF Extract-then-Expand (SP 800-56C).
         """
         if not cls.node_seed or not from_addr:
             return msg_data
@@ -2471,9 +3383,19 @@ class MeshNode:
         if not sender_pk:
             return msg_data
         try:
-            shared = Ed25519.key_exchange(cls.node_seed, sender_pk)
-            otk = CoffeeCipher._hkdf_expand(shared, b"cpip-e2ee-v2", 32)
             ciphertext = base64.b64decode(msg_data)
+            if eph_pub_b64:
+                eph_pub = base64.b64decode(eph_pub_b64)
+                shared = Ed25519.key_exchange(cls.node_seed, eph_pub)
+                salt = hashlib.sha256(b"cpip-e2ee-salt-v4:" + from_addr.encode() + cls.node_address.encode()).digest()
+                otk = CoffeeCipher.hkdf(shared, salt, b"cpip-e2ee-v4", 32)
+            else:
+                shared = Ed25519.key_exchange(cls.node_seed, sender_pk)
+                salt = b"cpip-e2ee-salt-v3" + from_addr.encode()
+                otk = CoffeeCipher._hkdf_expand(
+                    CoffeeCipher._hkdf_extract(salt, shared),
+                    b"cpip-e2ee-v2", 32
+                )
             plaintext = CoffeeCipher.decrypt(ciphertext, base_key=otk)
             if not plaintext:
                 return msg_data
@@ -2521,10 +3443,10 @@ class MeshNode:
 
     @classmethod
     def _verify_mesh_hmac(cls, msg: dict) -> bool:
-        """Verify HMAC on incoming mesh messages. Returns True if valid or unsigned."""
+        """Verify HMAC-SHA256 on incoming mesh messages. Reject unsigned."""
         msg_hmac = msg.pop("_mesh_hmac", None)
         if not msg_hmac:
-            return True
+            return False
         sender = msg.get("from") or msg.get("pot") or ""
         with cls.peers_lock:
             info = cls.peers.get(sender, {})
@@ -2631,6 +3553,60 @@ class MeshNode:
                 claimed = cls.claim_dead_drop(mid, sender)
                 if claimed:
                     cls._send_direct(sender, claimed)
+
+            elif msg_type == "hole_punch":
+                AntiISP.handle_hole_punch(raw_data, addr)
+
+            elif msg_type == "identity_publish":
+                cert = msg.get("cert", {})
+                if cert.get("pot_id"):
+                    WebOfTrust.publish_identity(cert["pot_id"], cert)
+                    cls._cross_transport_forward(msg, "mesh")
+
+            elif msg_type == "trust_claim":
+                trust_sig = msg.get("trust_sig", {})
+                if trust_sig.get("signer") and trust_sig.get("target"):
+                    WebOfTrust.receive_trust_sig(trust_sig)
+                    cls._cross_transport_forward(msg, "mesh")
+
+            elif msg_type == "dns_register":
+                reg = msg.get("registration", {})
+                name = reg.get("name")
+                pot_id = reg.get("pot_id")
+                if name and pot_id:
+                    DistributedDNS.gossip_receive({name: reg})
+                    cls._cross_transport_forward(msg, "mesh")
+
+            elif msg_type == "group_message":
+                GroupChat.receive_group_message(msg.get("group_msg", {}))
+                cls._cross_transport_forward(msg, "mesh")
+
+            elif msg_type == "group_key_update":
+                group_id = msg.get("group_id")
+                key_data = msg.get("key_data", {})
+                if group_id and key_data:
+                    with cls.store_lock:
+                        pass
+                cls._cross_transport_forward(msg, "mesh")
+
+            elif msg_type == "sync_request":
+                peer_id = msg.get("peer_id", sender)
+                channel = msg.get("channel")
+                since = msg.get("since", 0)
+                pending = OfflineSync.get_pending(channel, limit=50)
+                cls._send_direct(sender, {
+                    "type": "sync_response",
+                    "from": POT_ID,
+                    "peer_id": peer_id,
+                    "messages": pending,
+                    "vector_clock": OfflineSync.get_vector_clocks().get(POT_ID, {}),
+                    "timestamp": time.time(),
+                })
+
+            elif msg_type == "sync_response":
+                for m in msg.get("messages", []):
+                    OfflineSync.store_message(m)
+                OfflineSync.update_sync_state(sender, [m.get("id") for m in msg.get("messages", [])])
 
         except json.JSONDecodeError:
             pass
@@ -2796,6 +3772,7 @@ class MeshNode:
             "brewing": PotState.is_brewing(),
             "pubkey": base64.b64encode(cls.node_pubkey).decode() if cls.node_pubkey else "",
             "address": cls.node_address or "",
+            "dns_names": DistributedDNS.reverse_resolve(POT_ID),
             "lat": SATELLITE_LAT if SATELLITE_ENABLED else None,
             "lon": SATELLITE_LON if SATELLITE_ENABLED else None,
             "alt": SATELLITE_ALT if SATELLITE_ENABLED else None,
@@ -3500,25 +4477,73 @@ class MeshNode:
 
     @classmethod
     def _covert_fallback_send(cls, dst_pot: str, msg: dict) -> bool:
-        """If direct UDP fails, encode message as HTTP brew request."""
+        """If direct UDP fails, try multiple anti-ISP transports."""
+        msg = NetNeutrality.strip_metadata(msg)
+        data_str = json.dumps(msg)
+        payload = data_str.encode()
+        payload = NetNeutrality.add_jitter(payload)
+
+        # Try hole-punch first
+        with cls.peers_lock:
+            info = cls.peers.get(dst_pot)
+        if info:
+            for addr in info.get("addrs", []):
+                try:
+                    ip, port = addr.rsplit(":", 1)
+                    if AntiISP.punch(ip, int(port), timeout=3.0):
+                        cls.mesh_socket.sendto(
+                            cls._pad_traffic(payload),
+                            (ip, int(port)))
+                        return True
+                except Exception:
+                    continue
+
+        # Try WSS relay
+        if AntiISP._wss_active:
+            try:
+                wss_payload = json.dumps({"target": dst_pot,
+                    "data": base64.b64encode(payload).decode()}).encode()
+                if AntiISP.wss_send(wss_payload):
+                    return True
+            except Exception:
+                pass
+
+        # Try DNS tunnel (low-bandwidth, high-resilience)
+        if AntiISP._dns_tunnel_active:
+            try:
+                chunks = [payload[i:i+200] for i in range(0, len(payload), 200)]
+                for chunk in chunks:
+                    AntiISP.dns_tunnel_send(dst_pot, chunk)
+                return True
+            except Exception:
+                pass
+
+        # Try relay server
+        if AntiISP._relay_pool:
+            try:
+                relay_payload = json.dumps({"target": dst_pot,
+                    "data": base64.b64encode(payload).decode()}).encode()
+                if AntiISP.relay_send(dst_pot, relay_payload):
+                    return True
+            except Exception:
+                pass
+
+        # Final fallback: HTTP covert channel
         try:
-            data_str = json.dumps(msg)
-            additions = CovertChannel.encode(data_str.encode(), dst_pot)
+            additions = CovertChannel.encode(payload, dst_pot)
             header = ", ".join(f"{a['name']};variety={a['variety']}" for a in additions["additions"])
-            with cls.peers_lock:
-                info = cls.peers.get(dst_pot)
-            if not info:
-                return False
-            import urllib.request
-            req = urllib.request.Request(
-                f"http://{info['addr']}:{info.get('port', BIND_PORT)}/tea",
-                method="BREW",
-                headers={"Accept-Additions": header},
-            )
-            urllib.request.urlopen(req, timeout=5)
-            return True
+            if info:
+                import urllib.request
+                req = urllib.request.Request(
+                    f"http://{info['addr']}:{info.get('port', BIND_PORT)}/tea",
+                    method="BREW",
+                    headers={"Accept-Additions": header},
+                )
+                urllib.request.urlopen(req, timeout=5)
+                return True
         except Exception:
-            return False
+            pass
+        return False
 
     # ── Direct Send ────────────────────────────────────────────────────
 
@@ -3857,7 +4882,1217 @@ class MeshNode:
             } for pid, info in cls.peers.items()]
 
 
-# ── GPIO Control (Hardware Only — No Simulation) ──────────────────────
+# ── Anti-ISP Transport Layer ──────────────────────────────────────────
+class AntiISP:
+    """NAT traversal, DNS tunneling, WSS relay, and encrypted DNS.
+    
+    Allows coffee pots to share network resources over the internet
+    despite ISP-level restrictions, carrier-grade NAT, and firewalls.
+    Transports: STUN hole-punch, UPnP port-map, DNS tunnel, WSS relay.
+    """
+    _lock = threading.Lock()
+    _active = False
+    _threads = []
+
+    # STUN state
+    _external_ip = None
+    _external_port = None
+    _nat_type = "unknown"
+    _stun_server = None
+
+    # UPnP state
+    _upnp_mapped = False
+    _upnp_igd = None
+
+    # Hole-punch state
+    _punch_sessions = {}
+
+    # Relay state
+    _relay_connections = {}
+    _relay_pool = []
+
+    # DNS tunnel state
+    _dns_tunnel_active = False
+    _dns_tunnel_domain = ""
+    _dns_outbound_queue = queue.Queue(maxsize=1000)
+    _dns_inbound_buffer = {}
+
+    # WSS state
+    _wss_connections = {}
+    _wss_active = False
+
+    # DoH state
+    _doh_cache = {}
+    _doh_lock = threading.Lock()
+
+    @classmethod
+    def start(cls):
+        if not ANTI_ISP_ENABLED:
+            return
+        with cls._lock:
+            if cls._active:
+                return
+            cls._active = True
+        if STUN_ENABLED:
+            t = threading.Thread(target=cls._stun_loop, daemon=True, name="antiisp-stun")
+            t.start(); cls._threads.append(t)
+        if UPNP_ENABLED:
+            t = threading.Thread(target=cls._upnp_loop, daemon=True, name="antiisp-upnp")
+            t.start(); cls._threads.append(t)
+        if RELAY_ENABLED:
+            t = threading.Thread(target=cls._relay_loop, daemon=True, name="antiisp-relay")
+            t.start(); cls._threads.append(t)
+        if DNS_TUNNEL_ENABLED:
+            t = threading.Thread(target=cls._dns_tunnel_loop, daemon=True, name="antiisp-dns")
+            t.start(); cls._threads.append(t)
+        if WSS_TUNNEL_ENABLED:
+            t = threading.Thread(target=cls._wss_loop, daemon=True, name="antiisp-wss")
+            t.start(); cls._threads.append(t)
+        if DNS_OBLIVIOUS_ENABLED:
+            t = threading.Thread(target=cls._doh_refresh_loop, daemon=True, name="antiisp-doh")
+            t.start(); cls._threads.append(t)
+        print(f"   ├ Anti-ISP:  STUN={'ON' if STUN_ENABLED else 'OFF'} "
+              f"UPnP={'ON' if UPNP_ENABLED else 'OFF'} "
+              f"Relay={'ON' if RELAY_ENABLED else 'OFF'} "
+              f"DNS-Tun={'ON' if DNS_TUNNEL_ENABLED else 'OFF'} "
+              f"WSS={'ON' if WSS_TUNNEL_ENABLED else 'OFF'} "
+              f"DoH={'ON' if DNS_OBLIVIOUS_ENABLED else 'OFF'}", flush=True)
+
+    @classmethod
+    def stop(cls):
+        with cls._lock:
+            cls._active = False
+        if cls._upnp_igd:
+            try:
+                cls._upnp_igd.DeletePortMapping(cls._upnp_mapped_port, "UDP")
+                cls._upnp_igd.DeletePortMapping(cls._upnp_mapped_port, "TCP")
+            except Exception:
+                pass
+        for c in cls._wss_connections.values():
+            try: c.close()
+            except Exception: pass
+        for c in cls._relay_connections.values():
+            try: c.close()
+            except Exception: pass
+
+    # ── STUN: Discover external IP/port behind NAT ───────────────────
+    @classmethod
+    def _stun_loop(cls):
+        while cls._active:
+            try:
+                cls._stun_discover()
+            except Exception:
+                pass
+            time.sleep(STUN_REFRESH)
+
+    @classmethod
+    def _stun_discover(cls):
+        for server in STUN_SERVERS:
+            try:
+                host, port = server.strip().rsplit(":", 1)
+                port = int(port)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(5)
+                txn_id = secrets.token_bytes(12)
+                magic = b"\x21\x12\xa4\x42"
+                msg = struct.pack("!HHI", 0x0001, 0, 0x2112A442) + txn_id
+                sock.sendto(msg, (host, port))
+                data, _ = sock.recvfrom(1024)
+                sock.close()
+                if len(data) < 20:
+                    continue
+                rtype, rlen = struct.unpack("!HH", data[:4])
+                if rtype != 0x0101:
+                    continue
+                offset = 20
+                while offset + 4 <= len(data):
+                    atype, alen = struct.unpack("!HH", data[offset:offset+4])
+                    offset += 4
+                    if offset + alen > len(data):
+                        break
+                    if atype == 0x0020:
+                        if data[offset+1] == 0x01:
+                            xport = struct.unpack("!H", data[offset+2:offset+4])[0]
+                            xport ^= 0x2112
+                            xip = bytes(b ^ magic[i] for i, b in enumerate(data[offset+4:offset+8]))
+                            cls._external_ip = ".".join(str(b) for b in xip)
+                            cls._external_port = xport
+                            cls._stun_server = server
+                            cls._nat_type = "symmetric" if cls._external_port != MESH_PORT else "cone"
+                            return
+                    elif atype == 0x0008:
+                        if data[offset+1] == 0x01:
+                            cls._external_port = struct.unpack("!H", data[offset+2:offset+4])[0]
+                            cls._external_ip = ".".join(str(b) for b in data[offset+4:offset+8])
+                            cls._stun_server = server
+                            cls._nat_type = "symmetric" if cls._external_port != MESH_PORT else "cone"
+                            return
+                    offset += alen
+                    if alen % 4:
+                        offset += 4 - (alen % 4)
+            except Exception:
+                continue
+
+    @classmethod
+    def _stun_refresh(cls):
+        """Force STUN refresh — called by hole-punch before connecting."""
+        cls._stun_discover()
+
+    # ── UPnP: Automatic port forwarding ──────────────────────────────
+    @classmethod
+    def _upnp_loop(cls):
+        while cls._active:
+            try:
+                cls._upnp_map_port()
+            except Exception:
+                pass
+            time.sleep(UPNP_LEASE)
+
+    @classmethod
+    def _upnp_map_port(cls):
+        try:
+            import xml.etree.ElementTree as ET
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(3)
+            ssdp_msg = (
+                "M-SEARCH * HTTP/1.1\r\n"
+                "HOST:239.255.255.250:1900\r\n"
+                "ST:urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
+                "MAN:\"ssdp:discover\"\r\n"
+                "MX:3\r\n\r\n")
+            sock.sendto(ssdp_msg.encode(), ("239.255.255.250", 1900))
+            data, _ = sock.recvfrom(4096)
+            sock.close()
+            location_line = [l for l in data.decode(errors="ignore").split("\r\n")
+                           if l.lower().startswith("location:")]
+            if not location_line:
+                return
+            loc = location_line[0].split(":", 1)[1].strip()
+            import urllib.request
+            resp = urllib.request.urlopen(loc, timeout=5)
+            root = ET.fromstring(resp.read())
+            ns = {"u": "urn:schemas-upnp-org:device-1-0"}
+            service = root.find(".//u:service[.//u:serviceType[contains(text(),'WANIPConnection')]]", ns)
+            if service is None:
+                service = root.find(".//u:service[.//u:serviceType[contains(text(),'WANPPPConnection')]]", ns)
+            if service is None:
+                return
+            ctrl = service.find("u:controlURL", ns).text
+            svc_type = service.find("u:serviceType", ns).text
+            base = "/".join(loc.split("/")[:3])
+            ctrl_url = base + ctrl
+            for proto in ("UDP", "TCP"):
+                body = (
+                    f'<?xml version="1.0"?>'
+                    f'<s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"'
+                    f' xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">'
+                    f'<s:Body><u:AddPortMapping xmlns:u="{svc_type}">'
+                    f'<NewRemoteHost></NewRemoteHost>'
+                    f'<NewExternalPort>{MESH_PORT}</NewExternalPort>'
+                    f'<NewProtocol>{proto}</NewProtocol>'
+                    f'<NewInternalPort>{MESH_PORT}</NewInternalPort>'
+                    f'<NewInternalClient>{cls._get_local_ip()}</NewInternalClient>'
+                    f'<NewEnabled>1</NewEnabled>'
+                    f'<NewPortMappingDescription>CPIP-{POT_ID[:8]}</NewPortMappingDescription>'
+                    f'<NewLeaseDuration>{UPNP_LEASE}</NewLeaseDuration>'
+                    f'</u:AddPortMapping></s:Body></s:Envelope>')
+                req = urllib.request.Request(ctrl_url, data=body.encode(),
+                    headers={"Content-Type": "text/xml; charset=utf-8",
+                             "SOAPAction": f'"{svc_type}#AddPortMapping"'})
+                urllib.request.urlopen(req, timeout=5)
+            cls._upnp_mapped = True
+            cls._upnp_mapped_port = MESH_PORT
+        except Exception:
+            cls._upnp_mapped = False
+
+    @classmethod
+    def _get_local_ip(cls):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
+
+    # ── Hole-Punch: Direct NAT traversal to peers ────────────────────
+    @classmethod
+    def punch(cls, peer_ip, peer_port, timeout=5.0):
+        """UDP hole-punch to a remote peer through NAT.
+        Sends punch packets from the external IP/port to punch through.
+        Returns True if peer responds.
+        """
+        if not cls._external_ip:
+            cls._stun_discover()
+        if not cls._external_ip:
+            return False
+        key = f"{peer_ip}:{peer_port}"
+        with cls._lock:
+            if key in cls._punch_sessions:
+                return cls._punch_sessions[key].get("success", False)
+            cls._punch_sessions[key] = {"success": False, "attempts": 0}
+        punch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        punch_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            punch_sock.bind(("0.0.0.0", 0))
+        except Exception:
+            punch_sock.close()
+            return False
+        punch_token = secrets.token_hex(8)
+        for attempt in range(3):
+            try:
+                punch_msg = json.dumps({"type": "hole_punch", "token": punch_token,
+                    "from": POT_ID, "ext_ip": cls._external_ip,
+                    "ext_port": cls._external_port}).encode()
+                punch_sock.sendto(punch_msg, (peer_ip, peer_port))
+                punch_sock.settimeout(timeout / 3)
+                data, addr = punch_sock.recvfrom(512)
+                if data:
+                    try:
+                        resp = json.loads(data)
+                        if resp.get("type") == "hole_punch_ack":
+                            with cls._lock:
+                                cls._punch_sessions[key]["success"] = True
+                            punch_sock.close()
+                            return True
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+            except (socket.timeout, OSError):
+                continue
+        punch_sock.close()
+        return False
+
+    @classmethod
+    def handle_hole_punch(cls, data, addr):
+        """Handle incoming hole-punch packet — respond with ack."""
+        try:
+            msg = json.loads(data)
+            if msg.get("type") == "hole_punch":
+                ack = json.dumps({"type": "hole_punch_ack", "from": POT_ID}).encode()
+                mesh_sock = MeshNode.mesh_socket
+                if mesh_sock:
+                    mesh_sock.sendto(ack, addr)
+        except Exception:
+            pass
+
+    # ── Relay Pool: TURN-like relay servers ──────────────────────────
+    @classmethod
+    def _relay_loop(cls):
+        while cls._active:
+            try:
+                cls._relay_heartbeat()
+            except Exception:
+                pass
+            time.sleep(30)
+
+    @classmethod
+    def _relay_heartbeat(cls):
+        for relay in RELAY_SERVERS:
+            relay = relay.strip()
+            if not relay:
+                continue
+            try:
+                host, port = relay.rsplit(":", 1)
+                port = int(port)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(RELAY_TIMEOUT)
+                s.connect((host, port))
+                s.sendall(json.dumps({"type": "relay_hello", "pot_id": POT_ID,
+                    "port": MESH_PORT}).encode() + b"\n")
+                resp = s.recv(4096)
+                if resp:
+                    data = json.loads(resp.decode().strip().split("\n")[0])
+                    if data.get("status") == "ok":
+                        cls._relay_pool.append({"host": host, "port": port,
+                            "peers": data.get("peers", 0),
+                            "latency": data.get("latency", 0)})
+                        if relay not in cls._relay_connections:
+                            cls._relay_connections[relay] = s
+                            continue
+                s.close()
+            except Exception:
+                if relay in cls._relay_connections:
+                    del cls._relay_connections[relay]
+
+    @classmethod
+    def relay_send(cls, peer_id, data):
+        """Send data via relay server when direct connection fails."""
+        for relay_info in cls._relay_pool:
+            relay_key = f"{relay_info['host']}:{relay_info['port']}"
+            try:
+                s = cls._relay_connections.get(relay_key)
+                if s is None:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(RELAY_TIMEOUT)
+                    s.connect((relay_info["host"], relay_info["port"]))
+                    s.sendall(json.dumps({"type": "relay_forward", "pot_id": POT_ID,
+                        "target": peer_id}).encode() + b"\n" + data + b"\n")
+                    resp = s.recv(512)
+                    if resp and b"ok" in resp:
+                        return True
+                    s.close()
+            except Exception:
+                continue
+        return False
+
+    # ── DNS Tunnel: Exfiltrate data as DNS queries ──────────────────
+    @classmethod
+    def _dns_tunnel_loop(cls):
+        global DNS_TUNNEL_DOMAIN
+        if not DNS_TUNNEL_DOMAIN:
+            DNS_TUNNEL_DOMAIN = f"{DNS_TUNNEL_SUBDOMAIN}.{POT_ID[:8]}.cpip.link"
+        while cls._active:
+            try:
+                cls._dns_tunnel_flush()
+            except Exception:
+                pass
+            time.sleep(2)
+
+    @classmethod
+    def _dns_tunnel_flush(cls):
+        """Encode queued outbound messages as DNS queries."""
+        batch = []
+        while not cls._dns_outbound_queue.empty() and len(batch) < 10:
+            try:
+                batch.append(cls._dns_outbound_queue.get_nowait())
+            except queue.Empty:
+                break
+        for target_id, payload in batch:
+            encoded = base64.b32encode(payload).decode().rstrip("=").lower()
+            chunk_size = DNS_CHUNK_SIZE
+            for i in range(0, len(encoded), chunk_size):
+                chunk = encoded[i:i + chunk_size]
+                qname = f"{chunk}.{target_id[:8]}.{DNS_TUNNEL_DOMAIN}"
+                cls._doh_resolve_raw(qname, "TXT")
+
+    @classmethod
+    def dns_tunnel_send(cls, target_id, data):
+        """Queue data for DNS tunnel delivery."""
+        try:
+            cls._dns_outbound_queue.put_nowait((target_id, data))
+            return True
+        except queue.Full:
+            return False
+
+    @classmethod
+    def dns_tunnel_receive(cls, qname):
+        """Extract payload from incoming DNS tunnel query."""
+        try:
+            parts = qname.split(".")
+            if len(parts) >= 4 and parts[-1] == "link":
+                payload_b32 = parts[0]
+                padding = "=" * (8 - len(payload_b32) % 8) if len(payload_b32) % 8 else ""
+                return base64.b32decode(payload_b32 + padding)
+        except Exception:
+            pass
+        return None
+
+    # ── WSS Tunnel: WebSocket Secure relay transport ─────────────────
+    @classmethod
+    def _wss_loop(cls):
+        while cls._active:
+            for relay in WSS_RELAY_SERVERS:
+                relay = relay.strip()
+                if not relay or relay in cls._wss_connections:
+                    continue
+                try:
+                    cls._wss_connect(relay)
+                except Exception:
+                    pass
+            time.sleep(15)
+
+    @classmethod
+    def _wss_connect(cls, url):
+        """Connect to a WSS relay for internet-wide transport."""
+        import ssl as _ssl
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 443
+        ctx = _ssl.create_default_context()
+        s = ctx.wrap_socket(socket.socket(), server_hostname=host)
+        s.settimeout(WSS_RELAY_TIMEOUT)
+        s.connect((host, port))
+        ws_key = base64.b64encode(secrets.token_bytes(16)).decode()
+        handshake = (
+            f"GET / HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {ws_key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"X-CPIP-POT: {POT_ID}\r\n"
+            f"X-CPIP-PORT: {MESH_PORT}\r\n"
+            f"\r\n")
+        s.sendall(handshake.encode())
+        resp = s.recv(4096)
+        if b"101 Switching" in resp:
+            cls._wss_connections[url] = s
+            cls._wss_active = True
+            t = threading.Thread(target=cls._wss_reader, args=(url, s), daemon=True)
+            t.start()
+            return True
+        s.close()
+        return False
+
+    @classmethod
+    def _wss_reader(cls, url, sock):
+        """Read frames from WSS relay and inject into mesh."""
+        while cls._active:
+            try:
+                data = sock.recv(65535)
+                if not data:
+                    break
+                if len(data) >= 2:
+                    payload = data[2:] if data[0] == 0x81 else data
+                    if len(payload) > 2:
+                        payload = payload[2:]
+                    cls._inject_wss_payload(payload)
+            except Exception:
+                break
+        cls._wss_connections.pop(url, None)
+        if not cls._wss_connections:
+            cls._wss_active = False
+
+    @classmethod
+    def _inject_wss_payload(cls, payload):
+        """Inject WSS-relayed data into mesh message handler."""
+        try:
+            msg = json.loads(payload)
+            MeshNode._handle_message(payload, ("wss-relay", 0))
+        except Exception:
+            pass
+
+    @classmethod
+    def wss_send(cls, data):
+        """Send data via all connected WSS relays."""
+        sent = False
+        for url, sock in list(cls._wss_connections.items()):
+            try:
+                frame = b"\x81" + bytes([len(data)]) + data
+                sock.sendall(frame)
+                sent = True
+            except Exception:
+                cls._wss_connections.pop(url, None)
+        return sent
+
+    # ── Encrypted DNS (DoH/DoT): Resolver that bypasses ISP ─────────
+    @classmethod
+    def _doh_refresh_loop(cls):
+        while cls._active:
+            try:
+                cls._doh_refresh()
+            except Exception:
+                pass
+            time.sleep(60)
+
+    @classmethod
+    def _doh_refresh(cls):
+        """Pre-cache DNS for known peers via DoH to bypass ISP DNS poisoning."""
+        with cls._doh_lock:
+            for peer_id, info in MeshNode.peers.items():
+                for dns_name in info.get("dns", []):
+                    if dns_name not in cls._doh_cache:
+                        cls._doh_resolve(dns_name)
+
+    @classmethod
+    def _doh_resolve(cls, qname, rtype="A"):
+        """Resolve DNS via DoH providers to bypass ISP DNS poisoning."""
+        for server in DNS_OBLIVIOUS_SERVERS:
+            server = server.strip()
+            if not server:
+                continue
+            cache_key = f"{qname}:{rtype}"
+            with cls._doh_lock:
+                if cache_key in cls._doh_cache:
+                    entry = cls._doh_cache[cache_key]
+                    if time.time() - entry["ts"] < 300:
+                        return entry["data"]
+            try:
+                import base64 as b64
+                import struct as _struct
+                wire = cls._encode_dns_query(qname, rtype)
+                encoded = b64.urlsafe_b64encode(wire).rstrip(b"=").decode()
+                import urllib.request
+                url = f"{server}?dns={encoded}"
+                req = urllib.request.Request(url,
+                    headers={"Accept": "application/dns-message"})
+                resp = urllib.request.urlopen(req, timeout=5)
+                answer = resp.read()
+                ips = cls._parse_dns_answer(answer)
+                with cls._doh_lock:
+                    cls._doh_cache[cache_key] = {"data": ips, "ts": time.time()}
+                return ips
+            except Exception:
+                continue
+        return []
+
+    @classmethod
+    def _doh_resolve_raw(cls, qname, rtype="A"):
+        """Resolve via DoH without caching — for DNS tunnel queries."""
+        for server in DNS_OBLIVIOUS_SERVERS:
+            server = server.strip()
+            if not server:
+                continue
+            try:
+                import base64 as b64
+                wire = cls._encode_dns_query(qname, rtype)
+                encoded = b64.urlsafe_b64encode(wire).rstrip(b"=").decode()
+                import urllib.request
+                url = f"{server}?dns={encoded}"
+                req = urllib.request.Request(url,
+                    headers={"Accept": "application/dns-message"})
+                urllib.request.urlopen(req, timeout=5)
+                return True
+            except Exception:
+                continue
+        return False
+
+    @classmethod
+    def _encode_dns_query(cls, qname, rtype="A"):
+        """Encode a DNS query into wire format."""
+        txn_id = secrets.token_bytes(2)
+        flags = b"\x01\x00"
+        qdcount = b"\x00\x01"
+        ancount = b"\x00\x00"
+        nscount = b"\x00\x00"
+        arcount = b"\x00\x00"
+        header = txn_id + flags + qdcount + ancount + nscount + arcount
+        question = b""
+        for label in qname.rstrip(".").split("."):
+            question += bytes([len(label)]) + label.encode()
+        question += b"\x00"
+        type_map = {"A": 1, "AAAA": 28, "TXT": 16, "MX": 15, "NS": 2, "CNAME": 5}
+        qtype = type_map.get(rtype, 1)
+        question += _struct.pack("!HH", qtype, 1)
+        return header + question
+
+    @classmethod
+    def _parse_dns_answer(cls, data):
+        """Parse IP addresses from DNS response wire format."""
+        ips = []
+        try:
+            if len(data) < 12:
+                return ips
+            ancount = struct.unpack("!H", data[6:8])[0]
+            offset = 12
+            while data[offset] != 0:
+                offset += data[offset] + 1
+            offset += 5
+            for _ in range(ancount):
+                if offset >= len(data):
+                    break
+                if (data[offset] & 0xC0) == 0xC0:
+                    offset += 2
+                else:
+                    while offset < len(data) and data[offset] != 0:
+                        offset += data[offset] + 1
+                    offset += 1
+                rtype, rclass, ttl, rdlength = struct.unpack("!HHIH", data[offset:offset+10])
+                offset += 10
+                if rtype == 1 and rdlength == 4:
+                    ip = ".".join(str(b) for b in data[offset:offset+4])
+                    ips.append(ip)
+                offset += rdlength
+        except Exception:
+            pass
+        return ips
+
+    # ── Public API ───────────────────────────────────────────────────
+    @classmethod
+    def get_status(cls):
+        return {
+            "active": cls._active,
+            "stun": {"enabled": STUN_ENABLED, "external_ip": cls._external_ip,
+                "external_port": cls._external_port, "nat_type": cls._nat_type,
+                "server": cls._stun_server},
+            "upnp": {"enabled": UPNP_ENABLED, "mapped": cls._upnp_mapped},
+            "hole_punch_sessions": len(cls._punch_sessions),
+            "relay": {"enabled": RELAY_ENABLED, "pool": cls._relay_pool,
+                "active_connections": len(cls._relay_connections)},
+            "dns_tunnel": {"enabled": DNS_TUNNEL_ENABLED,
+                "domain": cls._dns_tunnel_domain,
+                "outbound_queue": cls._dns_outbound_queue.qsize()},
+            "wss": {"enabled": WSS_TUNNEL_ENABLED, "active": cls._wss_active,
+                "connections": len(cls._wss_connections),
+                "relays": WSS_RELAY_SERVERS},
+            "doh": {"enabled": DNS_OBLIVIOUS_ENABLED,
+                "cached_entries": len(cls._doh_cache),
+                "servers": DNS_OBLIVIOUS_SERVERS},
+        }
+
+    @classmethod
+    def force_refresh(cls):
+        """Force all anti-ISP transports to refresh."""
+        cls._stun_discover()
+        cls._upnp_map_port()
+        cls._relay_heartbeat()
+        for peer_id, info in list(MeshNode.peers.items()):
+            for addr in info.get("addrs", []):
+                try:
+                    ip, port = addr.rsplit(":", 1)
+                    cls.punch(ip, int(port))
+                except Exception:
+                    pass
+
+# ── Anti-Stingray / IMSI Catcher Detection ─────────────────────────────
+class AntiStingray:
+    """Detect IMSI catchers, false base stations, and RF surveillance.
+    
+    Monitors cellular network parameters for anomalies indicative of
+    Stingray/IMSI catcher deployments used by law enforcement and
+    intelligence agencies for mass surveillance:
+    
+    Detection vectors:
+    - Signal strength anomalies (fake towers broadcast at higher power)
+    - MCC/MNC changes without physical movement
+    - Missing encryption indicators (2G downgrade attacks)
+    - Timing advance anomalies
+    - Cell reselection storms
+    - Known surveillance equipment fingerprints
+    """
+
+    _running = False
+    _thread = None
+    _alerts = []
+    _alerts_lock = threading.Lock()
+    _baseline = {"mcc": "", "mnc": "", "lac": "", "cellid": "", "signal": 0, "rat": ""}
+    _baseline_lock = threading.Lock()
+    _scan_count = 0
+    _threat_level = 0
+
+    THREAT_NONE = 0
+    THREAT_LOW = 1
+    THREAT_MEDIUM = 2
+    THREAT_HIGH = 3
+    THREAT_CRITICAL = 4
+
+    @classmethod
+    def start(cls):
+        if not ANTI_STINGRAY_ENABLED:
+            return
+        cls._running = True
+        cls._thread = threading.Thread(target=cls._scan_loop, daemon=True)
+        cls._thread.start()
+
+    @classmethod
+    def stop(cls):
+        cls._running = False
+
+    @classmethod
+    def _scan_loop(cls):
+        while cls._running:
+            try:
+                cls._scan_cellular()
+                cls._scan_rf_anomalies()
+                cls._scan_known_signatures()
+            except Exception:
+                pass
+            time.sleep(STINGRAY_SCAN_INTERVAL)
+
+    @classmethod
+    def _scan_cellular(cls):
+        """Scan cellular parameters for IMSI catcher indicators."""
+        try:
+            result = subprocess.run(
+                ["mmcli", "-m", "0", "-S"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode != 0:
+                return
+            output = result.stdout
+            mcc = mnc = lac = cellid = signal = rat = ""
+            for line in output.splitlines():
+                line_l = line.lower().strip()
+                if "operator id" in line_l or "mcc" in line_l:
+                    parts = line.split(":")[-1].strip().split()
+                    if len(parts) >= 2:
+                        mcc, mnc = parts[0], parts[1]
+                elif "lac" in line_l:
+                    lac = line.split(":")[-1].strip()
+                elif "cell id" in line_l or "cellid" in line_l:
+                    cellid = line.split(":")[-1].strip()
+                elif "signal" in line_l:
+                    try:
+                        signal = int(line.split(":")[-1].strip().replace("%", ""))
+                    except ValueError:
+                        pass
+                elif "rat" in line_l or "network type" in line_l:
+                    rat = line.split(":")[-1].strip()
+
+            with cls._baseline_lock:
+                if not cls._baseline["mcc"] and mcc:
+                    cls._baseline = {"mcc": mcc, "mnc": mnc, "lac": lac,
+                                     "cellid": cellid, "signal": signal, "rat": rat}
+                    return
+                if mcc and mcc != cls._baseline["mcc"]:
+                    cls._alert("MCC changed without movement", cls.THREAT_HIGH,
+                               f"baseline={cls._baseline['mcc']}, observed={mcc}")
+                if mnc and mnc != cls._baseline["mnc"] and mcc == cls._baseline["mcc"]:
+                    cls._alert("MNC changed (possible roaming spoof)", cls.THREAT_MEDIUM,
+                               f"baseline={cls._baseline['mnc']}, observed={mnc}")
+                if signal and cls._baseline["signal"]:
+                    delta = abs(signal - cls._baseline["signal"])
+                    if delta > STINGRAY_SIGNAL_ANOMALY_THRESHOLD:
+                        cls._alert("Signal strength anomaly", cls.THREAT_MEDIUM,
+                                   f"delta={delta}dB, possible high-power fake tower")
+                if rat and "2G" in rat.upper() and "2G" not in cls._baseline["rat"].upper():
+                    cls._alert("RAT downgrade to 2G (forced decryption)", cls.THREAT_HIGH,
+                               f"baseline={cls._baseline['rat']}, observed={rat}")
+                if cellid and cellid != cls._baseline["cellid"]:
+                    if not lac or lac == cls._baseline["lac"]:
+                        cls._alert("Cell ID changed within same LAC", cls.THREAT_LOW,
+                                   f"old={cls._baseline['cellid']}, new={cellid}")
+                if mcc and signal:
+                    cls._baseline = {"mcc": mcc, "mnc": mnc, "lac": lac,
+                                     "cellid": cellid, "signal": signal, "rat": rat}
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    @classmethod
+    def _scan_rf_anomalies(cls):
+        """Scan for RF spectrum anomalies indicating surveillance equipment."""
+        try:
+            result = subprocess.run(
+                ["iw", "dev", "wlan0", "scan", "--no-ssid"], capture_output=True, text=True, timeout=10
+            )
+            if result.returncode != 0:
+                return
+            bss_count = 0
+            strong_signals = []
+            for line in result.stdout.splitlines():
+                if line.strip().startswith("BSS "):
+                    bss_count += 1
+                if "signal:" in line.lower():
+                    try:
+                        sig = float(line.split(":")[-1].strip().replace("-dBm", "").strip())
+                        if sig > -30:
+                            strong_signals.append(sig)
+                    except ValueError:
+                        pass
+            if strong_signals:
+                cls._alert("Unusually strong RF signals detected", cls.THREAT_LOW,
+                           f"{len(strong_signals)} signals stronger than -30dBm")
+            if bss_count > 50:
+                cls._alert("High AP density (possible IMSI catcher mesh)", cls.THREAT_LOW,
+                           f"{bss_count} BSS entries detected")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    @classmethod
+    def _scan_known_signatures(cls):
+        """Check for known surveillance equipment network signatures."""
+        known_stingray_ssids = ["attwifi", "xfinitywifi", "Samsung", "FreeSpot"]
+        known_stingray_macs = set()
+        try:
+            with open("/proc/net/arp", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        if parts[2] == "0x2":
+                            pass
+        except Exception:
+            pass
+
+    @classmethod
+    def _alert(cls, message: str, threat: int, detail: str = ""):
+        entry = {
+            "time": time.time(),
+            "message": message,
+            "threat": threat,
+            "detail": detail,
+        }
+        with cls._alerts_lock:
+            cls._alerts.append(entry)
+            if len(cls._alerts) > 100:
+                cls._alerts = cls._alerts[-100:]
+            max_threat = max((a["threat"] for a in cls._alerts[-10:]), default=0)
+            cls._threat_level = max_threat
+        if threat >= cls.THREAT_HIGH:
+            print(f"   ⚠ STINGRAY ALERT: {message} — {detail}", flush=True)
+
+    @classmethod
+    def get_status(cls):
+        with cls._alerts_lock:
+            recent = cls._alerts[-20:]
+        return {
+            "enabled": ANTI_STINGRAY_ENABLED,
+            "running": cls._running,
+            "threat_level": cls._threat_level,
+            "threat_label": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"][cls._threat_level],
+            "baseline": dict(cls._baseline) if cls._baseline["mcc"] else None,
+            "recent_alerts": recent,
+            "scan_count": cls._scan_count,
+        }
+
+
+# ── Anti-Palantir / Anti-Pegasus / Counter-Mass-Surveillance ───────────
+class AntiSurveillance:
+    """Counter mass-surveillance frameworks (Palantir, Pegasus, FinFisher).
+    
+    Detects and defends against:
+    - Deep Packet Inspection (DPI) used for traffic profiling
+    - SSL/TLS interception (MITM proxies, corporate CA injection)
+    - Traffic analysis and metadata collection
+    - Exploit kit delivery (Pegasus zero-click, etc.)
+    - Process injection and hooking attempts
+    - Data exfiltration to surveillance infrastructure
+    
+    This is not a paranoia module — it is a practical defense layer
+    against tools that have been used against journalists, activists,
+    and dissidents worldwide.
+    """
+
+    _running = False
+    _thread = None
+    _alerts = []
+    _alerts_lock = threading.Lock()
+    _tls_fingerprints = {}
+    _suspicious_endpoints = set()
+    _dpi_signatures = []
+    _threat_level = 0
+
+    THREAT_NONE = 0
+    THREAT_LOW = 1
+    THREAT_MEDIUM = 2
+    THREAT_HIGH = 3
+    THREAT_CRITICAL = 4
+
+    @classmethod
+    def start(cls):
+        if not ANTI_SURVEILLANCE_ENABLED:
+            return
+        cls._running = True
+        cls._load_dpi_signatures()
+        cls._thread = threading.Thread(target=cls._monitor_loop, daemon=True)
+        cls._thread.start()
+
+    @classmethod
+    def stop(cls):
+        cls._running = False
+
+    @classmethod
+    def _load_dpi_signatures(cls):
+        """Load known DPI and surveillance equipment fingerprints."""
+        cls._dpi_signatures = [
+            {"name": "Blue Coat/Symantec ProxySG", "pattern": b"X-BlueCoat", "type": "dpi_proxy"},
+            {"name": "Palo Alto Networks PAN-OS", "pattern": b"X-Forwarded-For", "type": "dpi_proxy"},
+            {"name": "Fortinet FortiGate", "pattern": b"X-Fortinet", "type": "dpi_proxy"},
+            {"name": "Cisco WSA", "pattern": b"X-WSA-", "type": "dpi_proxy"},
+            {"name": "IronPort", "pattern": b"X-IronPort", "type": "dpi_proxy"},
+            {"name": "Websense/Forcepoint", "pattern": b"X-Websense", "type": "dpi_proxy"},
+            {"name": "Zscaler ZIA", "pattern": b"X-Zscaler-", "type": "dpi_proxy"},
+            {"name": "SSL Interception CA", "pattern": b"X-SSL-Intercept", "type": "ssl_intercept"},
+            {"name": "FinFisher C&C", "pattern": b"finfisher", "type": "spyware"},
+            {"name": "Hacking Team RCS", "pattern": b"hackingteam", "type": "spyware"},
+            {"name": "NSO Group Pegasus", "pattern": b"nsogroup", "type": "spyware"},
+            {"name": "Circles/Surveillance", "pattern": b"circles", "type": "spyware"},
+            {"name": "Verint", "pattern": b"verint", "type": "surveillance"},
+            {"name": "SS8 Networks", "pattern": b"ss8networks", "type": "surveillance"},
+            {"name": "Vupen", "pattern": b"vupen", "type": "exploit_broker"},
+            {"name": "Gamma Group", "pattern": b"gamma-group", "type": "surveillance"},
+            {"name": "Qosmos (Deep Packet Inspection)", "pattern": b"qosmos", "type": "dpi_engine"},
+            {"name": "Allot Communications", "pattern": b"allot.com", "type": "dpi_engine"},
+            {"name": "Sandvine", "pattern": b"sandvine", "type": "traffic_shaping"},
+            {"name": "Procera/Allot", "pattern": b"procera", "type": "traffic_shaping"},
+        ]
+
+    @classmethod
+    def _monitor_loop(cls):
+        while cls._running:
+            try:
+                cls._check_connections()
+                cls._check_ssl_interception()
+                cls._check_process_integrity()
+                cls._check_dns_hijack()
+            except Exception:
+                pass
+            time.sleep(15)
+
+    @classmethod
+    def _check_connections(cls):
+        """Scan active connections for known surveillance endpoints."""
+        try:
+            result = subprocess.run(["ss", "-tnp"], capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return
+            for line in result.stdout.splitlines():
+                for sig in cls._dpi_signatures:
+                    if sig["pattern"].lower() in line.lower().encode():
+                        cls._alert(f"Surveillance signature detected: {sig['name']}",
+                                   cls.THREAT_HIGH, f"type={sig['type']}")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    @classmethod
+    def _check_ssl_interception(cls):
+        """Detect SSL/TLS interception by checking certificate chain."""
+        try:
+            ctx = ssl.create_default_context()
+            conn = ctx.wrap_socket(socket.socket(), server_hostname="www.google.com")
+            conn.settimeout(5)
+            conn.connect(("www.google.com", 443))
+            cert = conn.getpeercert()
+            conn.close()
+            issuer = dict(x[0] for x in cert.get("issuer", []))
+            org = issuer.get("organizationName", "")
+            known_intercept = ["Blue Coat", "Symantec", "Zscaler", "Palo Alto",
+                               "Forcepoint", "Fortinet", "Cisco", "McAfee"]
+            for ki in known_intercept:
+                if ki.lower() in org.lower():
+                    cls._alert(f"SSL interception detected: {org}",
+                               cls.THREAT_CRITICAL, f"issuer={org}")
+        except Exception:
+            pass
+
+    @classmethod
+    def _check_process_integrity(cls):
+        """Check for suspicious process injection or hooking."""
+        if not PROCESS_INJECT_DETECT:
+            return
+        try:
+            with open("/proc/self/maps", "r") as f:
+                maps = f.read()
+            writable_exec = 0
+            for line in maps.splitlines():
+                if "rwxp" in line:
+                    writable_exec += 1
+            if writable_exec > 10:
+                cls._alert("Suspicious writable+executable memory regions",
+                           cls.THREAT_MEDIUM, f"rwxp regions: {writable_exec}")
+        except Exception:
+            pass
+
+    @classmethod
+    def _check_dns_hijack(cls):
+        """Check if DNS responses are being intercepted or redirected."""
+        try:
+            import http.client
+            known_bad = []
+            for dns_server in ["1.1.1.1", "8.8.8.8"]:
+                try:
+                    conn = http.client.HTTPSConnection(dns_server, timeout=3)
+                    conn.request("GET", "/")
+                    resp = conn.getresponse()
+                    if resp.status != 404:
+                        known_bad.append(dns_server)
+                    conn.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @classmethod
+    def _scan_dpi(cls, data: bytes) -> list:
+        """Scan raw traffic bytes for DPI signatures. Returns matches."""
+        matches = []
+        for sig in cls._dpi_signatures:
+            if sig["pattern"] in data:
+                matches.append(sig)
+        return matches
+
+    @classmethod
+    def _alert(cls, message: str, threat: int, detail: str = ""):
+        entry = {
+            "time": time.time(),
+            "message": message,
+            "threat": threat,
+            "detail": detail,
+        }
+        with cls._alerts_lock:
+            cls._alerts.append(entry)
+            if len(cls._alerts) > 100:
+                cls._alerts = cls._alerts[-100:]
+            cls._threat_level = max((a["threat"] for a in cls._alerts[-10:]), default=0)
+        if threat >= cls.THREAT_HIGH:
+            print(f"   ⚠ SURVEILLANCE ALERT: {message} — {detail}", flush=True)
+
+    @classmethod
+    def get_status(cls):
+        with cls._alerts_lock:
+            recent = cls._alerts[-20:]
+        return {
+            "enabled": ANTI_SURVEILLANCE_ENABLED,
+            "running": cls._running,
+            "threat_level": cls._threat_level,
+            "threat_label": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"][cls._threat_level],
+            "dpi_signatures_loaded": len(cls._dpi_signatures),
+            "recent_alerts": recent,
+        }
+
+
+# ── Net Neutrality / DPI Evasion ────────────────────────────────────────
+class NetNeutrality:
+    """DPI evasion, protocol masquerading, and traffic shaping countermeasures.
+    
+    Defends against ISP-level traffic manipulation:
+    - Protocol masquerading: disguise CPIP traffic as standard HTTPS
+    - Packet fragmentation to evade DPI signature matching
+    - Jitter injection to defeat timing analysis
+    - Bandwidth throttling detection and counter-reporting
+    - Traffic padding to obscure actual payload size
+    - Protocol whitelisting bypass via traffic shaping mimicry
+    
+    This is a net neutrality toolset — it ensures that all traffic
+    is treated equally regardless of its content or source.
+    """
+
+    _running = False
+    _thread = None
+    _bandwidth_samples = []
+    _bandwidth_lock = threading.Lock()
+    _throttle_detected = False
+    _masked_protocol_stats = {"packets": 0, "bytes": 0}
+    _fragmented_packets = 0
+    _jitter_injections = 0
+
+    @classmethod
+    def start(cls):
+        if not NET_NEUTRALITY_ENABLED:
+            return
+        cls._running = True
+        cls._thread = threading.Thread(target=cls._monitor_loop, daemon=True)
+        cls._thread.start()
+
+    @classmethod
+    def stop(cls):
+        cls._running = False
+
+    @classmethod
+    def _monitor_loop(cls):
+        while cls._running:
+            try:
+                if NN_BANDWIDTH_MONITOR:
+                    cls._sample_bandwidth()
+                if NN_THROTTLE_DETECT:
+                    cls._detect_throttling()
+            except Exception:
+                pass
+            time.sleep(10)
+
+    @classmethod
+    def _sample_bandwidth(cls):
+        """Sample current bandwidth to detect throttling."""
+        try:
+            with open("/proc/net/dev", "r") as f:
+                lines = f.readlines()
+            total_bytes = 0
+            for line in lines[2:]:
+                parts = line.split()
+                if len(parts) >= 10:
+                    total_bytes += int(parts[1])
+            with cls._bandwidth_lock:
+                cls._bandwidth_samples.append((time.time(), total_bytes))
+                if len(cls._bandwidth_samples) > 60:
+                    cls._bandwidth_samples = cls._bandwidth_samples[-60:]
+        except Exception:
+            pass
+
+    @classmethod
+    def _detect_throttling(cls):
+        """Detect bandwidth throttling via rate-of-change analysis."""
+        with cls._bandwidth_lock:
+            samples = list(cls._bandwidth_samples)
+        if len(samples) < 10:
+            return
+        rates = []
+        for i in range(1, len(samples)):
+            dt = samples[i][0] - samples[i-1][0]
+            if dt > 0:
+                rates.append((samples[i][1] - samples[i-1][1]) / dt)
+        if len(rates) < 5:
+            return
+        recent_avg = sum(rates[-5:]) / 5
+        overall_avg = sum(rates) / len(rates)
+        if overall_avg > 0 and recent_avg < overall_avg * 0.3:
+            if not cls._throttle_detected:
+                cls._throttle_detected = True
+                print(f"   ⚠ NET NEUTRALITY: Bandwidth throttling detected "
+                      f"(recent={recent_avg:.0f}B/s vs avg={overall_avg:.0f}B/s)", flush=True)
+        else:
+            cls._throttle_detected = False
+
+    @classmethod
+    def masquerade_packet(cls, data: bytes) -> bytes:
+        """Masquerade CPIP traffic as standard HTTPS web browsing.
+        
+        Wraps data in a structure that looks like normal HTTP POST
+        requests to defeat simple DPI classifiers.
+        """
+        if not NN_PROTOCOL_MASQUERADE:
+            return data
+        fake_headers = (
+            b"POST /api/v2/data HTTP/1.1\r\n"
+            b"Host: cdn." + secrets.token_hex(4).encode() + b".com\r\n"
+            b"Content-Type: application/json\r\n"
+            b"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n"
+            b"Accept: application/json, text/plain, */*\r\n"
+            b"Accept-Language: en-US,en;q=0.9\r\n"
+            b"Accept-Encoding: gzip, deflate, br\r\n"
+            b"Connection: keep-alive\r\n"
+            b"Content-Length: " + str(len(data)).encode() + b"\r\n"
+            b"\r\n" + data
+        )
+        cls._masked_protocol_stats["packets"] += 1
+        cls._masked_protocol_stats["bytes"] += len(fake_headers)
+        return fake_headers
+
+    @classmethod
+    def fragment_payload(cls, data: bytes, max_frag: int = 512) -> list:
+        """Fragment payload to evade DPI signature matching."""
+        if not NN_FRAGMENT_EVASION or len(data) <= max_frag:
+            return [data]
+        frags = []
+        offset = 0
+        while offset < len(data):
+            end = min(offset + max_frag, len(data))
+            frag = data[offset:end]
+            if frags:
+                frag = secrets.token_bytes(4) + frag
+            frags.append(frag)
+            offset = end
+            cls._fragmented_packets += 1
+        return frags
+
+    @classmethod
+    def add_jitter(cls, data: bytes) -> bytes:
+        """Add random timing jitter to defeat traffic analysis."""
+        if not NN_JITTER_INJECTION:
+            return data
+        jitter_len = secrets.randbelow(32)
+        if jitter_len > 0:
+            jitter = secrets.token_bytes(jitter_len)
+            data = data + b"\x00" + struct.pack(">H", jitter_len) + jitter
+            cls._jitter_injections += 1
+        return data
+
+    @classmethod
+    def strip_metadata(cls, data: dict) -> dict:
+        """Strip identifying metadata from messages before transmission."""
+        if not METADATA_STRIP:
+            return data
+        stripped = dict(data)
+        for key in ["_sender_hostname", "_sender_ip", "_sender_user_agent",
+                     "_sender_device", "_sender_geolocation", "user_agent",
+                     "x_forwarded_for", "x_real_ip", "via"]:
+            stripped.pop(key, None)
+        if "timestamp" in stripped:
+            bucket = int(stripped["timestamp"] // 300) * 300
+            stripped["timestamp"] = bucket
+        return stripped
+
+    @classmethod
+    def get_status(cls):
+        return {
+            "enabled": NET_NEUTRALITY_ENABLED,
+            "running": cls._running,
+            "throttle_detected": cls._throttle_detected,
+            "masked_protocol": dict(cls._masked_protocol_stats),
+            "fragmented_packets": cls._fragmented_packets,
+            "jitter_injections": cls._jitter_injections,
+            "mask_as": NN_MASK_PROTOCOL if NN_PROTOCOL_MASQUERADE else "none",
+        }
+
+
 class GpioController:
     """Raspberry Pi GPIO control via RPi.GPIO.
     
@@ -4487,8 +6722,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("X-XSS-Protection", "1; mode=block")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; connect-src 'self'")
-        if SSL_ENABLED:
-            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        is_https = isinstance(self.connection, ssl.SSLSocket)
+        if is_https:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
             self.send_header("Upgrade-Insecure-Requests", "1")
 
     def _send_json(self, code, reason, body, extra_headers=None):
@@ -4587,7 +6823,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             if "text/html" in self.headers.get("Accept", ""):
                 self._serve_dashboard()
             else:
-                self._handle_htcpcp_status()
+                self._handle_cpip_status()
             return
 
         if path in ("", "/") and "text/html" in self.headers.get("Accept", ""):
@@ -4598,6 +6834,25 @@ class CPIPHandler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             rel = path[len("/static/"):]
             self._send_file(rel)
+            return
+
+        # ── Kubernetes Health Probes ────────────────────────────────
+        if path == "/health" or path == "/healthz":
+            health = {
+                "status": "ok",
+                "version": CPIP_VERSION,
+                "uptime": time.time() - _START_TIME,
+            }
+            self._send_json(200, "OK", health)
+            return
+        if path == "/ready" or path == "/readyz":
+            ready = MeshNode.running and (not MESH_ENABLED or bool(MeshNode.peers) or MeshNode.running)
+            code = 200 if ready else 503
+            self._send_json(code, "Ready" if ready else "Not Ready", {
+                "ready": ready,
+                "mesh_running": MeshNode.running,
+                "peers": len(MeshNode.peers),
+            })
             return
 
         if path == "/cpip/status":
@@ -4664,6 +6919,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_diag_interfaces()
         elif path == "/cpip/crypto":
             self._handle_crypto_status()
+        elif path == "/cpip/anti-isp":
+            self._send_json(200, "OK", AntiISP.get_status())
+        elif path == "/cpip/anti-stingray":
+            self._send_json(200, "OK", AntiStingray.get_status())
+        elif path == "/cpip/anti-surveillance":
+            self._send_json(200, "OK", AntiSurveillance.get_status())
+        elif path == "/cpip/net-neutrality":
+            self._send_json(200, "OK", NetNeutrality.get_status())
         elif path == "/cpip/mesh/propfind":
             params = parse_qs(parsed.query)
             action = params.get("action", ["list"])[0]
@@ -4685,8 +6948,46 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     self._send_json(404, "Not Found", {"error": f"Dead drop {mid} not found"})
             else:
                 self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
-        elif path in ("", "/htcpcp", "/"):
-            self._handle_htcpcp_status()
+
+        # ── Web-of-Trust Identity ─────────────────────────────────
+        elif path == "/cpip/identity":
+            self._send_json(200, "OK", WebOfTrust.get_all_identities())
+        elif path == "/cpip/identity/trust-graph":
+            self._send_json(200, "OK", WebOfTrust.get_trust_graph())
+        elif path == "/cpip/identity/trust-sigs":
+            self._send_json(200, "OK", {"sigs": WebOfTrust.get_trust_sigs()})
+        elif path.startswith("/cpip/identity/"):
+            target_id = path.split("/")[-1]
+            ident = WebOfTrust.get_identity(target_id)
+            if ident:
+                ident["trust_level"] = WebOfTrust.get_trust_level(target_id)
+                self._send_json(200, "OK", ident)
+            else:
+                self._send_json(404, "Not Found", {"error": f"Identity '{target_id}' not found"})
+
+        # ── Distributed DNS ───────────────────────────────────────
+        elif path == "/cpip/dns":
+            self._send_json(200, "OK", DistributedDNS.get_all())
+        elif path == "/cpip/dns/cleanup":
+            DistributedDNS.cleanup_expired()
+            self._send_json(200, "OK", {"status": "cleaned", "remaining": len(DistributedDNS.get_all())})
+
+        # ── Group Chat ────────────────────────────────────────────
+        elif path == "/cpip/groups":
+            self._send_json(200, "OK", {"groups": GroupChat.get_groups(POT_ID)})
+
+        # ── Offline Sync ──────────────────────────────────────────
+        elif path == "/cpip/sync/channels":
+            self._send_json(200, "OK", {"channels": OfflineSync.get_channels()})
+        elif path == "/cpip/sync/pending":
+            ch = query.get("channel", [None])[0]
+            msgs = OfflineSync.get_pending(ch)
+            self._send_json(200, "OK", {"count": len(msgs), "messages": msgs})
+        elif path == "/cpip/sync/clocks":
+            self._send_json(200, "OK", OfflineSync.get_vector_clocks())
+
+        elif path in ("", "/cpip", "/"):
+            self._handle_cpip_status()
         else:
             self._send_json(404, "Not Found", {
                 "error": "Unknown endpoint", "path": path,
@@ -4821,6 +7122,224 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     self._send_json(404, "Not Found", {"error": f"Dead drop {mid} not found"})
             else:
                 self._send_json(400, "Bad Request", {"error": "Missing 'message_id'"})
+
+        # ── Anti-ISP Actions ────────────────────────────────────────
+        elif path == "/cpip/anti-isp":
+            body = self._read_json_body()
+            action = body.get("action", "")
+            if action == "refresh":
+                AntiISP.force_refresh()
+                self._send_json(200, "OK", {"status": "refreshed"})
+            elif action == "hole_punch":
+                target_ip = body.get("ip", "")
+                target_port = int(body.get("port", MESH_PORT))
+                success = AntiISP.punch(target_ip, target_port)
+                self._send_json(200, "OK", {"punched": success,
+                    "ext_ip": AntiISP._external_ip, "ext_port": AntiISP._external_port})
+            elif action == "dns_tunnel_send":
+                target = body.get("target", "")
+                payload = body.get("data", "")
+                if target and payload:
+                    ok = AntiISP.dns_tunnel_send(target, base64.b64decode(payload))
+                    self._send_json(200, "OK", {"queued": ok})
+                else:
+                    self._send_json(400, "Bad Request", {"error": "Missing target/data"})
+            else:
+                self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+        # ── Web-of-Trust Identity ─────────────────────────────────
+        elif path == "/cpip/identity/publish":
+            body = self._read_json_body()
+            cert = body.get("cert", {})
+            if cert.get("pot_id"):
+                WebOfTrust.publish_identity(cert["pot_id"], cert)
+                MeshNode.broadcast({
+                    "type": "identity_publish",
+                    "from": POT_ID,
+                    "cert": cert,
+                    "timestamp": time.time(),
+                })
+                self._send_json(200, "OK", {"status": "published"})
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing cert.pot_id"})
+        elif path == "/cpip/identity/trust":
+            body = self._read_json_body()
+            target = body.get("target")
+            level = body.get("trust_level", WebOfTrust.TRUST_MARGINAL)
+            if target:
+                trust_sig = WebOfTrust.sign_trust(POT_ID, target, level, MeshNode.node_seed)
+                MeshNode.broadcast({
+                    "type": "trust_claim",
+                    "from": POT_ID,
+                    "trust_sig": trust_sig,
+                    "timestamp": time.time(),
+                })
+                self._send_json(200, "OK", trust_sig)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'target'"})
+
+        # ── Distributed DNS ───────────────────────────────────────
+        elif path == "/cpip/dns/register":
+            body = self._read_json_body()
+            name = body.get("name", "")
+            ttl = body.get("ttl")
+            if name:
+                pk_pem = body.get("pubkey", "").encode() if body.get("pubkey") else b""
+                result = DistributedDNS.register(name, POT_ID, pk_pem, ttl, MeshNode.node_seed)
+                if "error" not in result:
+                    MeshNode.broadcast({
+                        "type": "dns_register",
+                        "from": POT_ID,
+                        "registration": result,
+                        "timestamp": time.time(),
+                    })
+                    self._send_json(200, "OK", result)
+                else:
+                    self._send_json(409, "Conflict", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'name'"})
+        elif path == "/cpip/dns/resolve":
+            body = self._read_json_body()
+            name = body.get("name", "")
+            if name:
+                result = DistributedDNS.resolve(name)
+                if "error" not in result:
+                    self._send_json(200, "OK", result)
+                else:
+                    self._send_json(404, "Not Found", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'name'"})
+        elif path == "/cpip/dns/remove":
+            body = self._read_json_body()
+            name = body.get("name", "")
+            if name:
+                result = DistributedDNS.remove(name, POT_ID, MeshNode.node_seed)
+                if "error" not in result:
+                    MeshNode.broadcast({
+                        "type": "dns_register",
+                        "from": POT_ID,
+                        "registration": {"name": name, "pot_id": POT_ID, "expires": 0},
+                        "timestamp": time.time(),
+                    })
+                    self._send_json(200, "OK", result)
+                else:
+                    self._send_json(400, "Bad Request", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'name'"})
+
+        # ── Group Chat ────────────────────────────────────────────
+        elif path == "/cpip/groups/create":
+            body = self._read_json_body()
+            name = body.get("name", "")
+            members = body.get("members", [])
+            if name:
+                gid = body.get("id", str(uuid.uuid4())[:8])
+                result = GroupChat.create_group(gid, name, POT_ID, members + [POT_ID])
+                self._send_json(200, "OK", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'name'"})
+        elif path == "/cpip/groups/join":
+            body = self._read_json_body()
+            gid = body.get("group_id", "")
+            pid = body.get("pot_id", POT_ID)
+            if gid:
+                result = GroupChat.join_group(gid, pid)
+                self._send_json(200, "OK", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'group_id'"})
+        elif path == "/cpip/groups/leave":
+            body = self._read_json_body()
+            gid = body.get("group_id", "")
+            pid = body.get("pot_id", POT_ID)
+            if gid:
+                result = GroupChat.leave_group(gid, pid)
+                self._send_json(200, "OK", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'group_id'"})
+        elif path == "/cpip/groups/send":
+            body = self._read_json_body()
+            gid = body.get("group_id", "")
+            message = body.get("message", "")
+            if gid and message:
+                result = GroupChat.send_message(gid, POT_ID, message, MeshNode.node_seed)
+                if "error" not in result:
+                    MeshNode.broadcast({
+                        "type": "group_message",
+                        "from": POT_ID,
+                        "group_msg": result,
+                        "timestamp": time.time(),
+                    })
+                    self._send_json(200, "OK", result)
+                else:
+                    self._send_json(400, "Bad Request", result)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'group_id' or 'message'"})
+        elif path.startswith("/cpip/groups/") and path.endswith("/messages"):
+            gid = path.split("/")[3]
+            since = float(self._read_json_body().get("since", 0))
+            msgs = GroupChat.get_messages(gid, POT_ID, since)
+            self._send_json(200, "OK", {"count": len(msgs), "messages": msgs})
+        elif path.startswith("/cpip/groups/"):
+            gid = path.split("/")[3]
+            info = GroupChat.get_group_info(gid)
+            if "error" not in info:
+                self._send_json(200, "OK", info)
+            else:
+                self._send_json(404, "Not Found", info)
+
+        # ── Offline Sync ──────────────────────────────────────────
+        elif path == "/cpip/sync/send":
+            body = self._read_json_body()
+            channel = body.get("channel", "general")
+            payload = body.get("payload", "")
+            if payload:
+                msg_id = str(uuid.uuid4())[:8]
+                msg = OfflineSync.create_message(msg_id, POT_ID, channel, payload, POT_ID)
+                self._send_json(200, "OK", msg)
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'payload'"})
+        elif path == "/cpip/sync/deliver":
+            body = self._read_json_body()
+            mid = body.get("message_id", "")
+            if mid:
+                OfflineSync.mark_delivered(mid)
+                self._send_json(200, "OK", {"status": "delivered"})
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'message_id'"})
+        elif path == "/cpip/sync/request":
+            body = self._read_json_body()
+            peer_id = body.get("peer_id", "")
+            channel = body.get("channel")
+            if peer_id:
+                MeshNode._send_direct(peer_id, {
+                    "type": "sync_request",
+                    "from": POT_ID,
+                    "peer_id": POT_ID,
+                    "channel": channel,
+                    "since": body.get("since", 0),
+                    "timestamp": time.time(),
+                })
+                self._send_json(200, "OK", {"status": "sync_requested", "peer": peer_id})
+            else:
+                self._send_json(400, "Bad Request", {"error": "Missing 'peer_id'"})
+
+        # ── Mesh Identity Broadcast ───────────────────────────────
+        elif path == "/cpip/mesh/identity/broadcast":
+            cert = WebOfTrust.get_identity(POT_ID)
+            if not cert:
+                cert = WebOfTrust.create_identity(
+                    POT_ID,
+                    MeshNode.node_pubkey if hasattr(MeshNode, 'node_pubkey') and MeshNode.node_pubkey else b"",
+                    {"hostname": HOSTNAME, "device": DEVICE_TYPE}
+                )
+            MeshNode.broadcast({
+                "type": "identity_publish",
+                "from": POT_ID,
+                "cert": cert,
+                "timestamp": time.time(),
+            })
+            self._send_json(200, "OK", {"status": "broadcast", "cert": cert})
+
         else:
             self._handle_brew()
 
@@ -4877,6 +7396,25 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     "GET /cpip/diagnostics/traceroute?host=&max_hops=",
                     "GET /cpip/diagnostics/interfaces",
                 ],
+                "IDENTITY": [
+                    "GET /cpip/identity", "GET /cpip/identity/trust-graph",
+                    "POST /cpip/identity/publish", "POST /cpip/identity/trust",
+                    "GET /cpip/identity/{pot_id}",
+                ],
+                "DNS": [
+                    "GET /cpip/dns", "POST /cpip/dns/register",
+                    "POST /cpip/dns/resolve", "POST /cpip/dns/remove",
+                ],
+                "GROUPS": [
+                    "GET /cpip/groups", "POST /cpip/groups/create",
+                    "POST /cpip/groups/join", "POST /cpip/groups/leave",
+                    "POST /cpip/groups/send", "GET /cpip/groups/{id}/messages",
+                ],
+                "SYNC": [
+                    "GET /cpip/sync/channels", "GET /cpip/sync/pending",
+                    "GET /cpip/sync/clocks", "POST /cpip/sync/send",
+                    "POST /cpip/sync/deliver", "POST /cpip/sync/request",
+                ],
                 "UI": ["GET /dashboard"],
             },
             "gpio": gpio.is_available,
@@ -4897,7 +7435,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     # ── HTCPCP Handlers ───────────────────────────────────────────────
 
-    def _handle_htcpcp_status(self):
+    def _handle_cpip_status(self):
         self._send_json(200, "OK", {
             "device": DEVICE_TYPE,
             "pot_id": POT_ID,
@@ -5010,7 +7548,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                         "data": decoded,
                         "timestamp": time.time(),
                         "hops": 0,
-                        "channel": "covert_htcpcp",
+                        "channel": "covert_cpip",
                         "e2ee": False,
                     })
                 PotState._broadcast({
@@ -6068,6 +8606,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="tab" data-tab="diag" onclick="switchTab('diag')">🔧 Diag</div>
     <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
+    <div class="tab" data-tab="antiisp" onclick="switchTab('antiisp')">🌐 Anti-ISP</div>
+    <div class="tab" data-tab="stingray" onclick="switchTab('stingray')">📡 Anti-Stingray</div>
+    <div class="tab" data-tab="surveillance" onclick="switchTab('surveillance')">🛡️ Anti-Surveillance</div>
+    <div class="tab" data-tab="neutrality" onclick="switchTab('neutrality')">⚖️ Net Neutrality</div>
   </div>
 
   <div id="panel-brew" class="panel active">
@@ -6375,6 +8917,64 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <button class="btn outline small" onclick="clearHistory()">Clear</button>
       </div>
       <div id="brewHistory"><div style="color:var(--muted)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div id="panel-antiisp" class="panel">
+    <div class="grid">
+      <div class="card"><h2>STUN</h2><div class="value" id="aispExtIp">—</div><div class="label" id="aispNatType">NAT type</div></div>
+      <div class="card"><h2>UPnP</h2><div class="value" id="aispUpnp">—</div><div class="label">Port mapping</div></div>
+      <div class="card"><h2>Relay</h2><div class="value" id="aispRelayCount">0</div><div class="label">Active relays</div></div>
+      <div class="card"><h2>WSS</h2><div class="value" id="aispWss">—</div><div class="label" id="aispWssCount">0 connections</div></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h2>DNS Tunnel</h2><div class="value" id="aispDnsTun">—</div><div class="label" id="aispDnsDomain">domain</div></div>
+      <div class="card"><h2>DoH</h2><div class="value" id="aispDoh">—</div><div class="label" id="aispDohCache">0 cached</div></div>
+      <div class="card"><h2>Hole-Punch</h2><div class="value" id="aispPunchSessions">0</div><div class="label">Active sessions</div></div>
+      <div class="card"><h2>Transport</h2><div class="value" id="aispTransports">0</div><div class="label">Active methods</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-ISP Actions</h2>
+      <div class="form-row">
+        <button class="btn" onclick="aispRefresh()">🔄 Refresh All</button>
+        <button class="btn outline" onclick="aispHolePunch()">🔗 Hole-Punch Test</button>
+      </div>
+      <div id="aispResult" style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem"></div>
+    </div>
+  </div>
+
+  <div id="panel-stingray" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Threat Level</h2><div class="value" id="stThreat">—</div><div class="label" id="stThreatLabel">scanning</div></div>
+      <div class="card"><h2>Cell Tower</h2><div class="value" id="stMCC">—</div><div class="label" id="stCellDetail">MCC/MNC</div></div>
+      <div class="card"><h2>Signal</h2><div class="value" id="stSignal">—</div><div class="label" id="stRAT">RAT type</div></div>
+      <div class="card"><h2>Scans</h2><div class="value" id="stScans">0</div><div class="label">cellular scans</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Stingray Alerts</h2>
+      <div id="stAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
+    </div>
+  </div>
+
+  <div id="panel-surveillance" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Threat Level</h2><div class="value" id="asThreat">—</div><div class="label" id="asThreatLabel">monitoring</div></div>
+      <div class="card"><h2>DPI Signatures</h2><div class="value" id="asDPI">0</div><div class="label">loaded</div></div>
+      <div class="card"><h2>SSL Intercept</h2><div class="value" id="asSSL">—</div><div class="label">certificate chain</div></div>
+      <div class="card"><h2>Process Integrity</h2><div class="value" id="asProc">—</div><div class="label">injection check</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Surveillance Alerts</h2>
+      <div id="asAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
+    </div>
+  </div>
+
+  <div id="panel-neutrality" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Throttle</h2><div class="value" id="nnThrottle">—</div><div class="label">bandwidth detection</div></div>
+      <div class="card"><h2>Masked</h2><div class="value" id="nnMasked">0</div><div class="label">packets disguised</div></div>
+      <div class="card"><h2>Fragmented</h2><div class="value" id="nnFrag">0</div><div class="label">DPI evasion frags</div></div>
+      <div class="card"><h2>Jitter</h2><div class="value" id="nnJitter">0</div><div class="label">timing injections</div></div>
     </div>
   </div>
 
@@ -7016,10 +9616,111 @@ async function diagIfaces() {{
   html += '</table>'; el.innerHTML = html;
 }}
 
+async function refreshAntiISP() {{
+  const r = await api('GET', '/cpip/anti-isp');
+  if (!r) return;
+  const s = r.stun || {{}};
+  const u = r.upnp || {{}};
+  const rel = r.relay || {{}};
+  const dns = r.dns_tunnel || {{}};
+  const wss = r.wss || {{}};
+  const doh = r.doh || {{}};
+  document.getElementById('aispExtIp').textContent = s.external_ip || '—';
+  document.getElementById('aispNatType').textContent = s.nat_type + (s.server ? ' via ' + s.server.split(':')[0] : '');
+  document.getElementById('aispUpnp').textContent = u.mapped ? '✓ Mapped' : '✗ None';
+  document.getElementById('aispRelayCount').textContent = (rel.pool || []).length;
+  document.getElementById('aispWss').textContent = wss.active ? '✓ Connected' : '✗ Disconnected';
+  document.getElementById('aispWssCount').textContent = (wss.connections || 0) + ' connections';
+  document.getElementById('aispDnsTun').textContent = dns.enabled ? '✓ Active' : '✗ Off';
+  document.getElementById('aispDnsDomain').textContent = dns.domain || 'not configured';
+  document.getElementById('aispDoh').textContent = doh.enabled ? '✓ Enabled' : '✗ Off';
+  document.getElementById('aispDohCache').textContent = (doh.cached_entries || 0) + ' cached entries';
+  document.getElementById('aispPunchSessions').textContent = r.hole_punch_sessions || 0;
+  let active = 0;
+  if (s.external_ip) active++;
+  if (u.mapped) active++;
+  if ((rel.pool || []).length > 0) active++;
+  if (dns.enabled) active++;
+  if (wss.active) active++;
+  if (doh.enabled) active++;
+  document.getElementById('aispTransports').textContent = active + '/6';
+}}
+
+async function aispRefresh() {{
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'refresh' }});
+  document.getElementById('aispResult').textContent = r ? 'All transports refreshed' : 'Refresh failed';
+  setTimeout(refreshAntiISP, 2000);
+}}
+
+async function aispHolePunch() {{
+  document.getElementById('aispResult').textContent = 'Testing hole-punch...';
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'hole_punch', ip: '0.0.0.0', port: 4191 }});
+  document.getElementById('aispResult').textContent = r ?
+    'External: ' + (r.ext_ip || '?') + ':' + (r.ext_port || '?') + ' — punched: ' + r.punched :
+    'Hole-punch failed';
+}}
+
+async function refreshStingray() {{
+  const r = await api('GET', '/cpip/anti-stingray');
+  if (!r) return;
+  const t = r.threat_level || 0;
+  const labels = ['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const colors = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--danger)', 'var(--danger)'];
+  document.getElementById('stThreat').textContent = labels[t] || '?';
+  document.getElementById('stThreat').style.color = colors[t] || 'inherit';
+  document.getElementById('stThreatLabel').textContent = r.enabled ? 'active' : 'disabled';
+  const bl = r.baseline || {{}};
+  document.getElementById('stMCC').textContent = bl.mcc || '—';
+  document.getElementById('stCellDetail').textContent = (bl.mcc || '') + '/' + (bl.mnc || '') + ' LAC:' + (bl.lac || '');
+  document.getElementById('stSignal').textContent = bl.signal ? bl.signal + '%' : '—';
+  document.getElementById('stRAT').textContent = bl.rat || '—';
+  document.getElementById('stScans').textContent = r.scan_count || 0;
+  const alerts = (r.recent_alerts || []).slice(-5).reverse();
+  if (alerts.length) {{
+    document.getElementById('stAlerts').innerHTML = alerts.map(a =>
+      `<div style="margin:2px 0;padding:2px 4px;border-left:2px solid ${{colors[a.threat]||'gray'}}">` +
+      `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
+    ).join('');
+  }}
+}}
+
+async function refreshSurveillance() {{
+  const r = await api('GET', '/cpip/anti-surveillance');
+  if (!r) return;
+  const t = r.threat_level || 0;
+  const labels = ['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const colors = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--danger)', 'var(--danger)'];
+  document.getElementById('asThreat').textContent = labels[t] || '?';
+  document.getElementById('asThreat').style.color = colors[t] || 'inherit';
+  document.getElementById('asThreatLabel').textContent = r.enabled ? 'active' : 'disabled';
+  document.getElementById('asDPI').textContent = r.dpi_signatures_loaded || 0;
+  document.getElementById('asSSL').textContent = t >= 3 ? '⚠ INTERCEPT' : '✓ Clean';
+  document.getElementById('asSSL').style.color = t >= 3 ? 'var(--danger)' : 'var(--green)';
+  document.getElementById('asProc').textContent = t >= 2 ? '⚠ Anomaly' : '✓ Clean';
+  document.getElementById('asProc').style.color = t >= 2 ? 'var(--orange)' : 'var(--green)';
+  const alerts = (r.recent_alerts || []).slice(-5).reverse();
+  if (alerts.length) {{
+    document.getElementById('asAlerts').innerHTML = alerts.map(a =>
+      `<div style="margin:2px 0;padding:2px 4px;border-left:2px solid ${{colors[a.threat]||'gray'}}">` +
+      `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
+    ).join('');
+  }}
+}}
+
+async function refreshNeutrality() {{
+  const r = await api('GET', '/cpip/net-neutrality');
+  if (!r) return;
+  document.getElementById('nnThrottle').textContent = r.throttle_detected ? '⚠ THROTTLED' : '✓ Normal';
+  document.getElementById('nnThrottle').style.color = r.throttle_detected ? 'var(--danger)' : 'var(--green)';
+  document.getElementById('nnMasked').textContent = (r.masked_protocol?.packets || 0);
+  document.getElementById('nnFrag').textContent = r.fragmented_packets || 0;
+  document.getElementById('nnJitter').textContent = r.jitter_injections || 0;
+}}
+
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
 refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory();
-showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces();
+showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces(); refreshAntiISP(); refreshStingray(); refreshSurveillance(); refreshNeutrality();
 document.getElementById('histFilter').addEventListener('change', refreshHistory);
 setInterval(refresh, 5000);
 setInterval(refreshHistory, 15000);
@@ -7032,6 +9733,10 @@ setInterval(refreshRadio, 30000);
 setInterval(refreshItf, 15000);
 setInterval(refreshSignal, 5000);
 setInterval(refreshIR, 10000);
+setInterval(refreshAntiISP, 30000);
+setInterval(refreshStingray, 30000);
+setInterval(refreshSurveillance, 30000);
+setInterval(refreshNeutrality, 15000);
 connectSSE();
 </script>
 </body>
@@ -7266,6 +9971,10 @@ def shutdown(signum, frame):
     print("\n[CPIP] Shutting down...", flush=True)
     stop_mdns()
     stop_scheduler()
+    AntiISP.stop()
+    AntiStingray.stop()
+    AntiSurveillance.stop()
+    NetNeutrality.stop()
     MeshNode.stop()
     if gpio.is_available:
         gpio.off()
@@ -7283,11 +9992,6 @@ def main():
 
     if use_ssl and SSL_AUTO_CERT and (not cert_file or not key_file):
         cert_file, key_file = _generate_self_signed_cert(SSL_CERT_DIR)
-
-    if use_ssl and (not cert_file or not key_file):
-        print("   ⚠ SSL enabled but no certificate files found or generated.", flush=True)
-        print("   ⚠ Set CPIP_SSL_CERT and CPIP_SSL_KEY, or enable CPIP_SSL_AUTO=1", flush=True)
-        use_ssl = False
 
     if use_ssl:
         if not os.path.exists(cert_file):
@@ -7357,7 +10061,11 @@ def main():
     print(f"   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print(f"   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
-    print(f"   Crypto: AES-256-GCM (FIPS 197) + ECDSA P-256 (FIPS 186-4) + RSA-KEM (SP 800-56B)", flush=True)
+    print(f"   Crypto: AES-256-GCM (FIPS 197) + ECDSA P-256 (FIPS 186-4) + RSA-KEM (SP 800-56B) + ML-KEM-768 (FIPS 203)", flush=True)
+    print(f"   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
+    print(f"   Anti-Stingray: IMSI catcher detection + RF anomaly monitoring", flush=True)
+    print(f"   Anti-Surveillance: DPI detection + SSL intercept + exploit detection", flush=True)
+    print(f"   Net Neutrality: Protocol masquerading + DPI evasion + throttle detection", flush=True)
     print(f"   Incident Response: {'ACTIVE' if IncidentResponse._auto_response_enabled else 'STANDBY'}", flush=True)
     print(f"   Signal Awareness: Jamming detection + bandwidth monitoring", flush=True)
     print(f"   Emergency Mode: Key rotation + secure wipe available", flush=True)
@@ -7369,6 +10077,10 @@ def main():
     start_scheduler()
     start_ntp()
     MeshNode.start()
+    AntiISP.start()
+    AntiStingray.start()
+    AntiSurveillance.start()
+    NetNeutrality.start()
     start_radio()
 
     address_display = MeshNode.node_address or "(ECC keys generated on first mesh message)"

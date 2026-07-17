@@ -1,18 +1,18 @@
 FROM python:3.13-alpine
 
-LABEL description="CPIP v3 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto)"
-LABEL version="3.0.0"
+LABEL description="CPIP v4 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
+LABEL version="4.0.0"
 
 RUN apk add --no-cache gcc make musl-dev openssl
 
 WORKDIR /opt/cpip
 
 COPY server.py .
-COPY htcpcp /usr/local/bin/htcpcp
+COPY cpip /usr/local/bin/cpip
 COPY radio/ radio/
 COPY web/ web/
 
-RUN chmod +x /usr/local/bin/htcpcp && \
+RUN chmod +x /usr/local/bin/cpip && \
     make -C radio 2>/dev/null || true && \
     mkdir -p /opt/cpip/.ssl && \
     chmod 777 /opt/cpip/.ssl
@@ -33,8 +33,15 @@ ENV CPIP_SSL=1
 ENV CPIP_SSL_AUTO=1
 ENV CPIP_HTTP_REDIRECT=1
 ENV CPIP_HTTP_REDIRECT_PORT=4181
+ENV CPIP_ANTI_ISP=1
+ENV CPIP_ANTI_STINGRAY=1
+ENV CPIP_ANTI_SURVEILLANCE=1
+ENV CPIP_DPI_EVASION=1
+ENV CPIP_TRAFFIC_OBFUSC=1
+ENV CPIP_METADATA_STRIP=1
+ENV CPIP_NET_NEUTRALITY=1
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4180/')" || exit 1
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4180/health')" || exit 1
 
 CMD ["python3", "/opt/cpip/server.py"]

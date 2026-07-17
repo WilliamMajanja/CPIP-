@@ -99,7 +99,7 @@ looks like coffee. It is not coffee.
 - **TLS/SSL (HTTPS)** — Built-in HTTPS with auto-generated self-signed certs, custom cert support, HTTP→HTTPS redirect
 - **Kubernetes self-hosting** — Production-ready K8s manifests with ConfigMap, Secret, Ingress, NetworkPolicy
 - **Encrypted persistence** — data at rest encrypted with HMAC integrity
-- **CLI client** — Full-featured `htcpcp` bash CLI
+- **CLI client** — Full-featured `cpip` bash CLI
 - **mDNS advertising** — Zero-config discovery via Avahi
 - **Brew scheduling** — Timed brews with daily recurring option
 - **SSE events** — Real-time server-sent events
@@ -154,64 +154,64 @@ CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 ### Using the CLI
 
 ```bash
-./htcpcp status
-./htcpcp brew coffee
-./htcpcp mesh peers
-./htcpcp mesh sat
-./htcpcp mesh radio
-./htcpcp mesh mobile
-./htcpcp itf status
-./htcpcp stats
+./cpip status
+./cpip brew coffee
+./cpip mesh peers
+./cpip mesh sat
+./cpip mesh radio
+./cpip mesh mobile
+./cpip itf status
+./cpip stats
 ```
 
 ---
 
 ## CLI Reference
 
-The `htcpcp` command-line client communicates with a running CPIP server.
+The `cpip` command-line client communicates with a running CPIP server.
 
 | Command | Description |
 |---------|-------------|
-| `htcpcp status` | Server status |
-| `htcpcp version` | Server version |
-| `htcpcp whoami` | Local node identity (POT_ID, address, hostname, device) |
-| `htcpcp config` | Full node configuration (JSON) |
-| `htcpcp stats` | All status at a glance (node, mesh, sat, radio, mobile) |
-| `htcpcp brew coffee` | Brew coffee |
-| `htcpcp brew tea` | Brew tea |
-| `htcpcp brew tea "milk;variety=whole, sugar;variety=honey"` | Brew with additions |
-| `htcpcp when` | Stop brewing |
-| `htcpcp info` | Pot metadata (PROPFIND) |
-| `htcpcp 418` | Trigger 418 (brew coffee on a teapot) |
-| `htcpcp 418-alcohol` | Trigger 418 (alcohol on a teapot) |
-| `htcpcp additions` | List supported addition types |
-| `htcpcp mesh status` | Mesh network status |
-| `htcpcp mesh peers` | List mesh peers |
-| `htcpcp mesh inbox` | Received messages |
-| `htcpcp mesh send <pot> <msg>` | Send E2EE message |
-| `htcpcp mesh broadcast <msg>` | Broadcast to all peers |
-| `htcpcp mesh scan` | Discover peers |
-| `htcpcp mesh routes` | Routing table |
-| `htcpcp mesh sat` | Satellite mesh status |
-| `htcpcp mesh radio` | Radio / LoRa status |
-| `htcpcp mesh mobile` | Mobile broadband status |
-| `htcpcp mesh queued` | Store-and-forward queue |
-| `htcpcp covert encode <msg>` | Encode covert message |
-| `htcpcp covert decode <header>` | Decode covert message |
-| `htcpcp covert brew <msg>` | Brew with hidden message |
-| `htcpcp covert status` | Covert channel status |
-| `htcpcp ecc status` | ECC engine status |
-| `htcpcp ecc address` | Show this node's ECC address |
-| `htcpcp ecc book` | List address book |
-| `htcpcp ecc resolve <addr>` | Resolve ECC address |
-| `htcpcp deaddrop list` | List dead-drop messages |
-| `htcpcp deaddrop claim <id>` | Claim a dead-drop message |
-| `htcpcp itf status` | Full defense posture |
-| `htcpcp itf blacklist` | List blacklisted IPs |
-| `htcpcp itf whitelist <addr>` | Remove IP from blacklist |
-| `htcpcp itf clear` | Clear entire blacklist |
-| `htcpcp itf stealth` | Stealth mode status |
-| `htcpcp itf probe <addr>` | Check if IP is blacklisted |
+| `cpip status` | Server status |
+| `cpip version` | Server version |
+| `cpip whoami` | Local node identity (POT_ID, address, hostname, device) |
+| `cpip config` | Full node configuration (JSON) |
+| `cpip stats` | All status at a glance (node, mesh, sat, radio, mobile) |
+| `cpip brew coffee` | Brew coffee |
+| `cpip brew tea` | Brew tea |
+| `cpip brew tea "milk;variety=whole, sugar;variety=honey"` | Brew with additions |
+| `cpip when` | Stop brewing |
+| `cpip info` | Pot metadata (PROPFIND) |
+| `cpip 418` | Trigger 418 (brew coffee on a teapot) |
+| `cpip 418-alcohol` | Trigger 418 (alcohol on a teapot) |
+| `cpip additions` | List supported addition types |
+| `cpip mesh status` | Mesh network status |
+| `cpip mesh peers` | List mesh peers |
+| `cpip mesh inbox` | Received messages |
+| `cpip mesh send <pot> <msg>` | Send E2EE message |
+| `cpip mesh broadcast <msg>` | Broadcast to all peers |
+| `cpip mesh scan` | Discover peers |
+| `cpip mesh routes` | Routing table |
+| `cpip mesh sat` | Satellite mesh status |
+| `cpip mesh radio` | Radio / LoRa status |
+| `cpip mesh mobile` | Mobile broadband status |
+| `cpip mesh queued` | Store-and-forward queue |
+| `cpip covert encode <msg>` | Encode covert message |
+| `cpip covert decode <header>` | Decode covert message |
+| `cpip covert brew <msg>` | Brew with hidden message |
+| `cpip covert status` | Covert channel status |
+| `cpip ecc status` | ECC engine status |
+| `cpip ecc address` | Show this node's ECC address |
+| `cpip ecc book` | List address book |
+| `cpip ecc resolve <addr>` | Resolve ECC address |
+| `cpip deaddrop list` | List dead-drop messages |
+| `cpip deaddrop claim <id>` | Claim a dead-drop message |
+| `cpip itf status` | Full defense posture |
+| `cpip itf blacklist` | List blacklisted IPs |
+| `cpip itf whitelist <addr>` | Remove IP from blacklist |
+| `cpip itf clear` | Clear entire blacklist |
+| `cpip itf stealth` | Stealth mode status |
+| `cpip itf probe <addr>` | Check if IP is blacklisted |
 
 ---
 
@@ -502,7 +502,7 @@ sudo chmod +x /opt/cpip/server.py
 
 The deploy script installs:
 - Server to `/opt/cpip/server.py`
-- CLI to `/usr/local/bin/htcpcp`
+- CLI to `/usr/local/bin/cpip`
 - Web dashboard to `/opt/cpip/web/`
 - Systemd service (`cpip.service`)
 - Pi-Apps package (if `pi-apps/` directory is present)
@@ -883,9 +883,9 @@ All configuration is via environment variables. No config files needed.
 
 ```
 ├── server.py              # Main server (~6700 lines, zero deps, v3.0)
-├── htcpcp                 # CLI client (bash script)
+├── cpip                 # CLI client (bash script)
 ├── deploy.sh              # Raspberry Pi deployment script
-├── deploy_htcpcp.sh       # Minimal HTCPCP-only deployment
+├── deploy_cpip.sh       # Minimal HTCPCP-only deployment
 ├── Dockerfile             # Docker image (Alpine, SSL-enabled)
 ├── .gitignore
 ├── README.md
