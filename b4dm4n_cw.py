@@ -695,7 +695,7 @@ def cmd_convert(args):
             return
     elif args.format == "c-array":
         out = ", ".join(f"0x{b:02x}" for b in data)
-        out = f"unsigned char data[] = {{\n  {out}\n}};\n// Length: {len(data)} bytes"
+        out = "unsigned char data[] = {\n  " + out + "\n};\n// Length: " + str(len(data)) + " bytes"
     elif args.format == "python-bytes":
         out = f"data = {data!r}"
     else:

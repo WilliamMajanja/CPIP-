@@ -5314,6 +5314,7 @@ class AntiISP:
         host = parsed.hostname
         port = parsed.port or 443
         ctx = _ssl.create_default_context()
+        ctx.minimum_version = _ssl.TLSVersion.TLSv1_2
         s = ctx.wrap_socket(socket.socket(), server_hostname=host)
         s.settimeout(WSS_RELAY_TIMEOUT)
         s.connect((host, port))
@@ -5906,6 +5907,7 @@ class AntiSurveillance:
         """Detect SSL/TLS interception by checking certificate chain."""
         try:
             ctx = ssl.create_default_context()
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             conn = ctx.wrap_socket(socket.socket(), server_hostname="www.google.com")
             conn.settimeout(5)
             conn.connect(("www.google.com", 443))
@@ -6806,7 +6808,8 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         host = self.headers.get("Host", f"{BIND_ADDR}:{HTTP_REDIRECT_PORT}")
         https_host = host.replace(f":{HTTP_REDIRECT_PORT}", f":{BIND_PORT}")
-        target = f"https://{https_host}{self.path}"
+        safe_path = "".join(c for c in self.path if c not in "\r\n")
+        target = f"https://{https_host}{safe_path}"
         self.send_response(301)
         self.send_header("Location", target)
         self.send_header("Content-Length", "0")
@@ -6834,6 +6837,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
         ts = datetime.now().strftime("%H:%M:%S")
         sys.stderr.write(f"[CPIP {ts}] {self.client_address[0]} {fmt % args}\n")
 
+    def send_header(self, keyword, value):
+        value = "".join(c for c in str(value) if c not in "\r\n")
+        super().send_header(keyword, value)
+
     def _check_rate_limit(self):
         addr = self.client_address[0]
         if addr in ("127.0.0.1", "::1", "localhost"):
@@ -6856,7 +6863,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         if CORS_ALLOWED_ORIGINS:
             origin = self.headers.get("Origin", "")
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
-            if origin in allowed:
+            if origin in allowed and "\r" not in origin and "\n" not in origin:
                 self.send_header("Access-Control-Allow-Origin", origin)
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
@@ -6907,8 +6914,13 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _send_file(self, path):
         try:
-            full_path = (WEB_DIR / path).resolve()
-            if not str(full_path).startswith(str(WEB_DIR.resolve())):
+            rel = os.path.normpath("/" + path).lstrip("/")
+            if rel != path or ".." in rel.split("/"):
+                self._send_json(400, "Bad Request", {"error": "Invalid path"})
+                return
+            full_path = (WEB_DIR / rel).resolve()
+            web_root = WEB_DIR.resolve()
+            if full_path != web_root and not str(full_path).startswith(str(web_root) + os.sep):
                 self._send_json(403, "Forbidden", {"error": "Access denied"})
                 return
             if not full_path.is_file():
