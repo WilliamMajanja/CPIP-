@@ -337,6 +337,10 @@ STINGRAY_SIGNAL_ANOMALY_THRESHOLD = float(os.environ.get("CPIP_STINGRAY_SIGNAL_D
 STINGRAY_KNOWN_MCC_MNC = os.environ.get("CPIP_STINGRAY_KNOWN_MCC_MNC",
     "310260,310030,311480,310010,310006").split(",")
 STINGRAY_CELL_WATCH_PORTS = [int(p) for p in os.environ.get("CPIP_STINGRAY_PORTS", "443,80,53,8080").split(",")]
+STINGRAY_CELL_SCAN = _env_bool("CPIP_STINGRAY_CELL", True)
+STINGRAY_RF_SCAN = _env_bool("CPIP_STINGRAY_RF", True)
+STINGRAY_SIG_SCAN = _env_bool("CPIP_STINGRAY_SIG", True)
+STINGRAY_KNOWN_SCAN = _env_bool("CPIP_STINGRAY_KNOWN", True)
 
 # ── Anti-Palantir / Anti-Pegasus / Counter-Surveillance ─────────────────
 ANTI_SURVEILLANCE_ENABLED = _env_bool("CPIP_ANTI_SURVEILLANCE", True)
@@ -5519,7 +5523,46 @@ class AntiISP:
             "doh": {"enabled": DNS_OBLIVIOUS_ENABLED,
                 "cached_entries": len(cls._doh_cache),
                 "servers": DNS_OBLIVIOUS_SERVERS},
+            "toggles": {
+                "stun": STUN_ENABLED,
+                "upnp": UPNP_ENABLED,
+                "relay": RELAY_ENABLED,
+                "dns_tunnel": DNS_TUNNEL_ENABLED,
+                "wss": WSS_TUNNEL_ENABLED,
+                "doh": DNS_OBLIVIOUS_ENABLED,
+            },
         }
+
+    @classmethod
+    def set_enabled(cls, feature: str, enabled: bool) -> bool:
+        """Live-toggle an individual anti-ISP transport at runtime.
+
+        Returns True if the feature is recognized, False otherwise.
+        """
+        global STUN_ENABLED, UPNP_ENABLED, RELAY_ENABLED, \
+            DNS_TUNNEL_ENABLED, WSS_TUNNEL_ENABLED, DNS_OBLIVIOUS_ENABLED
+        feature = feature.lower()
+        if feature == "stun":
+            STUN_ENABLED = bool(enabled)
+            if STUN_ENABLED:
+                cls._stun_discover()
+        elif feature == "upnp":
+            UPNP_ENABLED = bool(enabled)
+            if UPNP_ENABLED:
+                cls._upnp_map_port()
+        elif feature == "relay":
+            RELAY_ENABLED = bool(enabled)
+            if RELAY_ENABLED:
+                cls._relay_heartbeat()
+        elif feature == "dns_tunnel":
+            DNS_TUNNEL_ENABLED = bool(enabled)
+        elif feature == "wss":
+            WSS_TUNNEL_ENABLED = bool(enabled)
+        elif feature == "doh":
+            DNS_OBLIVIOUS_ENABLED = bool(enabled)
+        else:
+            return False
+        return True
 
     @classmethod
     def force_refresh(cls):
@@ -5583,9 +5626,12 @@ class AntiStingray:
     def _scan_loop(cls):
         while cls._running:
             try:
-                cls._scan_cellular()
-                cls._scan_rf_anomalies()
-                cls._scan_known_signatures()
+                if STINGRAY_CELL_SCAN:
+                    cls._scan_cellular()
+                if STINGRAY_RF_SCAN:
+                    cls._scan_rf_anomalies()
+                if STINGRAY_KNOWN_SCAN:
+                    cls._scan_known_signatures()
             except Exception:
                 pass
             time.sleep(STINGRAY_SCAN_INTERVAL)
@@ -5630,7 +5676,7 @@ class AntiStingray:
                 if mnc and mnc != cls._baseline["mnc"] and mcc == cls._baseline["mcc"]:
                     cls._alert("MNC changed (possible roaming spoof)", cls.THREAT_MEDIUM,
                                f"baseline={cls._baseline['mnc']}, observed={mnc}")
-                if signal and cls._baseline["signal"]:
+                if signal and cls._baseline["signal"] and STINGRAY_SIG_SCAN:
                     delta = abs(signal - cls._baseline["signal"])
                     if delta > STINGRAY_SIGNAL_ANOMALY_THRESHOLD:
                         cls._alert("Signal strength anomaly", cls.THREAT_MEDIUM,
@@ -5722,7 +5768,39 @@ class AntiStingray:
             "baseline": dict(cls._baseline) if cls._baseline["mcc"] else None,
             "recent_alerts": recent,
             "scan_count": cls._scan_count,
+            "toggles": {
+                "enabled": ANTI_STINGRAY_ENABLED,
+                "cell_scan": STINGRAY_CELL_SCAN,
+                "rf_scan": STINGRAY_RF_SCAN,
+                "signal_anomaly": STINGRAY_SIG_SCAN,
+                "known_signatures": STINGRAY_KNOWN_SCAN,
+            },
         }
+
+    @classmethod
+    def set_enabled(cls, feature: str, enabled: bool) -> bool:
+        """Live-toggle an individual anti-Stingray detection vector."""
+        global ANTI_STINGRAY_ENABLED, STINGRAY_CELL_SCAN, STINGRAY_RF_SCAN, \
+            STINGRAY_SIG_SCAN, STINGRAY_KNOWN_SCAN
+        feature = feature.lower()
+        enabled = bool(enabled)
+        if feature in ("enabled", "master"):
+            ANTI_STINGRAY_ENABLED = enabled
+            if enabled:
+                cls.start()
+            else:
+                cls.stop()
+        elif feature == "cell_scan":
+            STINGRAY_CELL_SCAN = enabled
+        elif feature == "rf_scan":
+            STINGRAY_RF_SCAN = enabled
+        elif feature == "signal_anomaly":
+            STINGRAY_SIG_SCAN = enabled
+        elif feature == "known_signatures":
+            STINGRAY_KNOWN_SCAN = enabled
+        else:
+            return False
+        return True
 
 
 # ── Anti-Palantir / Anti-Pegasus / Counter-Mass-Surveillance ───────────
@@ -5917,7 +5995,42 @@ class AntiSurveillance:
             "threat_label": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"][cls._threat_level],
             "dpi_signatures_loaded": len(cls._dpi_signatures),
             "recent_alerts": recent,
+            "toggles": {
+                "enabled": ANTI_SURVEILLANCE_ENABLED,
+                "dpi_evasion": DPI_EVASION_ENABLED,
+                "traffic_obfuscation": TRAFFIC_OBFUSCATION,
+                "metadata_strip": METADATA_STRIP,
+                "exploitkit_detect": EXPLOITKIT_DETECT,
+                "process_inject_detect": PROCESS_INJECT_DETECT,
+            },
         }
+
+    @classmethod
+    def set_enabled(cls, feature: str, enabled: bool) -> bool:
+        """Live-toggle an individual anti-surveillance defense vector."""
+        global ANTI_SURVEILLANCE_ENABLED, DPI_EVASION_ENABLED, TRAFFIC_OBFUSCATION, \
+            METADATA_STRIP, EXPLOITKIT_DETECT, PROCESS_INJECT_DETECT
+        feature = feature.lower()
+        enabled = bool(enabled)
+        if feature in ("enabled", "master"):
+            ANTI_SURVEILLANCE_ENABLED = enabled
+            if enabled:
+                cls.start()
+            else:
+                cls.stop()
+        elif feature == "dpi_evasion":
+            DPI_EVASION_ENABLED = enabled
+        elif feature == "traffic_obfuscation":
+            TRAFFIC_OBFUSCATION = enabled
+        elif feature == "metadata_strip":
+            METADATA_STRIP = enabled
+        elif feature == "exploitkit_detect":
+            EXPLOITKIT_DETECT = enabled
+        elif feature == "process_inject_detect":
+            PROCESS_INJECT_DETECT = enabled
+        else:
+            return False
+        return True
 
 
 # ── Net Neutrality / DPI Evasion ────────────────────────────────────────
@@ -6090,7 +6203,42 @@ class NetNeutrality:
             "fragmented_packets": cls._fragmented_packets,
             "jitter_injections": cls._jitter_injections,
             "mask_as": NN_MASK_PROTOCOL if NN_PROTOCOL_MASQUERADE else "none",
+            "toggles": {
+                "enabled": NET_NEUTRALITY_ENABLED,
+                "bandwidth_monitor": NN_BANDWIDTH_MONITOR,
+                "protocol_masquerade": NN_PROTOCOL_MASQUERADE,
+                "fragmentation": NN_FRAGMENT_EVASION,
+                "throttle_detect": NN_THROTTLE_DETECT,
+                "jitter_injection": NN_JITTER_INJECTION,
+            },
         }
+
+    @classmethod
+    def set_enabled(cls, feature: str, enabled: bool) -> bool:
+        """Live-toggle an individual net-neutrality countermeasure."""
+        global NET_NEUTRALITY_ENABLED, NN_BANDWIDTH_MONITOR, NN_PROTOCOL_MASQUERADE, \
+            NN_FRAGMENT_EVASION, NN_THROTTLE_DETECT, NN_JITTER_INJECTION
+        feature = feature.lower()
+        enabled = bool(enabled)
+        if feature in ("enabled", "master"):
+            NET_NEUTRALITY_ENABLED = enabled
+            if enabled:
+                cls.start()
+            else:
+                cls.stop()
+        elif feature == "bandwidth_monitor":
+            NN_BANDWIDTH_MONITOR = enabled
+        elif feature == "protocol_masquerade":
+            NN_PROTOCOL_MASQUERADE = enabled
+        elif feature == "fragmentation":
+            NN_FRAGMENT_EVASION = enabled
+        elif feature == "throttle_detect":
+            NN_THROTTLE_DETECT = enabled
+        elif feature == "jitter_injection":
+            NN_JITTER_INJECTION = enabled
+        else:
+            return False
+        return True
 
 
 class GpioController:
@@ -7130,6 +7278,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
             if action == "refresh":
                 AntiISP.force_refresh()
                 self._send_json(200, "OK", {"status": "refreshed"})
+            elif action == "toggle":
+                feature = body.get("feature", "")
+                enabled = bool(body.get("enabled", True))
+                if AntiISP.set_enabled(feature, enabled):
+                    self._send_json(200, "OK", {"feature": feature, "enabled": enabled})
+                else:
+                    self._send_json(400, "Bad Request",
+                                    {"error": f"Unknown anti-isp feature: {feature}"})
             elif action == "hole_punch":
                 target_ip = body.get("ip", "")
                 target_port = int(body.get("port", MESH_PORT))
@@ -7144,6 +7300,62 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     self._send_json(200, "OK", {"queued": ok})
                 else:
                     self._send_json(400, "Bad Request", {"error": "Missing target/data"})
+            else:
+                self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+        # ── Anti-Stingray Actions ─────────────────────────────────
+        elif path == "/cpip/anti-stingray":
+            body = self._read_json_body()
+            action = body.get("action", "")
+            if action == "toggle":
+                feature = body.get("feature", "")
+                enabled = bool(body.get("enabled", True))
+                if AntiStingray.set_enabled(feature, enabled):
+                    self._send_json(200, "OK", {"feature": feature, "enabled": enabled})
+                else:
+                    self._send_json(400, "Bad Request",
+                                    {"error": f"Unknown anti-stingray feature: {feature}"})
+            elif action == "rescan":
+                AntiStingray._scan_cellular()
+                AntiStingray._scan_rf_anomalies()
+                AntiStingray._scan_known_signatures()
+                self._send_json(200, "OK", {"status": "rescanned"})
+            else:
+                self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+        # ── Anti-Surveillance Actions ─────────────────────────────
+        elif path == "/cpip/anti-surveillance":
+            body = self._read_json_body()
+            action = body.get("action", "")
+            if action == "toggle":
+                feature = body.get("feature", "")
+                enabled = bool(body.get("enabled", True))
+                if AntiSurveillance.set_enabled(feature, enabled):
+                    self._send_json(200, "OK", {"feature": feature, "enabled": enabled})
+                else:
+                    self._send_json(400, "Bad Request",
+                                    {"error": f"Unknown anti-surveillance feature: {feature}"})
+            elif action == "scan":
+                AntiSurveillance._check_connections()
+                AntiSurveillance._check_ssl_interception()
+                AntiSurveillance._check_process_integrity()
+                AntiSurveillance._check_dns_hijack()
+                self._send_json(200, "OK", {"status": "scanned"})
+            else:
+                self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+        # ── Net Neutrality Actions ────────────────────────────────
+        elif path == "/cpip/net-neutrality":
+            body = self._read_json_body()
+            action = body.get("action", "")
+            if action == "toggle":
+                feature = body.get("feature", "")
+                enabled = bool(body.get("enabled", True))
+                if NetNeutrality.set_enabled(feature, enabled):
+                    self._send_json(200, "OK", {"feature": feature, "enabled": enabled})
+                else:
+                    self._send_json(400, "Bad Request",
+                                    {"error": f"Unknown net-neutrality feature: {feature}"})
             else:
                 self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
@@ -7369,7 +7581,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "example": "coffee://" + HOSTNAME + "/pot-0?milk;variety=whole",
             },
             "endpoints": {
-                "HTCPCP": ["GET /", "BREW /{tea,coffee}", "WHEN /", "PROPFIND /"],
+                "CPIP_BREW": ["GET /", "BREW /{tea,coffee}", "WHEN /", "PROPFIND /"],
                 "COFFEE_URI": ["{scheme}://host/pot-N?additions — all 29 international variants"],
                 "message/coffeepot": ["POST/BREW with Content-Type: message/coffeepot, body: start|stop"],
                 "CPIP": [
@@ -7447,7 +7659,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "mesh": {"enabled": MESH_ENABLED, "peers": len(MeshNode.peers), "port": MESH_PORT},
             "covert": {"enabled": COVERT_ENABLED},
             "endpoints": {
-                "/": "Server status (HTCPCP)",
+                "/": "Server status (CPIP)",
                 "/dashboard": "Web dashboard",
                 "/cpip/status": "Full CPIP status",
                 "/cpip/mesh/status": "Mesh network status",
@@ -7728,6 +7940,41 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "pitail_addr": PITAIL_ADDR,
             "thermos_enabled": THERMOS_ENABLED,
             "thermos_max_storage": THERMOS_MAX_STORAGE,
+            "policies": {
+                "anti_isp": {
+                    "enabled": ANTI_ISP_ENABLED,
+                    "stun": STUN_ENABLED,
+                    "upnp": UPNP_ENABLED,
+                    "relay": RELAY_ENABLED,
+                    "dns_tunnel": DNS_TUNNEL_ENABLED,
+                    "wss": WSS_TUNNEL_ENABLED,
+                    "doh": DNS_OBLIVIOUS_ENABLED,
+                },
+                "anti_stingray": {
+                    "enabled": ANTI_STINGRAY_ENABLED,
+                    "cell_scan": STINGRAY_CELL_SCAN,
+                    "rf_scan": STINGRAY_RF_SCAN,
+                    "signal_anomaly": STINGRAY_SIG_SCAN,
+                    "known_signatures": STINGRAY_KNOWN_SCAN,
+                    "scan_interval": STINGRAY_SCAN_INTERVAL,
+                },
+                "anti_surveillance": {
+                    "enabled": ANTI_SURVEILLANCE_ENABLED,
+                    "dpi_evasion": DPI_EVASION_ENABLED,
+                    "traffic_obfuscation": TRAFFIC_OBFUSCATION,
+                    "metadata_strip": METADATA_STRIP,
+                    "exploitkit_detect": EXPLOITKIT_DETECT,
+                    "process_inject_detect": PROCESS_INJECT_DETECT,
+                },
+                "net_neutrality": {
+                    "enabled": NET_NEUTRALITY_ENABLED,
+                    "bandwidth_monitor": NN_BANDWIDTH_MONITOR,
+                    "protocol_masquerade": NN_PROTOCOL_MASQUERADE,
+                    "fragmentation": NN_FRAGMENT_EVASION,
+                    "throttle_detect": NN_THROTTLE_DETECT,
+                    "jitter_injection": NN_JITTER_INJECTION,
+                },
+            },
         })
 
     def _handle_cpip_config_put(self):
@@ -7737,6 +7984,17 @@ class CPIPHandler(BaseHTTPRequestHandler):
         if "device" in body and body["device"] in DEVICE_BEVERAGE_MAP:
             DEVICE_TYPE = body["device"]
             changed.append(f"device={DEVICE_TYPE}")
+        pol = body.get("policies", {})
+        for group, setter in (
+            ("anti_isp", AntiISP.set_enabled),
+            ("anti_stingray", AntiStingray.set_enabled),
+            ("anti_surveillance", AntiSurveillance.set_enabled),
+            ("net_neutrality", NetNeutrality.set_enabled),
+        ):
+            grp = pol.get(group, {})
+            for feat, val in grp.items():
+                if setter(feat, bool(val)):
+                    changed.append(f"{group}.{feat}={val}")
         self._send_json(200, "OK", {
             "status": "configured",
             "changes": changed if changed else ["none"],
@@ -8544,6 +8802,19 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .btn.small {{ padding: 0.3rem 0.6rem; font-size: 0.7rem; }}
   .btn.mesh {{ background: #005533; }}
   .btn.mesh:hover {{ background: #007744; }}
+  .toggles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem 1rem; margin-top: 0.75rem; }}
+  .toggle-row {{ display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+                 background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; }}
+  .toggle-row .tl {{ font-size: 0.75rem; }}
+  .toggle-row .tl small {{ display: block; color: var(--muted); font-size: 0.65rem; }}
+  .switch {{ position: relative; display: inline-block; width: 38px; height: 20px; flex-shrink: 0; }}
+  .switch input {{ opacity: 0; width: 0; height: 0; }}
+  .slider {{ position: absolute; cursor: pointer; inset: 0; background: var(--border);
+             transition: 0.2s; border-radius: 20px; }}
+  .slider:before {{ position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px;
+                    background: #fff; transition: 0.2s; border-radius: 50%; }}
+  .switch input:checked + .slider {{ background: var(--accent); }}
+  .switch input:checked + .slider:before {{ transform: translateX(18px); }}
   table {{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }}
   th, td {{ padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }}
   th {{ color: var(--muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; }}
@@ -8934,6 +9205,23 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card"><h2>Transport</h2><div class="value" id="aispTransports">0</div><div class="label">Active methods</div></div>
     </div>
     <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-ISP Toggles</h2>
+      <div class="toggles" id="aispToggles">
+        <label class="toggle-row"><span class="tl">STUN<small>NAT hole-punch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="stun" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">UPnP<small>Port mapping</small></span>
+          <span class="switch"><input type="checkbox" data-feat="upnp" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Relay<small>Mesh relay pool</small></span>
+          <span class="switch"><input type="checkbox" data-feat="relay" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DNS Tunnel<small>CNS exfil</small></span>
+          <span class="switch"><input type="checkbox" data-feat="dns_tunnel" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">WSS Tunnel<small>WebSocket relay</small></span>
+          <span class="switch"><input type="checkbox" data-feat="wss" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DoH<small>Encrypted DNS</small></span>
+          <span class="switch"><input type="checkbox" data-feat="doh" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
       <h2>Anti-ISP Actions</h2>
       <div class="form-row">
         <button class="btn" onclick="aispRefresh()">🔄 Refresh All</button>
@@ -8951,6 +9239,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card"><h2>Scans</h2><div class="value" id="stScans">0</div><div class="label">cellular scans</div></div>
     </div>
     <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-Stingray Toggles</h2>
+      <div class="toggles" id="stToggles">
+        <label class="toggle-row"><span class="tl">Detection<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Cell Scan<small>MCC/MNC/LAC</small></span>
+          <span class="switch"><input type="checkbox" data-feat="cell_scan" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">RF Scan<small>Spectrum anomalies</small></span>
+          <span class="switch"><input type="checkbox" data-feat="rf_scan" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Signal Anomaly<small>Power delta</small></span>
+          <span class="switch"><input type="checkbox" data-feat="signal_anomaly" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Known Sig<small>IMSI catcher DB</small></span>
+          <span class="switch"><input type="checkbox" data-feat="known_signatures" onchange="stToggle(this)"><span class="slider"></span></span></label>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <button class="btn outline small" onclick="stRescan()">🔄 Rescan Now</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
       <h2>Stingray Alerts</h2>
       <div id="stAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
     </div>
@@ -8964,6 +9270,26 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card"><h2>Process Integrity</h2><div class="value" id="asProc">—</div><div class="label">injection check</div></div>
     </div>
     <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-Surveillance Toggles</h2>
+      <div class="toggles" id="asToggles">
+        <label class="toggle-row"><span class="tl">Detection<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DPI Evasion<small>Traffic shaping</small></span>
+          <span class="switch"><input type="checkbox" data-feat="dpi_evasion" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Traffic Obfuscation<small>Pad/garble</small></span>
+          <span class="switch"><input type="checkbox" data-feat="traffic_obfuscation" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Metadata Strip<small>Header cleanup</small></span>
+          <span class="switch"><input type="checkbox" data-feat="metadata_strip" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">ExploitKit Detect<small>0-click kits</small></span>
+          <span class="switch"><input type="checkbox" data-feat="exploitkit_detect" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Proc Inject Detect<small>Hooking</small></span>
+          <span class="switch"><input type="checkbox" data-feat="process_inject_detect" onchange="asToggle(this)"><span class="slider"></span></span></label>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <button class="btn outline small" onclick="asScan()">🔄 Scan Now</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
       <h2>Surveillance Alerts</h2>
       <div id="asAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
     </div>
@@ -8975,6 +9301,23 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card"><h2>Masked</h2><div class="value" id="nnMasked">0</div><div class="label">packets disguised</div></div>
       <div class="card"><h2>Fragmented</h2><div class="value" id="nnFrag">0</div><div class="label">DPI evasion frags</div></div>
       <div class="card"><h2>Jitter</h2><div class="value" id="nnJitter">0</div><div class="label">timing injections</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Net Neutrality Toggles</h2>
+      <div class="toggles" id="nnToggles">
+        <label class="toggle-row"><span class="tl">Defense<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">BW Monitor<small>Sampling</small></span>
+          <span class="switch"><input type="checkbox" data-feat="bandwidth_monitor" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Proto Masquerade<small>Disguise as web</small></span>
+          <span class="switch"><input type="checkbox" data-feat="protocol_masquerade" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Fragmentation<small>DPI evasion</small></span>
+          <span class="switch"><input type="checkbox" data-feat="fragmentation" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Throttle Detect<small>Rate analysis</small></span>
+          <span class="switch"><input type="checkbox" data-feat="throttle_detect" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Jitter Injection<small>Timing noise</small></span>
+          <span class="switch"><input type="checkbox" data-feat="jitter_injection" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+      </div>
     </div>
   </div>
 
@@ -9644,6 +9987,23 @@ async function refreshAntiISP() {{
   if (wss.active) active++;
   if (doh.enabled) active++;
   document.getElementById('aispTransports').textContent = active + '/6';
+  if (r.toggles) setToggles('aispToggles', r.toggles);
+}}
+
+function setToggles(containerId, toggles) {{
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  box.querySelectorAll('input[data-feat]').forEach(inp => {{
+    const f = inp.dataset.feat;
+    if (Object.prototype.hasOwnProperty.call(toggles, f)) inp.checked = !!toggles[f];
+  }});
+}}
+
+async function aispToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-ISP ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
 }}
 
 async function aispRefresh() {{
@@ -9682,6 +10042,20 @@ async function refreshStingray() {{
       `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
     ).join('');
   }}
+  if (r.toggles) setToggles('stToggles', r.toggles);
+}}
+
+async function stToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-stingray', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-Stingray ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+async function stRescan() {{
+  const r = await api('POST', '/cpip/anti-stingray', {{ action: 'rescan' }});
+  if (r) showToast('Stingray rescan triggered');
+  setTimeout(refreshStingray, 1500);
 }}
 
 async function refreshSurveillance() {{
@@ -9705,6 +10079,20 @@ async function refreshSurveillance() {{
       `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
     ).join('');
   }}
+  if (r.toggles) setToggles('asToggles', r.toggles);
+}}
+
+async function asToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-surveillance', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-Surveillance ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+async function asScan() {{
+  const r = await api('POST', '/cpip/anti-surveillance', {{ action: 'scan' }});
+  if (r) showToast('Surveillance scan triggered');
+  setTimeout(refreshSurveillance, 1500);
 }}
 
 async function refreshNeutrality() {{
@@ -9715,6 +10103,14 @@ async function refreshNeutrality() {{
   document.getElementById('nnMasked').textContent = (r.masked_protocol?.packets || 0);
   document.getElementById('nnFrag').textContent = r.fragmented_packets || 0;
   document.getElementById('nnJitter').textContent = r.jitter_injections || 0;
+  if (r.toggles) setToggles('nnToggles', r.toggles);
+}}
+
+async function nnToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/net-neutrality', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Net Neutrality ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
 }}
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));

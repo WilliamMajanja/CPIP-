@@ -141,6 +141,50 @@ cpip itf whitelist 10.0.0.5
 cpip itf clear
 ```
 
+## Defense Policy Toggles (Runtime)
+
+Every Anti-ISP, Anti-Stingray, Anti-Surveillance and Net-Neutrality vector can be
+toggled at runtime without restarting the server.
+
+```bash
+# View the live policy state for all four groups
+curl -s http://localhost:4180/cpip/config | python3 -m json.tool | grep -A12 policies
+
+# Disable the STUN transport (Anti-ISP)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"action":"toggle","feature":"stun","enabled":false}' \
+  http://localhost:4180/cpip/anti-isp
+
+# Disable the cellular scan but keep RF + signal-anomaly scans (Anti-Stingray)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"action":"toggle","feature":"cell_scan","enabled":false}' \
+  http://localhost:4180/cpip/anti-stingray
+
+# Force an immediate Stingray rescan
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"action":"rescan"}' \
+  http://localhost:4180/cpip/anti-stingray
+
+# Disable DPI evasion (Anti-Surveillance)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"action":"toggle","feature":"dpi_evasion","enabled":false}' \
+  http://localhost:4180/cpip/anti-surveillance
+
+# Disable packet fragmentation (Net-Neutrality)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"action":"toggle","feature":"fragmentation","enabled":false}' \
+  http://localhost:4180/cpip/net-neutrality
+
+# Bulk-update several policies in one call
+curl -X PUT -H "Content-Type: application/json" \
+  -d '{"policies":{"anti_isp":{"stun":false,"upnp":true},"net_neutrality":{"jitter":true}}}' \
+  http://localhost:4180/cpip/config
+```
+
+Unknown `feature` names return HTTP `400`. Toggling `enabled`/`master` on the
+Anti-Stingray, Anti-Surveillance, or Net-Neutrality groups starts or stops the
+background scan loop.
+
 ## Satellite Mesh (Internet-Wide)
 
 ```bash

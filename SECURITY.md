@@ -100,6 +100,45 @@ The RSA-KEM implementation in CPIP uses FIPS-compliant primitives:
 - **Per-peer link quality**: Each peer connection tracked with quality metrics
 - **Jamming detection**: Anomalous signal patterns trigger alerts and auto-mitigation
 
+## Defense Policy & Runtime Controls
+
+CPIP exposes four independently configurable defense policy groups. Every vector
+within a group defaults to **enabled** and can be toggled at runtime **without a
+restart** — useful for threat-responsive hardening (e.g. disable a transport that
+is being fingerprinted, or stop a scan loop under active jamming).
+
+| Policy group | Endpoint | Vectors |
+|--------------|----------|---------|
+| **Anti-ISP** | `POST /cpip/anti-isp` | STUN hole-punch, UPnP mapping, mesh relay, DNS tunnel, WSS relay, DoH |
+| **Anti-Stingray** | `POST /cpip/anti-stingray` | master switch, cellular MCC/MNC scan, RF anomaly scan, signal-anomaly scan, known-signature scan |
+| **Anti-Surveillance** | `POST /cpip/anti-surveillance` | master switch, DPI evasion, traffic obfuscation, metadata strip, exploit-kit detection, process-injection detection |
+| **Net-Neutrality** | `POST /cpip/net-neutrality` | master switch, bandwidth monitor, protocol masquerade, fragmentation, throttle detect, jitter injection |
+
+**Runtime toggle controls**
+
+- `POST /cpip/anti-isp` with `{"action":"toggle","feature":"stun","enabled":false}`
+- `POST /cpip/anti-stingray` with `{"action":"toggle","feature":"cell_scan","enabled":false}`
+- `POST /cpip/anti-surveillance` with `{"action":"toggle","feature":"dpi_evasion","enabled":false}`
+- `POST /cpip/net-neutrality` with `{"action":"toggle","feature":"fragmentation","enabled":false}`
+- `POST /cpip/anti-stingray {"action":"rescan"}` / `POST /cpip/anti-surveillance {"action":"scan"}` force an immediate pass
+- `GET /cpip/config` returns the live `policies` block for all four groups
+- `PUT /cpip/config` with `{"policies":{...}}` bulk-updates policies at runtime
+
+Unknown feature names return HTTP `400`. Toggling `enabled` / `master` on the
+Anti-Stingray, Anti-Surveillance, or Net-Neutrality groups starts or stops the
+background scan/reaction loop.
+
+**Operational guidance**
+
+- Disabling a vector weakens a specific defense; only disable what is unnecessary
+  for your deployment (e.g. `known_signatures` on a non-cellular link).
+- The master `enabled` flag for each group gates all sub-vectors; turning the
+  master off stops background loops and halts associated processing.
+- Runtime changes are **not** persisted across restarts — set the corresponding
+  `CPIP_*` environment variable (see README "Environment Variables") for a
+  permanent policy. Authorize `/cpip/config` and the `*/toggle` endpoints behind
+  your own network controls; they are unauthenticated by default.
+
 ## Threat Model
 
 CPIP is designed for operation in hostile signal environments:

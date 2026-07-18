@@ -77,6 +77,7 @@ looks like coffee. It is not coffee.
 - **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, E2EE
 - **4 transport layers** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G
 - **Runtime transport toggles** — Enable/disable satellite and mobile at runtime via API
+- **Runtime defense policy toggles** — Independently enable/disable every Anti-ISP, Anti-Stingray, Anti-Surveillance and Net-Neutrality vector at runtime via API or dashboard, with live `policies` block in `/cpip/config`
 - **Cross-transport routing** — Messages automatically forwarded between all transports
 - **Covert channel** — Data hidden inside `Accept-Additions` brew headers
 - **Covert history** — LocalStorage-backed message history with copy-to-clipboard
@@ -225,7 +226,7 @@ Six tabs provide real-time control and monitoring with a streamlined, profession
 | **☕ Brew** | Device info, brew state, total count, quick brew with 9 beverage types, hot/iced toggle, milk (5 kinds), sugar, syrup, spice, alcohol (6 kinds) |
 | **📡 Mesh** | Peer count, inbox, store-and-forward queue, satellite status (coords, port, relay, peers), mobile status (interface, signal, telemetry), radio status (mode, freq, bandwidth), send/broadcast messages, peer table, inbox table |
 | **🔒 Covert** | Encode messages into Accept-Additions headers, decode headers back to plaintext, copy-to-clipboard, persistent message history (localStorage) |
-| **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
+| **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table, **live defense-policy toggle cards** for Anti-ISP / Anti-Stingray / Anti-Surveillance / Net-Neutrality with per-vector switches and rescan/scan buttons |
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
 | **📜 History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
 
@@ -716,6 +717,83 @@ All configuration is via environment variables. No config files needed.
 | `CPIP_DEFENSE_BLACKLIST_TTL` | `3600` | Base ban duration (seconds) |
 | `CPIP_DEFENSE_MAX_BLACKLIST` | `1000` | Max blacklist entries |
 
+### Anti-ISP Policy
+
+All Anti-ISP transports default to **on** and are individually togglable at runtime
+via `POST /cpip/anti-isp {"action":"toggle",...}` or the dashboard, or globally via
+`PUT /cpip/config {"policies":{"anti_isp":{...}}}`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_ANTI_ISP` | `1` | Master enable for Anti-ISP transports |
+| `CPIP_STUN` | `1` | STUN NAT hole-punching |
+| `CPIP_STUN_SERVERS` | (built-in) | Comma-separated STUN servers |
+| `CPIP_STUN_REFRESH` | `300` | STUN refresh interval (seconds) |
+| `CPIP_UPNP` | `1` | UPnP port mapping |
+| `CPIP_UPNP_LEASE` | `3600` | UPnP lease duration (seconds) |
+| `CPIP_DNS_TUNNEL` | `1` | DNS tunnel covert transport |
+| `CPIP_DNS_TUNNEL_DOMAIN` | — | Tunnel domain |
+| `CPIP_DNS_TUNNEL_SUBDOMAIN` | `cpip` | Tunnel subdomain label |
+| `CPIP_DNS_CHUNK_SIZE` | `63` | DNS tunnel chunk size (bytes) |
+| `CPIP_WSS` | `1` | WebSocket (WSS) relay tunnel |
+| `CPIP_WSS_RELAYS` | (built-in) | Comma-separated WSS relays |
+| `CPIP_WSS_TIMEOUT` | `10` | WSS relay timeout (seconds) |
+| `CPIP_RELAY` | `1` | Mesh relay pool |
+| `CPIP_RELAY_SERVERS` | (built-in) | Comma-separated relay servers |
+| `CPIP_RELAY_TIMEOUT` | `5` | Relay timeout (seconds) |
+| `CPIP_DOH` | `1` | DNS-over-HTTPS (oblivious) |
+
+### Anti-Stingray Policy
+
+All detection vectors default to **on** and are individually togglable at runtime via
+`POST /cpip/anti-stingray {"action":"toggle",...}` or `PUT /cpip/config`.
+Set any to `0` to disable a vector at startup.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_ANTI_STINGRAY` | `1` | Master enable for Stingray detection |
+| `CPIP_STINGRAY_SCAN` | `30` | Scan interval (seconds) |
+| `CPIP_STINGRAY_SIGNAL_DB` | `50` | Signal-anomaly delta threshold (dB) |
+| `CPIP_STINGRAY_KNOWN_MCC_MNC` | `310260,310030,...` | Known-good MCC/MNC allowlist |
+| `CPIP_STINGRAY_PORTS` | `443,80,53,8080` | Ports watched for IMSI-catcher signatures |
+| `CPIP_STINGRAY_CELL` | `1` | Cellular MCC/MNC/LAC scan |
+| `CPIP_STINGRAY_RF` | `1` | RF spectrum anomaly scan |
+| `CPIP_STINGRAY_SIG` | `1` | Signal-strength anomaly scan |
+| `CPIP_STINGRAY_KNOWN` | `1` | Known-signature (IMSI-catcher DB) scan |
+
+### Anti-Surveillance Policy
+
+All defenses default to **on** and are individually togglable at runtime via
+`POST /cpip/anti-surveillance {"action":"toggle",...}` or `PUT /cpip/config`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_ANTI_SURVEILLANCE` | `1` | Master enable for counter-surveillance |
+| `CPIP_DPI_EVASION` | `1` | DPI evasion (traffic shaping) |
+| `CPIP_DPI_EVASION_MODE` | `aggressive` | DPI evasion mode |
+| `CPIP_TRAFFIC_OBFUSC` | `1` | Traffic obfuscation (pad/garble) |
+| `CPIP_METADATA_STRIP` | `1` | Header/metadata stripping |
+| `CPIP_TLS_FP_ROTATE` | `3600` | TLS fingerprint rotation (seconds) |
+| `CPIP_EXPLOITKIT_DETECT` | `1` | 0-click exploit-kit detection |
+| `CPIP_PROC_INJECT_DETECT` | `1` | Process-injection / hooking detection |
+
+### Net-Neutrality Policy
+
+All countermeasures default to **on** and are individually togglable at runtime via
+`POST /cpip/net-neutrality {"action":"toggle",...}` or `PUT /cpip/config`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_NET_NEUTRALITY` | `1` | Master enable for net-neutrality defense |
+| `CPIP_NN_BW_MONITOR` | `1` | Bandwidth sampling/monitoring |
+| `CPIP_NN_PROTO_MASK` | `1` | Protocol masquerade (disguise as web) |
+| `CPIP_NN_MASK_AS` | `standard_web` | Masquerade protocol label |
+| `CPIP_NN_FRAG_EVASION` | `1` | Packet fragmentation DPI evasion |
+| `CPIP_NN_THROTTLE_DETECT` | `1` | Throttling detection |
+| `CPIP_NN_JITTER` | `1` | Jitter (timing-noise) injection |
+| `CPIP_NN_COVER_MIN` | `256` | Cover-traffic min size (bytes) |
+| `CPIP_NN_COVER_MAX` | `1024` | Cover-traffic max size (bytes) |
+
 ### USB Gadget (Pi-Tail)
 
 | Variable | Default | Description |
@@ -829,6 +907,29 @@ All configuration is via environment variables. No config files needed.
 | `clear` | `{"action":"clear"}` | Clear entire blacklist |
 | `probe` | `{"action":"probe","addr":"1.2.3.4"}` | Check if IP is blacklisted |
 | `stealth` | `{"action":"stealth","enabled":true}` | Toggle stealth mode |
+
+### Defense Policy API (Runtime Toggles)
+
+Every defense vector is independently togglable at runtime without restart. The
+`feature` field accepts the per-vector names listed in the env-var tables above
+(e.g. `stun`, `upnp`, `cell_scan`, `dpi_evasion`, `fragmentation`).
+
+| Method | Path | Action / Payload | Description |
+|--------|------|------------------|-------------|
+| `POST` | `/cpip/anti-isp` | `{"action":"toggle","feature":"stun","enabled":false}` | Toggle one Anti-ISP transport |
+| `POST` | `/cpip/anti-isp` | `{"action":"refresh"}` | Force refresh all transports |
+| `POST` | `/cpip/anti-isp` | `{"action":"hole_punch","ip":...,"port":...}` | Punch a NAT hole |
+| `POST` | `/cpip/anti-stingray` | `{"action":"toggle","feature":"cell_scan","enabled":false}` | Toggle a detection vector |
+| `POST` | `/cpip/anti-stingray` | `{"action":"rescan"}` | Force an immediate rescan |
+| `POST` | `/cpip/anti-surveillance` | `{"action":"toggle","feature":"dpi_evasion","enabled":false}` | Toggle a defense vector |
+| `POST` | `/cpip/anti-surveillance` | `{"action":"scan"}` | Force an immediate scan |
+| `POST` | `/cpip/net-neutrality` | `{"action":"toggle","feature":"fragmentation","enabled":false}` | Toggle a countermeasure |
+| `GET` | `/cpip/config` | — | Returns live `policies` block (all four groups) |
+| `PUT` | `/cpip/config` | `{"policies":{"anti_isp":{"stun":false},"net_neutrality":{"jitter":true}}}` | Bulk-update policies at runtime |
+
+Unknown `feature` names return HTTP `400`. Toggling `enabled` or `master` on the
+Anti-Stingray / Anti-Surveillance / Net-Neutrality groups starts or stops the
+background scan/reaction loop.
 
 ### Web Interface
 

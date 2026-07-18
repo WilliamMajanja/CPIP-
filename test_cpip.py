@@ -11,7 +11,7 @@ import urllib.error
 
 SERVER_CMD = [sys.executable, "server.py"]
 TEST_PORT = int(os.environ.get("CPIP_TEST_PORT", "4182"))
-BASE = f"http://localhost:{TEST_PORT}"
+BASE = f"http://127.0.0.1:{TEST_PORT}"
 
 
 class TestCPIPServer(unittest.TestCase):
