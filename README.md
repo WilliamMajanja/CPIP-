@@ -219,16 +219,28 @@ The `cpip` command-line client communicates with a running CPIP server.
 ## Web Dashboard
 
 CPIP v4.0.0 includes a refined single-page application dashboard served at `/dashboard`.
-Six tabs provide real-time control and monitoring with a streamlined, professional UI:
+Fourteen tabs provide real-time control and monitoring with a streamlined, professional UI:
 
 | Tab | Features |
 |-----|----------|
 | **☕ Brew** | Device info, brew state, total count, quick brew with 9 beverage types, hot/iced toggle, milk (5 kinds), sugar, syrup, spice, alcohol (6 kinds) |
 | **📡 Mesh** | Peer count, inbox, store-and-forward queue, satellite status (coords, port, relay, peers), mobile status (interface, signal, telemetry), radio status (mode, freq, bandwidth), send/broadcast messages, peer table, inbox table |
 | **🔒 Covert** | Encode messages into Accept-Additions headers, decode headers back to plaintext, copy-to-clipboard, persistent message history (localStorage) |
-| **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table, **live defense-policy toggle cards** for Anti-ISP / Anti-Stingray / Anti-Surveillance / Net-Neutrality with per-vector switches and rescan/scan buttons |
+| **🛡 ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
+| **🔐 Crypto** | Crypto engine status, key material, KEM/encryption info, rotation controls |
+| **🚨 IR** | Incident response: severity alerts, audit chain, auto-mitigation state |
+| **📡 Signal** | Signal awareness: bandwidth estimate, link quality, jamming detection |
+| **🔧 Diag** | Network diagnostics: ping, port scan, DNS, traceroute, interfaces |
+| **🌐 Anti-ISP** | Live toggle cards for STUN, UPnP, relay, DNS tunnel, WSS, DoH transports with per-vector switches |
+| **📡 Anti-Stingray** | Live toggle cards for master, cell/RG/signal/known-signature scans with rescan button |
+| **🛡️ Anti-Surveillance** | Live toggle cards for DPI evasion, traffic obfuscation, metadata strip, exploit-kit & process-injection detection with scan button |
+| **⚖️ Net Neutrality** | Live toggle cards for bandwidth monitor, protocol masquerade, fragmentation, throttle detect, jitter injection |
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
 | **📜 History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
+
+> The four defense groups (Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality)
+> were split into their own dedicated tabs; their per-vector toggles are also reachable
+> via the `*/toggle` API endpoints and `PUT /cpip/config` (see Defense Policy API).
 
 The status bar shows live badges with dot indicators for: brewing state, GPIO, mesh, covert, ITF stealth, NTP, and SSE connection. A live event log at the bottom shows real-time brew start/stop and mesh message events via Server-Sent Events.
 
