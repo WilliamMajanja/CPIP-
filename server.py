@@ -199,6 +199,12 @@ DEVICE_TYPE = os.environ.get("CPIP_DEVICE", os.environ.get("CPIP_DEVICE", "hyper
 BIND_ADDR = os.environ.get("CPIP_BIND", os.environ.get("CPIP_BIND", "0.0.0.0"))
 BIND_PORT = int(os.environ.get("CPIP_PORT", os.environ.get("CPIP_PORT", "4180")))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
+
+# Allowlist of serveable static files, computed once at startup so that
+# request-controlled paths never reach a filesystem read.
+_STATIC_ALLOWLIST = frozenset(
+    str(p.resolve()) for p in WEB_DIR.rglob("*") if p.is_file()
+) if WEB_DIR.is_dir() else frozenset()
 HOSTNAME = socket.gethostname().split(".")[0]
 POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
 GPIO_PIN = int(os.environ.get("CPIP_GPIO_PIN", "17"))
@@ -6808,7 +6814,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         host = self.headers.get("Host", f"{BIND_ADDR}:{HTTP_REDIRECT_PORT}")
         https_host = host.replace(f":{HTTP_REDIRECT_PORT}", f":{BIND_PORT}")
-        safe_path = "".join(c for c in self.path if c not in "\r\n")
+        safe_path = "".join(c for c in self.path if c.isprintable() and c not in "\r\n\t")
         target = f"https://{https_host}{safe_path}"
         self.send_response(301)
         self.send_header("Location", target)
@@ -6861,9 +6867,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _cors_headers(self):
         if CORS_ALLOWED_ORIGINS:
-            origin = self.headers.get("Origin", "")
+            raw_origin = self.headers.get("Origin", "")
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
-            if origin in allowed and "\r" not in origin and "\n" not in origin:
+            origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
+            if origin == raw_origin and origin in allowed:
                 self.send_header("Access-Control-Allow-Origin", origin)
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
@@ -6918,17 +6925,13 @@ class CPIPHandler(BaseHTTPRequestHandler):
             if rel != path or ".." in rel.split("/"):
                 self._send_json(400, "Bad Request", {"error": "Invalid path"})
                 return
-            full_path = (WEB_DIR / rel).resolve()
-            web_root = WEB_DIR.resolve()
-            if full_path != web_root and not str(full_path).startswith(str(web_root) + os.sep):
+            full_path = str((WEB_DIR / rel).resolve())
+            if full_path not in _STATIC_ALLOWLIST:
                 self._send_json(403, "Forbidden", {"error": "Access denied"})
                 return
-            if not full_path.is_file():
-                self._send_json(404, "Not Found", {"error": "File not found"})
-                return
-            ext = full_path.suffix.lower()
+            ext = os.path.splitext(full_path)[1].lower()
             mime = MIME_TYPES.get(ext, "application/octet-stream")
-            body = full_path.read_bytes()
+            body = Path(full_path).read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(body)))
