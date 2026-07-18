@@ -1,79 +1,11 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v4.0.1 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
-
-Next-level evolution: real IoT coffee control + mesh communications for Raspberry Pi.
-Preserves full HTCPCP backward compatibility while providing a covert mesh
-communications layer that requires zero internet infrastructure.
-
-1nf1D3L's Kyber — Non-FIPS Post-Quantum KEM
-"Compliance is for auditors. Security is for survivors."
-
-b4dm4n-cw — Cryptographic Weapon
-"brew crypto. stay paranoid. survive."
-
-ASCII ART:
-         ▄▄▄▄▄▄▄▄▄▄▄
-       ▄█████████████▄
-      █████████████████
-     ███████████████████
-    █████████████████████
-   ███████████████████████
-  █████████████████████████
- ███████████████████████████
-█████████████████████████████
-██████████████████████████████
- ████████████████████████████
-  ██████████████████████████
-   ████████████████████████
-    ██████████████████████
-     ████████████████████
-      ██████████████████
-       ████████████████
-        ██████████████
-         ▀▀▀▀▀▀▀▀▀▀▀
-              │
-              │    ☕
-              │   ╱╲
-              │  ╱██╲
-              │ ╱████╲
-              │╱██████╲
-              ▼████████╲
-             ▄██████████▄
-            █████████████
-           ███████████████
-          █████████████████
-         ███████████████████
-        █████████████████████
-       ███████████████████████
-      █████████████████████████
-     ███████████████████████████
-    █████████████████████████████
-   ███████████████████████████████
-  █████████████████████████████████
- ███████████████████████████████████
-████████████████████████████████████
-       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-           ▄▄▄▄▄▄▄▄▄▄
-          ██████████
-         ████████████
-        ██████████████
-       ████████████████
-      ██████████████████
-     ████████████████████
-    ██████████████████████
-           ████████
-           ████████
-            ██████
-             ████
-              ██
-               ▀
 
 Cryptography:
 - CoffeeCipher v3: AES-256-GCM (FIPS 197) + HKDF-SHA256
 - ECDSA P-256 (FIPS 186-4): Signatures + ECDH
-- 1nf1D3L's Kyber (ML-KEM-768 variant): Non-FIPS PQ-KEM, eta=3 noise
-- HybridKEM: ECDH P-256 + 1nf1D3L Kyber (defense in depth)
+- HybridKEM: ECDH P-256 + Kyber (ML-KEM-768) (defense in depth)
 - All randomness: os.urandom (FIPS 140-2 compliant RNG)
 """
 
@@ -195,9 +127,9 @@ except ImportError:
     RADIO_IMPORT_OK = False
 
 # ── Configuration ─────────────────────────────────────────────────────
-DEVICE_TYPE = os.environ.get("CPIP_DEVICE", os.environ.get("CPIP_DEVICE", "hyper-text"))
-BIND_ADDR = os.environ.get("CPIP_BIND", os.environ.get("CPIP_BIND", "0.0.0.0"))
-BIND_PORT = int(os.environ.get("CPIP_PORT", os.environ.get("CPIP_PORT", "4180")))
+DEVICE_TYPE = os.environ.get("CPIP_DEVICE", "hyper-text")
+BIND_ADDR = os.environ.get("CPIP_BIND", "0.0.0.0")
+BIND_PORT = int(os.environ.get("CPIP_PORT", "4180"))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
 
 # Allowlist of serveable static files, computed once at startup so that
@@ -305,7 +237,7 @@ RADIO_BAUD = int(os.environ.get("CPIP_RADIO_BAUD", "115200"))
 
 # ── Mobile Broadband (4G/5G / LTE / WWAN) ───────────────────────────────
 MOBILE_ENABLED = _env_bool("CPIP_MOBILE", False) or _env_bool("CPIP_CELLULAR", False)
-MOBILE_APN = os.environ.get("CPIP_MOBILE_APN", os.environ.get("CPIP_CELLULAR_APN", ""))
+MOBILE_APN = os.environ.get("CPIP_MOBILE_APN", "")
 MOBILE_INTERFACE = os.environ.get("CPIP_MOBILE_IFACE", "wwan0")
 MOBILE_BOOTSTRAP = os.environ.get("CPIP_MOBILE_BOOTSTRAP", "")
 MOBILE_PORT = int(os.environ.get("CPIP_MOBILE_PORT", "4196"))
@@ -379,7 +311,7 @@ NN_JITTER_INJECTION = _env_bool("CPIP_NN_JITTER", True)
 NN_COVER_SIZE_MIN = int(os.environ.get("CPIP_NN_COVER_MIN", "256"))
 NN_COVER_SIZE_MAX = int(os.environ.get("CPIP_NN_COVER_MAX", "1024"))
 
-CPIP_VERSION = "4.0.0"
+CPIP_VERSION = "4.0.1"
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
 _START_TIME = time.time()
 
@@ -778,7 +710,7 @@ class ECP256:
     derivation. All operations use the `cryptography` library's constant-time
     curve implementations (SP 800-56A compliant).
 
-    Named ECP256 for clarity. Ed25519 alias preserved for backward compat.
+    Named ECP256 for clarity.
     """
 
     _CURVE = ec.SECP256R1()
@@ -901,7 +833,7 @@ class ECP256:
         seed = n.to_bytes(32, 'big') if isinstance(n, int) else n
         return cls._derive_key_from_seed(seed).public_key()
 
-Ed25519 = ECP256  # backward compat alias — class renamed for clarity
+Ed25519 = ECP256  # alias for forward compatibility
 
 
 # ── Kyber (ML-KEM) — Unified Post-Quantum KEM Adapter ─────────────────
@@ -1559,8 +1491,7 @@ PQC_KEM_REGISTRY = {
 }
 
 
-# Alias for backward compatibility - use pqcrypto ML-KEM-768 (FIPS 203 compliant)
-MLKEM = MLKEM768
+MLKEM = MLKEM768  # alias for default ML-KEM variant
 
 
 def get_pqc_kem(algorithm: str) -> type:
@@ -3100,25 +3031,8 @@ class CovertChannel:
                                 if plaintext:
                                     return plaintext
                 return b""
-            elif payload.startswith(b"ECCv1:") and our_seed:
-                _, addr_b, sig, ciphertext = payload.split(b":", 3)
-                for pid, info in MeshNode.peers.items():
-                    pk_b64 = info.get("pubkey", "")
-                    if pk_b64:
-                        pk = base64.b64decode(pk_b64)
-                        if Ed25519.pubkey_to_address(pk) == addr_b.decode():
-                            shared = Ed25519.key_exchange(our_seed, pk)
-                            if Ed25519.verify(ciphertext, sig, pk):
-                                plaintext = CoffeeCipher.decrypt(ciphertext, base_key=shared, recipe=recipe)
-                                if plaintext:
-                                    return plaintext
-                return b""
             elif payload.startswith(b"CBC2:"):
                 ciphertext = payload[5:]
-                plaintext = CoffeeCipher.decrypt(ciphertext, recipe=recipe)
-                return plaintext if plaintext else b""
-            elif payload.startswith(b"CBC:"):
-                ciphertext = payload[4:]
                 plaintext = CoffeeCipher.decrypt(ciphertext, recipe=recipe)
                 return plaintext if plaintext else b""
         except Exception:

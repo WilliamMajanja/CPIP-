@@ -175,7 +175,7 @@ ${CONNECT_AUTH_KEY:+rpi-connect signin "${CONNECT_AUTH_KEY}"}
 echo "Creating CPIP service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v3.0 — Coffee Pot Internet Protocol
+Description=CPIP v4.0.1 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]

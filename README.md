@@ -3,7 +3,7 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-4.0.1-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
@@ -405,7 +405,7 @@ Copy the `pi-apps/` directory to `~/.local/share/pi-apps/apps/Coffee-Protocol/` 
 
 ```ini
 [Unit]
-Description=CPIP v4.0.0 — Coffee Pot Internet Protocol
+Description=CPIP v4.0.1 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -472,10 +472,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:4.0.0 .
+docker build -t cpip:4.0.1 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:4.0.0
+  cpip:4.0.1
 ```
 
 ### Access

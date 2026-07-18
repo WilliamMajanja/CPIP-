@@ -8,10 +8,11 @@ die() { echo "error: $*" >&2; exit 1; }
 
 usage() {
 cat << 'HELP'
-CPIP v3.0 — Coffee Pot Internet Protocol CLI
+CPIP v4.0.1 — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
 
 Usage:
+  cpip tui [host] [port]               Launch Terminal UI (default: localhost:4180)
   cpip status                          Server status
   cpip brew|pour [coffee|tea] [add]    Start brewing
   cpip when                            Stop pouring
@@ -175,6 +176,13 @@ sub_brew() {
 }
 
 case "${1:-help}" in
+
+    # ── Terminal UI ─────────────────────────────────────────────────────
+    tui)
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        CPIP_HOST="${2:-$CPIP_HOST}" CPIP_PORT="${3:-$CPIP_PORT}" \
+            exec python3 "$SCRIPT_DIR/cpip_tui.py"
+        ;;
 
     # ── HTCPCP Commands ────────────────────────────────────────────────
     status)
