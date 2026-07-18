@@ -10436,7 +10436,8 @@ def main():
     print(f"   ├ Covert:     {'ECC-Active' if COVERT_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Mesh:       {'Port ' + str(MESH_PORT) + ' (active)' if MESH_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Cover:      {'Traffic generation on' if COVER_TRAFFIC else 'Off'}", flush=True)
-    print(f"   ├ 418:        {'I\'m a Teapot defense active' if MESH_ENABLED else 'Disabled'}", flush=True)
+    teapot_status = "I'm a Teapot defense active" if MESH_ENABLED else "Disabled"
+    print(f"   ├ 418:        {teapot_status}", flush=True)
     print(f"   ├ Satellite:  {'Port ' + str(SATELLITE_PORT) + ' (sat-mesh)' if SATELLITE_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Radio:      {'Port ' + str(RADIO_FREQ//1000000) + ' MHz (' + RADIO_MODE.upper() + ')' if RADIO_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Mobile:     {'Port ' + str(MOBILE_PORT) + ' (' + MOBILE_INTERFACE + ')' if MOBILE_ENABLED else 'Disabled'}", flush=True)
