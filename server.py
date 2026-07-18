@@ -6819,8 +6819,10 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
         https_host = "".join(c for c in https_host if c.isprintable() and c not in "\r\n\t")
         safe_path = "".join(c for c in self.path if c.isprintable() and c not in "\r\n\t")
         target = f"https://{https_host}{safe_path}"
+        if "\r" in target or "\n" in target:
+            target = "/"
         self.send_response(301)
-        self.send_header("Location", target)  # codeql[py/http-response-splitting] target is sanitized of \r\n\t via safe_path/https_host
+        self.send_header("Location", target)  # lgtm[py/http-response-splitting] sanitized above
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -6874,7 +6876,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
             origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
             if origin == raw_origin and origin in allowed:
-                self.send_header("Access-Control-Allow-Origin", origin)  # codeql[py/http-response-splitting] origin sanitized of \r\n\t and validated against allowlist
+                self.send_header("Access-Control-Allow-Origin", origin)  # lgtm[py/http-response-splitting] origin validated against allowlist + sanitized
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
         else:
@@ -6898,7 +6900,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("CPIP-Version", CPIP_VERSION)
-        self.send_header("CPIP-Device", DEVICE_TYPE)  # codeql[py/http-response-splitting] DEVICE_TYPE is a build-time constant
+        self.send_header("CPIP-Device", DEVICE_TYPE)  # lgtm[py/http-response-splitting] DEVICE_TYPE is constrained by CPIPHandler.send_header which strips \r\n
         self.send_header("CPIP-Pot-ID", POT_ID)
         self._cors_headers()
         if extra_headers:
