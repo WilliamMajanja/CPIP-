@@ -6,6 +6,12 @@
 [![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
+[![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
+[![ITF Defense](https://img.shields.io/badge/ITF-defense-orange.svg)]()
+[![Covert Channel](https://img.shields.io/badge/covert-channel-lightgrey.svg)]()
+[![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
+[![K8s](https://img.shields.io/badge/Kubernetes-ready-326CE5.svg)]()
+[![GPIO](https://img.shields.io/badge/GPIO-Raspberry%20Pi-green.svg)]()
 
 Implementation of RFC 2324 (HTCPCP) and RFC 7168 (HTCPCP-TEA) with mesh networking, multi-transport routing, cryptographic defense, and active network defense.
 

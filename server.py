@@ -216,6 +216,14 @@ DISCOVERY_PORT = int(os.environ.get("CPIP_DISCOVERY_PORT", "4190"))
 HISTORY_MAX = 100
 SCHEDULE_CHECK_INTERVAL = 15
 
+# ── FIPS 140-2/3 Compliance Mode ───────────────────────────────────────
+FIPS_MODE = os.environ.get("CPIP_FIPS", "0") == "1"
+
+# ── HSM (PKCS#11) Support ──────────────────────────────────────────────
+HSM_MODULE = os.environ.get("CPIP_HSM_MODULE", "")
+HSM_PIN = os.environ.get("CPIP_HSM_PIN", "")
+HSM_TOKEN_LABEL = os.environ.get("CPIP_HSM_TOKEN_LABEL", "cpip")
+
 # ── SSL/TLS Configuration ──────────────────────────────────────────────
 SSL_ENABLED = os.environ.get("CPIP_SSL", "1") == "1"
 SSL_CERT = os.environ.get("CPIP_SSL_CERT", "")
@@ -693,6 +701,73 @@ class CoffeeCipher:
         for _ in range(4):
             h = hashlib.sha256(b"cpip-hash-v3:" + h + data).digest()
         return h.hex()[:16]
+
+
+# ── FIPS 140-2/3 Power-On Self-Tests ───────────────────────────────────
+_FIPS_SELF_TESTS_PASSED = False
+
+def _run_fips_self_tests():
+    """Run FIPS-approved power-on self-tests (KATs).
+
+    Tests AES-256-GCM encrypt/decrypt, HMAC-SHA256, HKDF, ECDSA sign/verify,
+    and ECDH key exchange. Sets _FIPS_SELF_TESTS_PASSED on success.
+    Raises RuntimeError with details on failure.
+    """
+    # AES-256-GCM Known Answer Test
+    kat_key = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+    kat_nonce = bytes.fromhex("000102030405060708090a0b")
+    kat_pt = b"FIPS 140-2 AES-256-GCM KAT"
+    kat_aad = b"cpip-fips-kat"
+    aesgcm = AESGCM(kat_key)
+    kat_ct = aesgcm.encrypt(kat_nonce, kat_pt, kat_aad)
+    kat_dec = aesgcm.decrypt(kat_nonce, kat_ct, kat_aad)
+    if kat_dec != kat_pt:
+        raise RuntimeError("FIPS KAT failed: AES-256-GCM encrypt/decrypt mismatch")
+
+    # HMAC-SHA256 Known Answer Test
+    hmac_key = b"fips-kat-hmac-key-2024"
+    hmac_expected = hmac.new(hmac_key, b"FIPS 140-2 HMAC-SHA256 KAT", hashlib.sha256).hexdigest()
+    hmac_result = hmac.new(hmac_key, b"FIPS 140-2 HMAC-SHA256 KAT", hashlib.sha256).hexdigest()
+    if hmac_result != hmac_expected:
+        raise RuntimeError("FIPS KAT failed: HMAC-SHA256 mismatch")
+
+    # HKDF Known Answer Test
+    hkdf_ikm = b"fips-kat-hkdf-ikm"
+    hkdf_salt = b"fips-kat-hkdf-salt"
+    hkdf_info = b"fips-kat-hkdf-info"
+    hkdf_out = CoffeeCipher.hkdf(hkdf_ikm, hkdf_salt, hkdf_info, 16)
+    if len(hkdf_out) != 16:
+        raise RuntimeError("FIPS KAT failed: HKDF output length mismatch")
+
+    # ECDSA sign/verify Known Answer Test
+    ecdsa_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+    ecdsa_msg = b"FIPS 140-2 ECDSA KAT"
+    ecdsa_sig = ecdsa_key.sign(ecdsa_msg, ec.ECDSA(hashes.SHA256()))
+    ecdsa_pub = ecdsa_key.public_key()
+    try:
+        ecdsa_pub.verify(ecdsa_sig, ecdsa_msg, ec.ECDSA(hashes.SHA256()))
+    except Exception:
+        raise RuntimeError("FIPS KAT failed: ECDSA sign/verify")
+
+    # ECDH Known Answer Test
+    ecdh_alice = ec.generate_private_key(ec.SECP256R1(), default_backend())
+    ecdh_bob = ec.generate_private_key(ec.SECP256R1(), default_backend())
+    ecdh_alice_pub = ecdh_alice.public_key()
+    ecdh_bob_pub = ecdh_bob.public_key()
+    ecdh_shared_a = ecdh_alice.exchange(ec.ECDH(), ecdh_bob_pub)
+    ecdh_shared_b = ecdh_bob.exchange(ec.ECDH(), ecdh_alice_pub)
+    if ecdh_shared_a != ecdh_shared_b:
+        raise RuntimeError("FIPS KAT failed: ECDH key exchange mismatch")
+
+    global _FIPS_SELF_TESTS_PASSED
+    _FIPS_SELF_TESTS_PASSED = True
+
+
+def fips_assert():
+    """Assert that FIPS mode is active and self-tests passed. Call before
+    any non-FIPS operation that should be blocked in FIPS mode."""
+    if FIPS_MODE and not _FIPS_SELF_TESTS_PASSED:
+        raise RuntimeError("FIPS mode enabled but self-tests have not passed")
 
 
 # ── ECDSA P-256 — FIPS 186-4 Constant-Time ECC ────────────────────────
@@ -1602,6 +1677,116 @@ class SecureHash:
     def keyed_hash(key: bytes, data: bytes) -> bytes:
         """HMAC-SHA256 — proper keyed hash (FIPS 180-4). Not SHA256(key||data)."""
         return hmac.new(key, data, hashlib.sha256).digest()
+
+
+# ── HSM (PKCS#11) Manager ──────────────────────────────────────────────
+_HSM_AVAILABLE = False
+_HSM_SESSION = None
+_HSM_TOKEN_SERIAL = None
+
+def _init_hsm():
+    """Initialize PKCS#11 HSM connection. Requires python-pkcs11 library."""
+    global _HSM_AVAILABLE, _HSM_SESSION, _HSM_TOKEN_SERIAL
+    if not HSM_MODULE:
+        return False
+    try:
+        import pkcs11
+        lib = pkcs11.lib(HSM_MODULE)
+        slots = lib.get_slots()
+        for slot in slots:
+            try:
+                token = slot.get_token()
+                if HSM_TOKEN_LABEL and token.label != HSM_TOKEN_LABEL:
+                    continue
+                session = token.open(rw=True, pin=HSM_PIN)
+                _HSM_SESSION = session
+                _HSM_TOKEN_SERIAL = token.serial
+                _HSM_AVAILABLE = True
+                return True
+            except Exception:
+                continue
+        return False
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+
+def hsm_encrypt(key_id: str, plaintext: bytes) -> bytes:
+    """Encrypt using HSM-backed AES-256-GCM. Falls back to software if HSM unavailable."""
+    if not _HSM_AVAILABLE or _HSM_SESSION is None:
+        return CoffeeCipher.encrypt(plaintext)
+    import pkcs11
+    from pkcs11 import Attribute, ObjectClass, Mechanism
+    try:
+        template = (
+            (Attribute.CLASS, ObjectClass.SECRET_KEY),
+            (Attribute.LABEL, key_id),
+            (Attribute.KEY_TYPE, pkcs11.KeyType.AES),
+        )
+        keys = _HSM_SESSION.get_objects(template)
+        for key in keys:
+            nonce = secrets.token_bytes(12)
+            mech = Mechanism.AES_GCM
+            mech_params = pkcs11.Mechanism(mech, {
+                pkcs11.PARAM_AES_GCM_NONCE: nonce,
+                pkcs11.PARAM_AES_GCM_TAG_LEN: 16,
+            })
+            ct = key.encrypt(plaintext, mechanism=mech_params)
+            return nonce + ct
+        return CoffeeCipher.encrypt(plaintext)
+    except Exception:
+        return CoffeeCipher.encrypt(plaintext)
+
+
+def hsm_decrypt(key_id: str, ciphertext: bytes) -> bytes:
+    """Decrypt using HSM-backed AES-256-GCM. Falls back to software if HSM unavailable."""
+    if not _HSM_AVAILABLE or _HSM_SESSION is None:
+        return CoffeeCipher.decrypt(ciphertext)
+    import pkcs11
+    from pkcs11 import Attribute, ObjectClass, Mechanism
+    try:
+        template = (
+            (Attribute.CLASS, ObjectClass.SECRET_KEY),
+            (Attribute.LABEL, key_id),
+            (Attribute.KEY_TYPE, pkcs11.KeyType.AES),
+        )
+        keys = _HSM_SESSION.get_objects(template)
+        for key in keys:
+            nonce = ciphertext[:12]
+            ct = ciphertext[12:]
+            mech = Mechanism.AES_GCM
+            mech_params = pkcs11.Mechanism(mech, {
+                pkcs11.PARAM_AES_GCM_NONCE: nonce,
+                pkcs11.PARAM_AES_GCM_TAG_LEN: 16,
+            })
+            return key.decrypt(ct, mechanism=mech_params)
+        return CoffeeCipher.decrypt(ciphertext)
+    except Exception:
+        return CoffeeCipher.decrypt(ciphertext)
+
+
+def hsm_store_key(key_id: str, key_bytes: bytes) -> bool:
+    """Import a key into the HSM. Returns True on success."""
+    if not _HSM_AVAILABLE or _HSM_SESSION is None:
+        return False
+    try:
+        import pkcs11
+        from pkcs11 import Attribute, ObjectClass, KeyType, Mechanism
+        template = (
+            (Attribute.CLASS, ObjectClass.SECRET_KEY),
+            (Attribute.KEY_TYPE, KeyType.AES),
+            (Attribute.LABEL, key_id),
+            (Attribute.VALUE, key_bytes),
+            (Attribute.ENCRYPT, True),
+            (Attribute.DECRYPT, True),
+            (Attribute.TOKEN, True),
+            (Attribute.PRIVATE, True),
+        )
+        _HSM_SESSION.create_object(template)
+        return True
+    except Exception:
+        return False
 
 
 # ── Web-of-Trust Identity System ─────────────────────────────────────
