@@ -202,9 +202,11 @@ WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
 
 # Allowlist of serveable static files, computed once at startup so that
 # request-controlled paths never reach a filesystem read.
-_STATIC_ALLOWLIST = frozenset(
-    str(p.resolve()) for p in WEB_DIR.rglob("*") if p.is_file()
-) if WEB_DIR.is_dir() else frozenset()
+_STATIC_FILE_MAP: dict[str, Path] = (
+    {str(p.relative_to(WEB_DIR)): p.resolve() for p in WEB_DIR.rglob("*") if p.is_file()}
+    if WEB_DIR.is_dir() else {}
+)
+_STATIC_ALLOWLIST = frozenset(str(p) for p in _STATIC_FILE_MAP.values())
 HOSTNAME = socket.gethostname().split(".")[0]
 POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
 GPIO_PIN = int(os.environ.get("CPIP_GPIO_PIN", "17"))
@@ -6814,10 +6816,11 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         host = self.headers.get("Host", f"{BIND_ADDR}:{HTTP_REDIRECT_PORT}")
         https_host = host.replace(f":{HTTP_REDIRECT_PORT}", f":{BIND_PORT}")
+        https_host = "".join(c for c in https_host if c.isprintable() and c not in "\r\n\t")
         safe_path = "".join(c for c in self.path if c.isprintable() and c not in "\r\n\t")
         target = f"https://{https_host}{safe_path}"
         self.send_response(301)
-        self.send_header("Location", target)
+        self.send_header("Location", target)  # codeql[py/http-response-splitting] target is sanitized of \r\n\t via safe_path/https_host
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -6871,7 +6874,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
             origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
             if origin == raw_origin and origin in allowed:
-                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Origin", origin)  # codeql[py/http-response-splitting] origin sanitized of \r\n\t and validated against allowlist
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
         else:
@@ -6895,7 +6898,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("CPIP-Version", CPIP_VERSION)
-        self.send_header("CPIP-Device", DEVICE_TYPE)
+        self.send_header("CPIP-Device", DEVICE_TYPE)  # codeql[py/http-response-splitting] DEVICE_TYPE is a build-time constant
         self.send_header("CPIP-Pot-ID", POT_ID)
         self._cors_headers()
         if extra_headers:
@@ -6921,17 +6924,20 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _send_file(self, path):
         try:
-            rel = os.path.normpath("/" + path).lstrip("/")
-            if rel != path or ".." in rel.split("/"):
+            if not path or not path.isprintable() or "\r" in path or "\n" in path:
                 self._send_json(400, "Bad Request", {"error": "Invalid path"})
                 return
-            full_path = str((WEB_DIR / rel).resolve())
-            if full_path not in _STATIC_ALLOWLIST:
+            rel = os.path.normpath("/" + path).lstrip("/")
+            if ".." in rel.split("/") or rel.startswith(".."):
+                self._send_json(400, "Bad Request", {"error": "Invalid path"})
+                return
+            resolved = _STATIC_FILE_MAP.get(rel)
+            if resolved is None:
                 self._send_json(403, "Forbidden", {"error": "Access denied"})
                 return
-            ext = os.path.splitext(full_path)[1].lower()
+            ext = os.path.splitext(rel)[1].lower()
             mime = MIME_TYPES.get(ext, "application/octet-stream")
-            body = Path(full_path).read_bytes()
+            body = resolved.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(body)))
