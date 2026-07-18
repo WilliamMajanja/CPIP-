@@ -16,7 +16,7 @@
      V
 ```
 
-CPIP v3 is a fully functional implementation of the Hyper Text Coffee Pot Control
+CPIP v4.0.0 is a fully functional implementation of the Hyper Text Coffee Pot Control
 Protocol that runs on Raspberry Pi. Beneath the HTCPCP brew requests runs a
 peer-to-peer mesh network with four transport layers — LAN, satellite,
 radio (LoRa/TNC), and mobile broadband — plus covert channels, ECDH P-256 E2EE,
@@ -65,7 +65,7 @@ The coffee theme provides perfect cover traffic. Every brew request can carry
 encrypted data. Every `WHEN` response is a potential message. The protocol
 looks like coffee. It is not coffee.
 
-**Your coffee pot is a mesh node. Your teapot fights back. v3 — all fangs out.**
+**Your coffee pot is a mesh node. Your teapot fights back. v4.0.0 — all fangs out.**
 
 ---
 
@@ -218,7 +218,7 @@ The `cpip` command-line client communicates with a running CPIP server.
 
 ## Web Dashboard
 
-CPIP v3 includes a refined single-page application dashboard served at `/dashboard`.
+CPIP v4.0.0 includes a refined single-page application dashboard served at `/dashboard`.
 Six tabs provide real-time control and monitoring with a streamlined, professional UI:
 
 | Tab | Features |
@@ -364,7 +364,7 @@ The dashboard Covert tab provides:
 
 ## Cryptography
 
-All cryptographic primitives in CPIP v3 use FIPS-compliant algorithms via the
+All cryptographic primitives in CPIP v4.0.0 use FIPS-compliant algorithms via the
 `cryptography` library, which provides constant-time implementations. The
 `secrets` module replaces `random` for all security-relevant operations.
 Post-quantum KEM is available via the `b4dm4n-cw` CLI (Non-FIPS).
@@ -429,7 +429,7 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 
 ### Encrypted Persistence
 
-- v3 format with AES-256-GCM encryption and HMAC integrity verification
+- v4 format with AES-256-GCM encryption and HMAC integrity verification
 - v1/v2 backward-compatible load
 - Data at rest encrypted with HMAC integrity
 
@@ -440,7 +440,7 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 
 ## TLS/SSL (HTTPS)
 
-CPIP v3 includes built-in HTTPS support with three modes:
+CPIP v4.0.0 includes built-in HTTPS support with three modes:
 
 ### Auto Self-Signed Certificates
 
@@ -518,7 +518,7 @@ Pi-Apps catalog for one-click install.
 
 ```ini
 [Unit]
-Description=CPIP v3.0 — Coffee Pot Internet Protocol
+Description=CPIP v4.0.0 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -549,7 +549,7 @@ Produces `radio_if` — standalone binary, zero external dependencies.
 
 ## Kubernetes
 
-CPIP v3 includes production-ready Kubernetes manifests for self-hosting.
+CPIP v4.0.0 includes production-ready Kubernetes manifests for self-hosting.
 
 ### Quick Deploy
 
@@ -596,10 +596,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:3.0.0 .
+docker build -t cpip:4.0.0 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:3.0.0
+  cpip:4.0.0
 ```
 
 ### Access
@@ -983,7 +983,7 @@ background scan/reaction loop.
 ## Project Structure
 
 ```
-├── server.py              # Main server (~6700 lines, zero deps, v3.0)
+├── server.py              # Main server (~10000 lines, v4.0.0)
 ├── cpip                 # CLI client (bash script)
 ├── deploy.sh              # Raspberry Pi deployment script
 ├── deploy_cpip.sh       # Minimal HTCPCP-only deployment
@@ -995,7 +995,7 @@ background scan/reaction loop.
 ├── SECURITY.md
 ├── CODE_OF_CONDUCT.md
 ├── web/
-│   └── index.html         # Web dashboard SPA (v3)
+│   └── index.html         # Web dashboard SPA (v4)
 ├── k8s/
 │   ├── deployment.yaml    # Kubernetes manifests (Deployment, Service, Ingress, etc.)
 │   └── kustomization.yaml # Kustomize configuration
@@ -1046,5 +1046,5 @@ The CoffeeCipher v3 uses FIPS-compliant cryptographic primitives
   Brew responsibly.
   Mesh securely.
   Never trust a teapot.
-  v3 — all fangs out.
+  v4.0.0 — all fangs out.
 ```
