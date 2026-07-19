@@ -80,6 +80,38 @@ The RSA-KEM implementation in CPIP uses FIPS-compliant primitives:
 - **Format**: v3 encrypted persistence format; v1/v2 data loads with backward-compatible
   migration path (v1/v2 is transparently upgraded on next write)
 
+## FIPS 140-2/3 Mode
+
+CPIP supports an optional **FIPS mode** (`CPIP_FIPS=1`) that gates server startup on a
+cryptographic self-test suite:
+
+- **Self-tests run at startup**: AES-256-GCM encrypt/decrypt roundtrip, ECDSA P-256
+  sign/verify, and ECDH P-256 key exchange — all verified before the server binds.
+- **Self-test failure blocks startup**: If any self-test fails, the server exits with
+  a non-zero status and logs the failure reason.
+- **FIPS-compliant algorithms at runtime**: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256
+  (FIPS 186-4), SHA-256 (FIPS 180-4) — all via the `cryptography` library.
+- **FIPS mode is optional**: When `CPIP_FIPS` is unset or `0` (the default), self-tests
+  still run as a warm-up but a failure logs a warning rather than blocking startup.
+- **Not a FIPS-validated module**: CPIP uses FIPS-allowed algorithms but is not itself
+  FIPS 140-2/3 certified. The `cryptography` library's FIPS provider can be used as
+  the underlying backend.
+
+## HSM (PKCS#11) Support
+
+CPIP can delegate cryptographic operations to a Hardware Security Module via PKCS#11:
+
+| Env Variable | Default | Description |
+|--------------|---------|-------------|
+| `CPIP_HSM_MODULE` | `""` | Path to PKCS#11 module (.so) |
+| `CPIP_HSM_PIN` | `""` | PKCS#11 PIN |
+| `CPIP_HSM_TOKEN_LABEL` | `"cpip"` | Token label to select |
+
+- Requires the `python-pkcs11` library
+- When configured, cryptographic keys can be generated and stored on the HSM
+- Falls back to software crypto gracefully when HSM is unavailable or unconfigured
+- Ideal for production deployments requiring hardware-backed key storage
+
 ## Network Security
 
 - **TLS/SSL**: Built-in HTTPS support with auto-generated self-signed certificates or custom certs. HTTP→HTTPS redirect available.
@@ -165,9 +197,7 @@ CPIP is designed for operation in hostile signal environments:
 
 ## What CPIP Is NOT Designed For
 
-- FIPS 140-2/3 validation (uses FIPS-compliant algorithms but is not itself a validated module)
-- Protecting classified/sensitive information requiring formal certification
-- Environments requiring hardware security modules (HSMs)
+- FIPS 140-2/3 validation of the module itself (uses FIPS-compliant algorithms but is not a validated cryptographic module)
 
 ## Incident Response
 

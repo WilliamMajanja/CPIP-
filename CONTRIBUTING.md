@@ -18,7 +18,7 @@ participating, you are expected to uphold its terms.
 
 ## What We Do Not Accept
 
-- Pull requests that add external Python dependencies beyond `cryptography`
+- Pull requests that add external Python dependencies beyond the existing set (`cryptography`, `pqcrypto`, `numpy`, `opentui`)
 - Changes that break RFC 2324 or RFC 7168 compliance
 - Removal of the 418 "I'm a teapot" defense
 
@@ -36,7 +36,7 @@ participating, you are expected to uphold its terms.
   but be consistent with the surrounding code)
 - C: `gcc -O2 -Wall -pthread` clean, zero warnings
 - Bash: `set -euo pipefail`, `bash -n` clean
-- No external dependencies beyond `cryptography`. Python standard library + `cryptography`
+- External dependencies: `cryptography`, `pqcrypto`, `numpy`, `opentui`. Python standard library otherwise.
   for crypto. gcc + POSIX only for C code.
 
 ## Commit Messages
@@ -56,7 +56,14 @@ Examples:
 
 ## Testing
 
-No formal test framework is used. Verify your changes by:
+Run the test suite before submitting:
+
+```bash
+python3 -m pytest test_crypto.py -v     # 99 cryptographic unit tests
+python3 -m pytest test_cpip.py -v       # 50 server integration tests
+```
+
+Verify the server starts and responds:
 
 ```bash
 python3 server.py &
