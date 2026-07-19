@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cpip"
-version = "3.0.0"
+version = "4.0.2"
 description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
 readme = "README.md"
 license = {text = "Unlicense"}
@@ -19,7 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
-dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0"]
+dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0", "opentui >= 1.0.0"]
 
 [project.scripts]
 cpip-server = "server:main"

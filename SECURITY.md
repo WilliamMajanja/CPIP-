@@ -1,6 +1,6 @@
 # Security Policy
 
-> **Cryptographic Primitives**: CPIP v3 uses FIPS-compliant cryptographic primitives
+> **Cryptographic Primitives**: CPIP v4 uses FIPS-compliant cryptographic primitives
 > for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
 > RSA-KEM-2048 (FIPS 186-4 / SP 800-56B), HKDF-SHA256, and HMAC-SHA256.
 > All constant-time operations use the `cryptography` library. The `secrets`
@@ -15,7 +15,7 @@
 
 ## Cryptographic Architecture
 
-CPIP v3.0+ uses a layered cryptographic architecture built on FIPS-compliant
+CPIP v4.0+ uses a layered cryptographic architecture built on FIPS-compliant
 primitives, with optional post-quantum KEM layer, designed for hostile signal environments:
 
 ### Encryption (CoffeeCipher v3 / AES-256-GCM)

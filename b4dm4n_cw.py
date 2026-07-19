@@ -63,48 +63,32 @@ BANNER = r"""
 """
 
 COFFEE_SNAKE = r"""
-                         ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-                      ▄████████████████████████████████████████▄
-                     █████████████████████████████████████████████
-                    ███████████████████████████████████████████████
-                   █████████████████████████████████████████████████
-                  ███████████████████████████████████████████████████
-                 █████████████████████████████████████████████████████
-                ███████████████████████████████████████████████████████
-                ████████████████████████████████████████████████████████
-                 ███████████████████████████████████████████████████████
-                  ██████████████████████████████████████████████████████
-                   ████████████████████████████████████████████████████
-                    ██████████████████████████████████████████████████
-                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-                          │              ☕
-                          │             ╱╲
-                          │            ╱██╲
-                          ▼           ╱████╲
-                         ▄████████████████████▄
-                        ████████████████████████
-                       ██████████████████████████
-                      ████████████████████████████
-                     ██████████████████████████████
-                    ████████████████████████████████
-                   ██████████████████████████████████
-                   ██████████████████████████████████
-                    ████████████████████████████████
-                     ██████████████████████████████
-                      ████████████████████████████
-                       ██████████████████████████
-                        ████████████████████████
-                         ██████████████████████
-                          ████████████████████
-                           ██████████████████
-                            ████████████████
-                             ██████████████
-                              ████████████
-                               ██████████
-                                ████████
-                                 ██████
-                                  ████
-                                   ██
+      .-----------------------.
+      |   ☕  COFFEE  POT     |
+      |     _______________   |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |_______________|  |
+      '----------+-----------'
+                 |
+               ==+==
+              ====+====
+             =====+=====
+            ======+======
+           =======+=======
+          ========+========
+         =========+=========
+        ==========+==========
+       ===========+===========
+      .============+============.
+      |       / O  O \           |
+      |       \  ~~  /           |
+      |        |____|            |
+      |         |  |             |
+      |         |  |             |
+      |          \/              |
+      '-------------------------'
 """
 
 def _out(msg, style=None):
@@ -553,9 +537,9 @@ def cmd_sign(args):
     h._banner()
 
     try:
-        from server import Ed25519
+        from server import ECP256
     except ImportError:
-        h._err("Ed25519 not available")
+        h._err("ECP256 not available")
         return
 
     seed_file = args.seed
@@ -578,7 +562,7 @@ def cmd_sign(args):
         h._info(f"Signing stdin ({len(message)} bytes)")
 
     start = time.perf_counter()
-    sig = Ed25519.sign(message, seed)
+    sig = ECP256.sign(message, seed)
     elapsed = (time.perf_counter() - start) * 1000
 
     if args.output:
@@ -598,9 +582,9 @@ def cmd_verify(args):
     h._banner()
 
     try:
-        from server import Ed25519
+        from server import ECP256
     except ImportError:
-        h._err("Ed25519 not available")
+        h._err("ECP256 not available")
         return
 
     with open(args.signature, "rb") as f:
@@ -618,7 +602,7 @@ def cmd_verify(args):
 
     try:
         start = time.perf_counter()
-        valid = Ed25519.verify(message, sig, pk)
+        valid = ECP256.verify(message, sig, pk)
         elapsed = (time.perf_counter() - start) * 1000
         if valid:
             h._ok(f"VALID signature ({elapsed:.2f} ms)")
@@ -633,14 +617,14 @@ def cmd_ecdh(args):
     h._banner()
 
     try:
-        from server import Ed25519
+        from server import ECP256
     except ImportError:
-        h._err("Ed25519 not available")
+        h._err("ECP256 not available")
         return
 
     if args.generate:
         h._info("Generating ECDH keypair (P-256)")
-        pk, seed, _, _ = Ed25519.generate_keypair()
+        pk, seed, _, _ = ECP256.generate_keypair()
         if args.output:
             with open(args.output + ".ecpk", "wb") as f:
                 f.write(pk)
@@ -660,7 +644,7 @@ def cmd_ecdh(args):
             peer_pk = f.read()
         h._info("Performing ECDH key agreement")
         start = time.perf_counter()
-        shared = Ed25519.key_exchange(seed, peer_pk)
+        shared = ECP256.key_exchange(seed, peer_pk)
         elapsed = (time.perf_counter() - start) * 1000
         _out(f"\n  Shared Secret ({len(shared)} bytes):", style="bold green")
         _out(f"  {shared.hex()}")
@@ -956,8 +940,11 @@ def cmd_info(args):
 def cmd_interactive(args):
     _out(BANNER, style="bold yellow")
     _out(COFFEE_SNAKE, style="yellow")
-    _out("\n  Cipher Workbench Interactive Mode", style="bold cyan")
-    _out("  Type 'help' for commands, 'quit' to exit.\n", style="dim")
+    _out("\n  ╔═══════════════════════════════════════════════════════════════╗", style="bold cyan")
+    _out("  ║        b4dm4n-cw  TUI  —  Interactive Cipher Workbench      ║", style="bold cyan")
+    _out("  ║     \"brew crypto. stay paranoid. survive.\"                   ║", style="bold cyan")
+    _out("  ╚═══════════════════════════════════════════════════════════════╝", style="bold cyan")
+    _out("\n  Type 'help' for commands, 'quit' to exit.\n", style="dim")
 
     session_keys = {}
     session_recipe = "espresso"
@@ -1194,11 +1181,11 @@ def cmd_interactive(args):
             with open(rest[1], "rb") as f:
                 seed = f.read()
             try:
-                from server import Ed25519
-                sig = Ed25519.sign(msg, seed)
+                from server import ECP256
+                sig = ECP256.sign(msg, seed)
                 _out(f"  Signature ({len(sig)} bytes): {sig[:32].hex()}...", style="green")
             except ImportError:
-                _out("  Ed25519 not available", style="red")
+                _out("  ECP256 not available", style="red")
 
         elif cmd == "analyze":
             if not rest:
@@ -1360,6 +1347,8 @@ Examples:
     p.set_defaults(func=cmd_info)
 
     p = sub.add_parser("interactive", help="Interactive cipher workbench REPL")
+    p.set_defaults(func=cmd_interactive)
+    p = sub.add_parser("tui", help="Terminal UI (launches interactive REPL)")
     p.set_defaults(func=cmd_interactive)
 
     p = sub.add_parser("coffee", help="Display Coffee Protocol art")

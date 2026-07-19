@@ -3,7 +3,7 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-4.0.1-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-4.0.2-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
@@ -12,6 +12,14 @@
 [![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
 [![K8s](https://img.shields.io/badge/Kubernetes-ready-326CE5.svg)]()
 [![GPIO](https://img.shields.io/badge/GPIO-Raspberry%20Pi-green.svg)]()
+[![FIPS](https://img.shields.io/badge/FIPS-197%20%7C%20186--4%20%7C%20180--4-blue.svg)]()
+[![HSM](https://img.shields.io/badge/HSM-PKCS%2311-orange.svg)]()
+[![Anti-ISP](https://img.shields.io/badge/Anti--ISP-STUN%20%7C%20UPnP%20%7C%20DNS%20Tunnel%20%7C%20WSS%20%7C%20DoH-red.svg)]()
+[![Anti-Stingray](https://img.shields.io/badge/Anti--Stingray-IMSI%20Catcher%20Detection-red.svg)]()
+[![Anti-Surveillance](https://img.shields.io/badge/Anti--Surveillance-DPI%20%7C%20Obfuscation%20%7C%20Metadata%20Strip-red.svg)]()
+[![Net Neutrality](https://img.shields.io/badge/Net%20Neutrality-BW%20Monitor%20%7C%20Masquerade%20%7C%20Fragmentation-red.svg)]()
+[![TUI](https://img.shields.io/badge/TUI-OpenTUI-brightgreen.svg)]()
+[![b4dm4n-cw](https://img.shields.io/badge/b4dm4n--cw-Cipher%20Workbench-yellowgreen.svg)]()
 
 Implementation of RFC 2324 (HTCPCP) and RFC 7168 (HTCPCP-TEA) with mesh networking, multi-transport routing, cryptographic defense, and active network defense.
 
@@ -167,6 +175,7 @@ The `cpip` command-line client communicates with a running CPIP server.
 | `cpip ecc resolve <addr>` | Resolve ECC address |
 | `cpip deaddrop list` | List dead-drop messages |
 | `cpip deaddrop claim <id>` | Claim a dead-drop message |
+| `cpip tui [host] [port]`                | Launch Terminal UI (OpenTUI)        |
 | `cpip itf status` | Full defense posture |
 | `cpip itf blacklist` | List blacklisted IPs |
 | `cpip itf whitelist <addr>` | Remove IP from blacklist |
@@ -322,7 +331,7 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 - Coffee recipe binding: Recipe string mixed into KDF
 - Key confirmation: Re-encapsulation check (implicit rejection via KDF with z)
 - Sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B
-- CLI: `b4dm4n-cw {keygen,encaps,decaps,bench,info}`
+- CLI: `b4dm4n-cw {keygen,encaps,decaps,bench,info,tui}`
 
 ### Hybrid PQ+Classical
 
@@ -330,7 +339,7 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 - Key derivation: HKDF-SHA3-256 from combined ECDH + Kyber shared secrets
 - Secure if either component holds
 - Sizes: PK~1251B, SK~2432B, CT~1187B, SS=32B
-- CLI: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps}`
+- CLI: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps,tui}`
 
 ### HMAC-SHA256
 
@@ -405,7 +414,7 @@ Copy the `pi-apps/` directory to `~/.local/share/pi-apps/apps/Coffee-Protocol/` 
 
 ```ini
 [Unit]
-Description=CPIP v4.0.1 — Coffee Pot Internet Protocol
+Description=CPIP v4.0.2 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -472,10 +481,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:4.0.1 .
+docker build -t cpip:4.0.2 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:4.0.1
+  cpip:4.0.2
 ```
 
 ### Access
@@ -549,7 +558,7 @@ All configuration is via environment variables. No configuration files are requi
 | `CPIP_SAT_TIMEOUT` | `10` | Peer timeout (seconds) |
 | `CPIP_SAT_HEARTBEAT` | `60` | Heartbeat interval (seconds) |
 
-`CPIP_STARLINK_*` env vars are accepted as backward-compatible aliases.
+
 
 ### Radio Transport
 
@@ -576,7 +585,7 @@ All configuration is via environment variables. No configuration files are requi
 | `CPIP_MOBILE_HEARTBEAT` | `120` | Heartbeat interval (seconds) |
 | `CPIP_MOBILE_KEEPALIVE` | `30` | Keepalive interval (seconds) |
 
-`CPIP_CELLULAR_*` env vars are accepted as backward-compatible aliases.
+
 
 ### ITF Defense
 

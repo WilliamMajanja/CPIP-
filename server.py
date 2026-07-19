@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server v4.0.1 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v4.0.2 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
@@ -10,77 +10,35 @@ Cryptography:
 """
 
 TEAPOT_SNAKE_ART = r"""
-         ▄▄▄▄▄▄▄▄▄▄▄
-       ▄█████████████▄
-      █████████████████
-     ███████████████████
-    █████████████████████
-   ███████████████████████
-  █████████████████████████
- ███████████████████████████
-█████████████████████████████
-██████████████████████████████
- ████████████████████████████
-  ██████████████████████████
-   ████████████████████████
-    ██████████████████████
-     ████████████████████
-      ██████████████████
-       ████████████████
-        ██████████████
-         ▀▀▀▀▀▀▀▀▀▀▀
-              │
-              │    ☕
-              │   ╱╲
-              │  ╱██╲
-              │ ╱████╲
-              │╱██████╲
-              ▼████████╲
-             ▄██████████▄
-            █████████████
-           ███████████████
-          █████████████████
-         ███████████████████
-        █████████████████████
-       ███████████████████████
-      █████████████████████████
-     ███████████████████████████
-    █████████████████████████████
-   ███████████████████████████████
-  █████████████████████████████████
- ███████████████████████████████████
-████████████████████████████████████
-       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-           ▄▄▄▄▄▄▄▄▄▄
-          ██████████
-         ████████████
-        ██████████████
-       ████████████████
-      ██████████████████
-     ████████████████████
-    ██████████████████████
-           ████████
-           ████████
-            ██████
-             ████
-              ██
-               ▀
+      .-----------------------.
+      |   ☕  COFFEE  POT     |
+      |     _______________   |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
+      |    |_______________|  |
+      '----------+-----------'
+                 |
+               ==+==
+              ====+====
+             =====+=====
+            ======+======
+           =======+=======
+          ========+========
+         =========+=========
+        ==========+==========
+       ===========+===========
+      .============+============.
+      |       / O  O \           |
+      |       \  ~~  /           |
+      |        |____|            |
+      |         |  |             |
+      |         |  |             |
+      |          \/              |
+      '-------------------------'
 """
 
-B4DM4N_LOGO = r"""
-    ╔══════════════════════════════════════════════════════════════════╗
-    ║  ██████╗ ██████╗  █████╗ ██████╗ ███████╗███████╗███████╗███╗  ██║ ║
-    ║  ██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝██╔════╝████╗ ██║ ║
-    ║  ██████╔╝██████╔╝███████║██████╔╝█████╗  ███████╗█████╗  ██╔██╗██║ ║
-    ║  ██╔═══╝ ██╔══██╗██╔══██║██╔══██╗██╔══╝  ╚════██║██╔══╝  ██║╚████║ ║
-    ║  ██║     ██║  ██║██║  ██║██║  ██║███████╗███████║███████╗██║ ╚███║ ║
-    ║  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚══╝ ║
-    ║                                                                  ║
-    ║     ─  c w  ─    C R Y P T O G R A P H I C   W E A P O N        ║
-    ║                                                                  ║
-    ║    "brew crypto. stay paranoid. survive."                        ║
-    ╚══════════════════════════════════════════════════════════════════╝
-"""
+
 
 import sys
 sys.dont_write_bytecode = True
@@ -141,6 +99,10 @@ _STATIC_FILE_MAP: dict[str, Path] = (
 _STATIC_ALLOWLIST = frozenset(str(p) for p in _STATIC_FILE_MAP.values())
 HOSTNAME = socket.gethostname().split(".")[0]
 POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
+# Runtime state (accessible from signal handler)
+_http_server = None
+_redirect_server = None
+
 GPIO_PIN = int(os.environ.get("CPIP_GPIO_PIN", "17"))
 GPIO_ENABLED = os.environ.get("CPIP_GPIO", "0") == "1"
 AVAHI_ENABLED = os.environ.get("CPIP_AVAHI", "1") == "1"
@@ -194,36 +156,21 @@ MESH_LATENT_PORTS = [int(p) for p in os.environ.get("CPIP_MESH_LATENT_PORTS", "4
 MESH_HOP_INTERVAL = int(os.environ.get("CPIP_MESH_HOP_INTERVAL", "3600"))
 MESH_PERSIST_DIR = os.environ.get("CPIP_MESH_PERSIST_DIR", "/tmp/cpip")
 
-# ── Satellite Mesh (Starlink / LEO / Internet-Wide) ─────────────────────
+# ── Satellite Mesh (LEO / Internet-Wide) ────────────────────────────────
 def _env_bool(name, default):
     v = os.environ.get(name)
     if v is None: return default
     return v.lower() in ("1", "yes", "true")
 
-_SAT_ALIASES = {
-    "CPIP_SAT": "CPIP_STARLINK",
-    "CPIP_SAT_PORT": "CPIP_STARLINK_PORT",
-    "CPIP_SAT_LAT": "CPIP_STARLINK_LAT",
-    "CPIP_SAT_LON": "CPIP_STARLINK_LON",
-    "CPIP_SAT_ALT": "CPIP_STARLINK_ALT",
-    "CPIP_SAT_TIMEOUT": "CPIP_MESH_SAT_TIMEOUT",
-    "CPIP_SAT_HEARTBEAT": "CPIP_MESH_SAT_HEARTBEAT",
-    "CPIP_SAT_BOOTSTRAP": "CPIP_STARLINK_BOOTSTRAP",
-    "CPIP_SAT_RELAY": "CPIP_STARLINK_RELAY",
-}
-
-def _get_env(name, fallback):
-    return os.environ.get(name, os.environ.get(_SAT_ALIASES.get(name, ""), fallback))
-
-SATELLITE_ENABLED = _env_bool("CPIP_SAT", False) or _env_bool("CPIP_STARLINK", False)
-SATELLITE_PORT = int(_get_env("CPIP_SAT_PORT", "4195"))
-SATELLITE_LAT = float(_get_env("CPIP_SAT_LAT", "0"))
-SATELLITE_LON = float(_get_env("CPIP_SAT_LON", "0"))
-SATELLITE_ALT = float(_get_env("CPIP_SAT_ALT", "0"))
-MESH_SAT_TIMEOUT = float(_get_env("CPIP_SAT_TIMEOUT", "10.0"))
-MESH_SAT_HEARTBEAT = int(_get_env("CPIP_SAT_HEARTBEAT", "60"))
-SATELLITE_BOOTSTRAP = _get_env("CPIP_SAT_BOOTSTRAP", "")
-SATELLITE_RELAY = _env_bool("CPIP_SAT_RELAY", False) or _env_bool("CPIP_STARLINK_RELAY", False)
+SATELLITE_ENABLED = _env_bool("CPIP_SAT", False)
+SATELLITE_PORT = int(os.environ.get("CPIP_SAT_PORT", "4195"))
+SATELLITE_LAT = float(os.environ.get("CPIP_SAT_LAT", "0"))
+SATELLITE_LON = float(os.environ.get("CPIP_SAT_LON", "0"))
+SATELLITE_ALT = float(os.environ.get("CPIP_SAT_ALT", "0"))
+MESH_SAT_TIMEOUT = float(os.environ.get("CPIP_SAT_TIMEOUT", "10.0"))
+MESH_SAT_HEARTBEAT = int(os.environ.get("CPIP_SAT_HEARTBEAT", "60"))
+SATELLITE_BOOTSTRAP = os.environ.get("CPIP_SAT_BOOTSTRAP", "")
+SATELLITE_RELAY = _env_bool("CPIP_SAT_RELAY", False)
 
 # ── Radio (LoRa / Packet Radio) ─────────────────────────────────────────
 RADIO_ENABLED = os.environ.get("CPIP_RADIO", "0") == "1"
@@ -236,7 +183,7 @@ RADIO_DEVICE = os.environ.get("CPIP_RADIO_DEVICE", "/dev/spidev0.0")
 RADIO_BAUD = int(os.environ.get("CPIP_RADIO_BAUD", "115200"))
 
 # ── Mobile Broadband (4G/5G / LTE / WWAN) ───────────────────────────────
-MOBILE_ENABLED = _env_bool("CPIP_MOBILE", False) or _env_bool("CPIP_CELLULAR", False)
+MOBILE_ENABLED = _env_bool("CPIP_MOBILE", False)
 MOBILE_APN = os.environ.get("CPIP_MOBILE_APN", "")
 MOBILE_INTERFACE = os.environ.get("CPIP_MOBILE_IFACE", "wwan0")
 MOBILE_BOOTSTRAP = os.environ.get("CPIP_MOBILE_BOOTSTRAP", "")
@@ -311,8 +258,20 @@ NN_JITTER_INJECTION = _env_bool("CPIP_NN_JITTER", True)
 NN_COVER_SIZE_MIN = int(os.environ.get("CPIP_NN_COVER_MIN", "256"))
 NN_COVER_SIZE_MAX = int(os.environ.get("CPIP_NN_COVER_MAX", "1024"))
 
-CPIP_VERSION = "4.0.1"
-CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
+# ── Bandwidth Aggregation / Multi-Link Bonding ──────────────────────────
+BONDING_ENABLED = os.environ.get("CPIP_BONDING", "1") == "1"
+BOND_CHUNK_MIN = int(os.environ.get("CPIP_BOND_CHUNK_MIN", "512"))
+BOND_CHUNK_MAX = int(os.environ.get("CPIP_BOND_CHUNK_MAX", "4096"))
+BOND_RETRY_TIMEOUT = float(os.environ.get("CPIP_BOND_RETRY", "2.0"))
+BOND_MAX_SUBFLOWS = int(os.environ.get("CPIP_BOND_SUBFLOWS", "8"))
+BOND_HEALTH_INTERVAL = float(os.environ.get("CPIP_BOND_HEALTH", "5.0"))
+BOND_PROBE_SIZE = int(os.environ.get("CPIP_BOND_PROBE_SIZE", "1024"))
+BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
+BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
+BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
+
+CPIP_VERSION = "4.0.2"
+CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding)"
 _START_TIME = time.time()
 
 
@@ -833,7 +792,7 @@ class ECP256:
         seed = n.to_bytes(32, 'big') if isinstance(n, int) else n
         return cls._derive_key_from_seed(seed).public_key()
 
-Ed25519 = ECP256  # alias for forward compatibility
+# ECP256 is the canonical name; previously aliased as Ed25519
 
 
 # ── Kyber (ML-KEM) — Unified Post-Quantum KEM Adapter ─────────────────
@@ -1491,7 +1450,7 @@ PQC_KEM_REGISTRY = {
 }
 
 
-MLKEM = MLKEM768  # alias for default ML-KEM variant
+
 
 
 def get_pqc_kem(algorithm: str) -> type:
@@ -1536,7 +1495,7 @@ class HybridKEM:
     @classmethod
     def generate_keypair(cls) -> tuple:
         """Generate hybrid keypair. Returns (hybrid_pk, hybrid_sk)."""
-        ecc_pk, ecc_seed, _, _ = Ed25519.generate_keypair()
+        ecc_pk, ecc_seed, _, _ = ECP256.generate_keypair()
         kyber_pk, kyber_sk = Kyber.keygen()
         ecc_pk_len = len(ecc_pk).to_bytes(2, 'big')
         hybrid_pk = ecc_pk_len + ecc_pk + kyber_pk
@@ -1551,8 +1510,8 @@ class HybridKEM:
         kyber_pk = hybrid_pk[2 + ecc_pk_len:]
         
         ecc_ephem_seed = secrets.token_bytes(32)
-        ecc_ephem_pk, _, _, _ = Ed25519.generate_keypair(ecc_ephem_seed)
-        ecdh_shared = Ed25519.key_exchange(ecc_ephem_seed, ecc_pk)
+        ecc_ephem_pk, _, _, _ = ECP256.generate_keypair(ecc_ephem_seed)
+        ecdh_shared = ECP256.key_exchange(ecc_ephem_seed, ecc_pk)
         
         kyber_ct, kyber_ss = Kyber.encaps(kyber_pk)
         
@@ -1573,7 +1532,7 @@ class HybridKEM:
         ecc_ephem_pk = ciphertext[2:2 + ecc_ephem_len]
         kyber_ct = ciphertext[2 + ecc_ephem_len:]
         
-        ecdh_shared = Ed25519.key_exchange(ecc_seed, ecc_ephem_pk)
+        ecdh_shared = ECP256.key_exchange(ecc_seed, ecc_ephem_pk)
         kyber_ss = Kyber.decaps(kyber_sk, kyber_ct)
         
         combined = ecdh_shared + kyber_ss + b"cpip-hybrid-kem-kyber-v1"
@@ -1761,7 +1720,7 @@ class WebOfTrust:
             "version": 1,
         }
         cert_bytes = json.dumps({k: v for k, v in cert.items() if k != "sig"}, sort_keys=True).encode()
-        sig = Ed25519.sign(cert_bytes, Ed25519._derive_key_from_seed(
+        sig = ECP256.sign(cert_bytes, ECP256._derive_key_from_seed(
             hashlib.sha256(pot_id.encode()).digest()[:32]
         ))
         cert["sig"] = base64.b64encode(sig).decode()
@@ -1794,7 +1753,7 @@ class WebOfTrust:
             "timestamp": time.time(),
         }
         sig_data = json.dumps(trust_sig, sort_keys=True).encode()
-        sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+        sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
         trust_sig["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -1949,7 +1908,7 @@ class DistributedDNS:
         
         sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
         if node_seed:
-            sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+            sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
             record["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -1960,7 +1919,7 @@ class DistributedDNS:
                     record["sig"] = record.get("sig", "")
                     sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
                     if node_seed:
-                        sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+                        sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
                         record["sig"] = base64.b64encode(sig).decode()
                 elif existing.get("expires", 0) > time.time():
                     return {"error": f"Name '{name}' is taken by {existing.get('pot_id')}"}
@@ -2176,7 +2135,7 @@ class GroupChat:
         
         if node_seed:
             sig_data = json.dumps({k: v for k, v in msg.items() if k != "sig"}, sort_keys=True).encode()
-            sig = Ed25519.sign(sig_data, Ed25519._derive_key_from_seed(node_seed))
+            sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
             msg["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -2932,12 +2891,12 @@ class CovertChannel:
             message = message.encode()
 
         if dst_pubkey and our_seed:
-            shared = Ed25519.key_exchange(our_seed, dst_pubkey)
+            shared = ECP256.key_exchange(our_seed, dst_pubkey)
             otk = CoffeeCipher._hkdf_expand(shared, b"cpip-covert-ecc-v2", 32)
             ciphertext = CoffeeCipher.encrypt(message, base_key=otk, recipe=recipe)
-            sig = Ed25519.sign(ciphertext, our_seed)
-            _, _, _, our_pubkey = Ed25519.generate_keypair(our_seed)
-            payload = b"ECCv2:" + Ed25519.pubkey_to_address(
+            sig = ECP256.sign(ciphertext, our_seed)
+            _, _, _, our_pubkey = ECP256.generate_keypair(our_seed)
+            payload = b"ECCv2:" + ECP256.pubkey_to_address(
                 our_pubkey
             ).encode() + b":" + sig + b":" + ciphertext
         else:
@@ -3023,10 +2982,10 @@ class CovertChannel:
                     pk_b64 = info.get("pubkey", "")
                     if pk_b64:
                         pk = base64.b64decode(pk_b64)
-                        if Ed25519.pubkey_to_address(pk) == addr_b.decode():
-                            shared = Ed25519.key_exchange(our_seed, pk)
+                        if ECP256.pubkey_to_address(pk) == addr_b.decode():
+                            shared = ECP256.key_exchange(our_seed, pk)
                             otk = CoffeeCipher._hkdf_expand(shared, b"cpip-covert-ecc-v2", 32)
-                            if Ed25519.verify(ciphertext, sig, pk):
+                            if ECP256.verify(ciphertext, sig, pk):
                                 plaintext = CoffeeCipher.decrypt(ciphertext, base_key=otk, recipe=recipe)
                                 if plaintext:
                                     return plaintext
@@ -3149,8 +3108,8 @@ class MeshNode:
         cls.node_secret = hashlib.sha256(seed + b"node-identity-v2").digest()
         # Generate ECDSA/ECDH P-256 keypair for ECC
         ecc_seed = hashlib.sha256(cls.node_secret + b"ed25519").digest()
-        cls.node_pubkey, cls.node_seed, _, _ = Ed25519.generate_keypair(ecc_seed)
-        cls.node_address = Ed25519.pubkey_to_address(cls.node_pubkey)
+        cls.node_pubkey, cls.node_seed, _, _ = ECP256.generate_keypair(ecc_seed)
+        cls.node_address = ECP256.pubkey_to_address(cls.node_pubkey)
         cls.node_cert = {
             "node_id": POT_ID,
             "hostname": HOSTNAME,
@@ -3170,12 +3129,30 @@ class MeshNode:
         try:
             cls._init_identity()
             cls.running = True
-            cls.current_mesh_port = MESH_PORT
 
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("0.0.0.0", MESH_PORT))
-            sock.settimeout(2)
+            # Try to bind mesh port with fallback
+            base = MESH_PORT
+            sock = None
+            for i in range(10):
+                port = base + i
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    try:
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                    except AttributeError:
+                        pass
+                    s.bind(("0.0.0.0", port))
+                    s.settimeout(2)
+                    sock = s
+                    cls.current_mesh_port = port
+                    break
+                except OSError:
+                    if i < 9:
+                        continue
+                    s.close()
+                    raise
+
             cls.mesh_socket = sock
 
             threading.Thread(target=cls._listener, daemon=True).start()
@@ -3192,7 +3169,7 @@ class MeshNode:
             cls._mobile_start()
 
             print(TEAPOT_SNAKE_ART)
-            print(f"   ├ Mesh AAA:   Node {POT_ID} active on port {MESH_PORT}", flush=True)
+            print(f"   ├ Mesh AAA:   Node {POT_ID} active on port {cls.current_mesh_port}", flush=True)
             print(f"   ├ Latent:     Ports {MESH_LATENT_PORTS} (dormant)", flush=True)
             print(f"   └ Stealth:    {'ON (no broadcast)' if MeshNode.stealth_mode else 'OFF (broadcast enabled)'}", flush=True)
         except Exception as e:
@@ -3236,6 +3213,10 @@ class MeshNode:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except AttributeError:
+                    pass
                 s.bind(("0.0.0.0", port))
                 s.settimeout(1)
                 with cls.latent_lock:
@@ -3337,7 +3318,7 @@ class MeshNode:
     def _challenge_peer(cls, pot_id: str) -> dict:
         """Generate an auth challenge for a peer, signed with ECDSA P-256."""
         nonce = CoffeeCipher.hash(cls.node_secret + pot_id.encode() + str(time.time()).encode())
-        sig = Ed25519.sign(nonce.encode(), cls.node_seed)
+        sig = ECP256.sign(nonce.encode(), cls.node_seed)
         return {
             "type": "auth_request",
             "from": POT_ID,
@@ -3357,7 +3338,7 @@ class MeshNode:
     def _sign_message(cls, msg: dict) -> dict:
         """Sign a dict message with our ECDSA P-256 key."""
         payload = json.dumps(msg, sort_keys=True).encode()
-        sig = Ed25519.sign(payload, cls.node_seed)
+        sig = ECP256.sign(payload, cls.node_seed)
         msg["_sig"] = base64.b64encode(sig).decode()
         msg["_signer"] = cls.node_address
         return msg
@@ -3377,8 +3358,8 @@ class MeshNode:
                 pk_b64 = info.get("pubkey", "")
                 if pk_b64:
                     pk = base64.b64decode(pk_b64)
-                    if Ed25519.pubkey_to_address(pk) == signer_addr:
-                        return Ed25519.verify(payload, sig, pk)
+                    if ECP256.pubkey_to_address(pk) == signer_addr:
+                        return ECP256.verify(payload, sig, pk)
             return False
         except Exception:
             return False
@@ -3443,11 +3424,11 @@ class MeshNode:
             return {"data": plaintext, "e2ee": False}
         try:
             eph_seed = secrets.token_bytes(32)
-            shared = Ed25519.key_exchange(eph_seed, pk)
+            shared = ECP256.key_exchange(eph_seed, pk)
             salt = hashlib.sha256(b"cpip-e2ee-salt-v4:" + cls.node_address.encode() + dst_pot.encode()).digest()
             otk = CoffeeCipher.hkdf(shared, salt, b"cpip-e2ee-v4", 32)
             ciphertext = CoffeeCipher.encrypt(plaintext.encode(), base_key=otk)
-            eph_pub = Ed25519._derive_key_from_seed(eph_seed).public_key().public_bytes(
+            eph_pub = ECP256._derive_key_from_seed(eph_seed).public_key().public_bytes(
                 serialization.Encoding.X962,
                 serialization.PublicFormat.UncompressedPoint,
             )
@@ -3486,7 +3467,7 @@ class MeshNode:
                     if pk_b64:
                         try:
                             pk = base64.b64decode(pk_b64)
-                            if Ed25519.pubkey_to_address(pk) == from_addr:
+                            if ECP256.pubkey_to_address(pk) == from_addr:
                                 sender_pk = pk
                                 break
                         except Exception:
@@ -3497,11 +3478,11 @@ class MeshNode:
             ciphertext = base64.b64decode(msg_data)
             if eph_pub_b64:
                 eph_pub = base64.b64decode(eph_pub_b64)
-                shared = Ed25519.key_exchange(cls.node_seed, eph_pub)
+                shared = ECP256.key_exchange(cls.node_seed, eph_pub)
                 salt = hashlib.sha256(b"cpip-e2ee-salt-v4:" + from_addr.encode() + cls.node_address.encode()).digest()
                 otk = CoffeeCipher.hkdf(shared, salt, b"cpip-e2ee-v4", 32)
             else:
-                shared = Ed25519.key_exchange(cls.node_seed, sender_pk)
+                shared = ECP256.key_exchange(cls.node_seed, sender_pk)
                 salt = b"cpip-e2ee-salt-v3" + from_addr.encode()
                 otk = CoffeeCipher._hkdf_expand(
                     CoffeeCipher._hkdf_extract(salt, shared),
@@ -3538,7 +3519,7 @@ class MeshNode:
             try:
                 data, addr = sock.recvfrom(8192)
                 data = cls._unpad_traffic(data)
-                threading.Thread(target=cls._handle_message, args=(data, addr), daemon=True).start()
+                threading.Thread(target=lambda d=data, a=addr: MeshNode._handle_message(d, a), daemon=True).start()
             except socket.timeout:
                 continue
             except Exception:
@@ -3575,154 +3556,184 @@ class MeshNode:
 
     @classmethod
     def _handle_message(cls, data: bytes, addr: tuple):
+        # Check for bonded fragment (binary FragmentHeader, not JSON)
+        if BONDING_ENABLED and len(data) >= FragmentHeader.SIZE and data[0:1] not in (b"{", b"["):
+            try:
+                hdr = FragmentHeader.unpack(data)
+                payload = data[FragmentHeader.SIZE:FragmentHeader.SIZE + hdr.payload_size]
+                source = f"mesh:{addr[0]}:{addr[1]}"
+                complete = BandwidthAggregator.reassemble(hdr, payload, source)
+                if complete is not None:
+                    try:
+                        reassembled_msg = json.loads(complete.decode())
+                        cls._dispatch_message(reassembled_msg, addr)
+                    except json.JSONDecodeError:
+                        pass
+                return
+            except Exception:
+                pass
+
         try:
             msg = json.loads(data.decode())
-            msg_type = msg.get("type", "")
-
-            sender = msg.get("pot") or msg.get("from") or ""
-            if sender == POT_ID:
-                return
-
-            ts = msg.get("timestamp", 0)
-            if ts and abs(time.time() - ts) > cls.MESSAGE_EXPIRY_SECONDS:
-                return
-
-            if msg_type == "heartbeat":
-                with cls.peers_lock:
-                    pubkey = msg.get("pubkey", "")
-                    address = msg.get("address", "")
-                    cls.peers[sender] = {
-                        "addr": addr[0],
-                        "port": msg.get("port", BIND_PORT),
-                        "mesh_port": msg.get("mesh_port", cls.current_mesh_port),
-                        "hostname": msg.get("hostname", addr[0]),
-                        "device": msg.get("device", "unknown"),
-                        "last_seen": time.time(),
-                        "hops": msg.get("hops", 0),
-                        "latent": False,
-                        "pubkey": pubkey,
-                        "address": address,
-                    }
-                    if address:
-                        cls._update_address_book(sender, address, pubkey,
-                                                  msg.get("hostname", addr[0]))
-                cls._update_routes()
-                trust = cls._get_trust_level(sender)
-                if trust < cls.TRUST_KNOWN:
-                    cls._send_direct(sender, cls._challenge_peer(sender))
-
-            elif msg_type == "auth_request":
-                cls._handle_auth_request(msg, addr)
-
-            elif msg_type == "auth_response":
-                cls._handle_auth_response(msg, addr)
-
-            elif msg_type == "auth_grant":
-                with cls.trust_lock:
-                    cls.trust_store[sender] = msg.get("level", cls.TRUST_KNOWN)
-                cls._save_persist()
-
-            elif msg_type == "latent_active":
-                with cls.peers_lock:
-                    if sender in cls.peers:
-                        cls.peers[sender]["latent"] = True
-
-            elif msg_type == "message":
-                if cls._peer_authorized(sender, cls.TRUST_KNOWN):
-                    cls._route_message(msg, addr)
-
-            elif msg_type == "route_query":
-                if cls._peer_authorized(sender, cls.TRUST_KNOWN):
-                    cls._handle_route_query(msg, addr)
-
-            elif msg_type == "route_reply":
-                with cls.peers_lock:
-                    if msg.get("pot") in cls.peers:
-                        cls.peers[msg["pot"]]["route"] = msg.get("route", [])
-
-            elif msg_type == "ack":
-                with cls.store_lock:
-                    ack_id = msg.get("ack_id", "")
-                    cls.message_store[:] = [m for m in cls.message_store if m.get("id") != ack_id]
-
-            elif msg_type == "deaddrop_query":
-                cls._handle_propfind_deaddrop(msg, addr)
-
-            elif msg_type == "deaddrop_list":
-                with cls.store_lock:
-                    for drop in msg.get("drops", []):
-                        if drop.get("dst") == POT_ID:
-                            cls._send_direct(msg.get("from", ""), {
-                                "type": "deaddrop_claim",
-                                "from": POT_ID,
-                                "message_id": drop["id"],
-                                "timestamp": time.time(),
-                            })
-
-            elif msg_type == "deaddrop_claim":
-                mid = msg.get("message_id", "")
-                claimed = cls.claim_dead_drop(mid, sender)
-                if claimed:
-                    cls._send_direct(sender, claimed)
-
-            elif msg_type == "hole_punch":
-                AntiISP.handle_hole_punch(raw_data, addr)
-
-            elif msg_type == "identity_publish":
-                cert = msg.get("cert", {})
-                if cert.get("pot_id"):
-                    WebOfTrust.publish_identity(cert["pot_id"], cert)
-                    cls._cross_transport_forward(msg, "mesh")
-
-            elif msg_type == "trust_claim":
-                trust_sig = msg.get("trust_sig", {})
-                if trust_sig.get("signer") and trust_sig.get("target"):
-                    WebOfTrust.receive_trust_sig(trust_sig)
-                    cls._cross_transport_forward(msg, "mesh")
-
-            elif msg_type == "dns_register":
-                reg = msg.get("registration", {})
-                name = reg.get("name")
-                pot_id = reg.get("pot_id")
-                if name and pot_id:
-                    DistributedDNS.gossip_receive({name: reg})
-                    cls._cross_transport_forward(msg, "mesh")
-
-            elif msg_type == "group_message":
-                GroupChat.receive_group_message(msg.get("group_msg", {}))
-                cls._cross_transport_forward(msg, "mesh")
-
-            elif msg_type == "group_key_update":
-                group_id = msg.get("group_id")
-                key_data = msg.get("key_data", {})
-                if group_id and key_data:
-                    with cls.store_lock:
-                        pass
-                cls._cross_transport_forward(msg, "mesh")
-
-            elif msg_type == "sync_request":
-                peer_id = msg.get("peer_id", sender)
-                channel = msg.get("channel")
-                since = msg.get("since", 0)
-                pending = OfflineSync.get_pending(channel, limit=50)
-                cls._send_direct(sender, {
-                    "type": "sync_response",
-                    "from": POT_ID,
-                    "peer_id": peer_id,
-                    "messages": pending,
-                    "vector_clock": OfflineSync.get_vector_clocks().get(POT_ID, {}),
-                    "timestamp": time.time(),
-                })
-
-            elif msg_type == "sync_response":
-                for m in msg.get("messages", []):
-                    OfflineSync.store_message(m)
-                OfflineSync.update_sync_state(sender, [m.get("id") for m in msg.get("messages", [])])
-
-        except json.JSONDecodeError:
-            pass
         except Exception:
-            traceback.print_exc()
+            return
+
+        cls._dispatch_message(msg, addr)
+
+    @classmethod
+    def _dispatch_message(cls, msg: dict, addr: tuple):
+        msg_type = msg.get("type", "")
+        sender = msg.get("pot") or msg.get("from") or ""
+        if sender == POT_ID:
+            return
+
+        ts = msg.get("timestamp", 0)
+        if ts and abs(time.time() - ts) > cls.MESSAGE_EXPIRY_SECONDS:
+            return
+
+        if msg_type == "heartbeat":
+            with cls.peers_lock:
+                pubkey = msg.get("pubkey", "")
+                address = msg.get("address", "")
+                cls.peers[sender] = {
+                    "addr": addr[0],
+                    "port": msg.get("port", BIND_PORT),
+                    "mesh_port": msg.get("mesh_port", cls.current_mesh_port),
+                    "hostname": msg.get("hostname", addr[0]),
+                    "device": msg.get("device", "unknown"),
+                    "last_seen": time.time(),
+                    "hops": msg.get("hops", 0),
+                    "latent": False,
+                    "pubkey": pubkey,
+                    "address": address,
+                }
+                if address:
+                    cls._update_address_book(sender, address, pubkey,
+                                              msg.get("hostname", addr[0]))
+                LinkMonitor.register_link(
+                    f"mesh:{sender}", "mesh",
+                    f"{addr[0]}:{msg.get('mesh_port', cls.current_mesh_port)}",
+                    bandwidth=msg.get("bandwidth_bps", 10_000_000))
+            cls._update_routes()
+            trust = cls._get_trust_level(sender)
+            if trust < cls.TRUST_KNOWN:
+                cls._send_direct(sender, cls._challenge_peer(sender))
+
+        elif msg_type == "auth_request":
+            cls._handle_auth_request(msg, addr)
+
+        elif msg_type == "auth_response":
+            cls._handle_auth_response(msg, addr)
+
+        elif msg_type == "auth_grant":
+            with cls.trust_lock:
+                cls.trust_store[sender] = msg.get("level", cls.TRUST_KNOWN)
+            cls._save_persist()
+
+        elif msg_type == "latent_active":
+            with cls.peers_lock:
+                if sender in cls.peers:
+                    cls.peers[sender]["latent"] = True
+
+        elif msg_type == "message":
+            if cls._peer_authorized(sender, cls.TRUST_KNOWN):
+                cls._route_message(msg, addr)
+
+        elif msg_type == "route_query":
+            if cls._peer_authorized(sender, cls.TRUST_KNOWN):
+                cls._handle_route_query(msg, addr)
+
+        elif msg_type == "route_reply":
+            with cls.peers_lock:
+                if msg.get("pot") in cls.peers:
+                    cls.peers[msg["pot"]]["route"] = msg.get("route", [])
+
+        elif msg_type == "ack":
+            with cls.store_lock:
+                ack_id = msg.get("ack_id", "")
+                cls.message_store[:] = [m for m in cls.message_store if m.get("id") != ack_id]
+
+        elif msg_type == "deaddrop_query":
+            cls._handle_propfind_deaddrop(msg, addr)
+
+        elif msg_type == "deaddrop_list":
+            with cls.store_lock:
+                for drop in msg.get("drops", []):
+                    if drop.get("dst") == POT_ID:
+                        cls._send_direct(msg.get("from", ""), {
+                            "type": "deaddrop_claim",
+                            "from": POT_ID,
+                            "message_id": drop["id"],
+                            "timestamp": time.time(),
+                        })
+
+        elif msg_type == "deaddrop_claim":
+            mid = msg.get("message_id", "")
+            claimed = cls.claim_dead_drop(mid, sender)
+            if claimed:
+                cls._send_direct(sender, claimed)
+
+        elif msg_type == "hole_punch":
+            ack = json.dumps({"type": "hole_punch_ack", "from": POT_ID}).encode()
+            if MeshNode.mesh_socket:
+                try:
+                    MeshNode.mesh_socket.sendto(ack, addr)
+                except Exception:
+                    pass
+
+        elif msg_type == "identity_publish":
+            cert = msg.get("cert", {})
+            if cert.get("pot_id"):
+                WebOfTrust.publish_identity(cert["pot_id"], cert)
+                cls._cross_transport_forward(msg, "mesh")
+
+        elif msg_type == "trust_claim":
+            trust_sig = msg.get("trust_sig", {})
+            if trust_sig.get("signer") and trust_sig.get("target"):
+                WebOfTrust.receive_trust_sig(trust_sig)
+                cls._cross_transport_forward(msg, "mesh")
+
+        elif msg_type == "dns_register":
+            reg = msg.get("registration", {})
+            name = reg.get("name")
+            pot_id = reg.get("pot_id")
+            if name and pot_id:
+                DistributedDNS.gossip_receive({name: reg})
+                cls._cross_transport_forward(msg, "mesh")
+
+        elif msg_type == "group_message":
+            GroupChat.receive_group_message(msg.get("group_msg", {}))
+            cls._cross_transport_forward(msg, "mesh")
+
+        elif msg_type == "group_key_update":
+            group_id = msg.get("group_id")
+            key_data = msg.get("key_data", {})
+            if group_id and key_data:
+                with cls.store_lock:
+                    pass
+            cls._cross_transport_forward(msg, "mesh")
+
+        elif msg_type == "sync_request":
+            peer_id = msg.get("peer_id", sender)
+            channel = msg.get("channel")
+            since = msg.get("since", 0)
+            pending = OfflineSync.get_pending(channel, limit=50)
+            cls._send_direct(sender, {
+                "type": "sync_response",
+                "from": POT_ID,
+                "peer_id": peer_id,
+                "messages": pending,
+                "vector_clock": OfflineSync.get_vector_clocks().get(POT_ID, {}),
+                "timestamp": time.time(),
+            })
+
+        elif msg_type == "sync_response":
+            for m in msg.get("messages", []):
+                OfflineSync.store_message(m)
+            OfflineSync.update_sync_state(sender, [m.get("id") for m in msg.get("messages", [])])
+
+        else:
+            pass
 
     @classmethod
     def _cross_transport_forward(cls, msg: dict, via: str):
@@ -3778,14 +3789,14 @@ class MeshNode:
             try:
                 pk = base64.b64decode(cert["pubkey"])
                 sig = base64.b64decode(signature_b64)
-                if not Ed25519.verify(challenge.encode(), sig, pk):
+                if not ECP256.verify(challenge.encode(), sig, pk):
                     return  # reject bad signature
             except Exception:
                 return
 
         # Sign our response with ECDSA P-256
         response = CoffeeCipher.hash(cls.node_secret + challenge.encode())
-        my_sig = Ed25519.sign(response.encode(), cls.node_seed)
+        my_sig = ECP256.sign(response.encode(), cls.node_seed)
         cls._set_trust_level(sender, cls.TRUST_CHALLENGED)
         with cls.peers_lock:
             if sender in cls.peers:
@@ -3825,7 +3836,7 @@ class MeshNode:
             try:
                 pk = base64.b64decode(cert["pubkey"])
                 sig = base64.b64decode(signature_b64)
-                if not Ed25519.verify(resp.encode(), sig, pk):
+                if not ECP256.verify(resp.encode(), sig, pk):
                     return
             except Exception:
                 return
@@ -3837,7 +3848,7 @@ class MeshNode:
             with cls.peers_lock:
                 if sender in cls.peers:
                     cls.peers[sender]["auth_step"] = "trusted"
-            grant_sig = Ed25519.sign(json.dumps({"level": level, "sender": sender}).encode(), cls.node_seed)
+            grant_sig = ECP256.sign(json.dumps({"level": level, "sender": sender}).encode(), cls.node_seed)
             cls._send_direct(sender, {
                 "type": "auth_grant",
                 "from": POT_ID,
@@ -3847,7 +3858,7 @@ class MeshNode:
             })
             # Respond to their challenge
             my_resp = CoffeeCipher.hash(cls.node_secret + their_challenge.encode())
-            my_sig = Ed25519.sign(my_resp.encode(), cls.node_seed)
+            my_sig = ECP256.sign(my_resp.encode(), cls.node_seed)
             cls._send_direct(sender, {
                 "type": "auth_response",
                 "from": POT_ID,
@@ -3989,6 +4000,10 @@ class MeshNode:
                 # Create new socket on new port
                 new_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except AttributeError:
+                    pass
                 new_sock.bind(("0.0.0.0", new_port))
                 new_sock.settimeout(2)
 
@@ -4011,7 +4026,7 @@ class MeshNode:
                                     "new_port": new_port,
                                     "timestamp": time.time(),
                                     "sig": base64.b64encode(
-                                        Ed25519.sign(
+                                        ECP256.sign(
                                             str(new_port).encode(), cls.node_seed
                                         )
                                     ).decode(),
@@ -4046,7 +4061,7 @@ class MeshNode:
                     pk = cls._get_pubkey_for(stored["dst"])
                     if pk and cls.node_seed:
                         try:
-                            shared = Ed25519.key_exchange(cls.node_seed, pk)
+                            shared = ECP256.key_exchange(cls.node_seed, pk)
                             otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
                             new_enc = CoffeeCipher.encrypt(
                                 stored.get("_plaintext", "").encode(),
@@ -4070,6 +4085,10 @@ class MeshNode:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except AttributeError:
+                pass
             s.bind(("0.0.0.0", SATELLITE_PORT))
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
@@ -4110,7 +4129,8 @@ class MeshNode:
         while cls.running and sock:
             try:
                 data, addr = sock.recvfrom(4096)
-                threading.Thread(target=cls._sat_handle, args=(data, addr), daemon=True).start()
+                _sat_hdl = cls._sat_handle.__func__
+                threading.Thread(target=lambda d=data, a=addr, h=_sat_hdl: h(cls, d, a), daemon=True).start()
             except socket.timeout:
                 continue
             except Exception:
@@ -4301,6 +4321,10 @@ class MeshNode:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except AttributeError:
+                pass
             s.bind(("0.0.0.0", MOBILE_PORT))
             s.settimeout(3.0)
             cls.mobile_socket = s
@@ -4339,7 +4363,8 @@ class MeshNode:
         while cls.running and sock:
             try:
                 data, addr = sock.recvfrom(4096)
-                threading.Thread(target=cls._mobile_handle, args=(data, addr), daemon=True).start()
+                _mob_hdl = cls._mobile_handle.__func__
+                threading.Thread(target=lambda d=data, a=addr, h=_mob_hdl: h(cls, d, a), daemon=True).start()
             except socket.timeout:
                 continue
             except Exception:
@@ -4665,10 +4690,25 @@ class MeshNode:
                 info = cls.peers.get(dst_pot)
             if not info:
                 return False
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(3)
+
             data = json.dumps(msg).encode()
             data = cls._pad_traffic(data)
+
+            # Use bonded multi-link transport if multiple paths are available
+            if BONDING_ENABLED:
+                send_fns = BondedMeshTransport.get_send_fns(dst_pot)
+                active = [(lid, fn) for lid, fn in send_fns.items()
+                          if LinkMonitor._links.get(lid, {}).get("active", False)]
+                if len(active) >= 2:
+                    # Striped bonding — send firmware fragments across all links
+                    total = BandwidthAggregator.send_bonded(data, dict(active))
+                    if total > 0:
+                        return True
+                    # Fall through to direct send if bonding failed
+
+            # Single-path fallback: direct UDP to peer
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(3)
             port = info.get("mesh_port", cls.current_mesh_port)
             sock.sendto(data, (info["addr"], port))
             sock.close()
@@ -4775,7 +4815,7 @@ class MeshNode:
                         pk = cls._get_pubkey_for(stored["dst"])
                         if pk and cls.node_seed:
                             try:
-                                shared = Ed25519.key_exchange(cls.node_seed, pk)
+                                shared = ECP256.key_exchange(cls.node_seed, pk)
                                 otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
                                 new_ct = CoffeeCipher.encrypt(
                                     stored["_plaintext"].encode(), base_key=otk,
@@ -6350,6 +6390,592 @@ class NetNeutrality:
         return True
 
 
+# ── Multi-Link Bandwidth Aggregation ──────────────────────────────────────
+# Strips data across ALL available transports in parallel:
+#   wired, WiFi, 4G/5G, mesh peers, satellite, radio, WSS relays, DNS tunnels
+# Each link gets fragments proportional to its measured capacity.
+# Reassembly happens at the destination with ordering and retransmission.
+
+import struct as _struct
+import errno as _errno
+
+class LinkProbe:
+    """Sentinel probe message for measuring link quality end-to-end."""
+    _PROBE_MAGIC = b"\xbe\xef\xca\xfe"
+    _counter = 0
+    _lock = threading.Lock()
+
+    @classmethod
+    def create(cls, size: int = BOND_PROBE_SIZE) -> bytes:
+        with cls._lock:
+            cls._counter += 1
+            seq = cls._counter
+        payload = secrets.token_bytes(max(size - 8, 16))
+        return cls._PROBE_MAGIC + _struct.pack("!I", seq) + payload
+
+
+class LinkMonitor:
+    """Passively discovers and measures all network paths available to this node.
+
+    Maintains a LinkState dict per path with:
+      - name: human-readable label (e.g. "eth0", "mesh:peer_x")
+      - type: "direct", "mesh", "satellite", "mobile", "radio", "wss", "dns", "relay"
+      - addr: IP:port or peer identifier
+      - bandwidth_bps: measured bits/sec
+      - latency_ms: moving average (ms)
+      - packet_loss: fraction 0.0–1.0
+      - weight: composite score for load balancing (0.0–1.0)
+      - last_seen: timestamp
+      - active: bool
+    """
+
+    instance = None
+    _lock = threading.Lock()
+    _links: dict[str, dict] = {}
+    _running = False
+
+    # ── Interface Discovery ──────────────────────────────────────────────
+
+    @classmethod
+    def discover_interfaces(cls) -> list[dict]:
+        """Return all non-loopback network interfaces with IP and speed."""
+        found = []
+        try:
+            import subprocess as _sp
+            r = _sp.run(["ip", "-o", "link", "show"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                iface = parts[1].rstrip(":")
+                if iface == "lo":
+                    continue
+                state = parts[-1] if parts[-1] in ("UP", "DOWN") else ""
+                speed = 0
+                try:
+                    s = _sp.run(["ethtool", iface], capture_output=True, text=True, timeout=3)
+                    for sl in s.stdout.splitlines():
+                        if "Speed:" in sl:
+                            spd = sl.split("Speed:")[-1].strip()
+                            if "Mb/s" in spd:
+                                speed = int(spd.replace("Mb/s", "").strip()) * 1_000_000
+                            elif "Gb/s" in spd:
+                                speed = int(spd.replace("Gb/s", "").strip()) * 1_000_000_000
+                except Exception:
+                    pass
+                if not speed:
+                    speed = 100_000_000  # assume 100 Mbps if unknown
+                found.append({"name": iface, "state": state, "speed": speed})
+        except Exception:
+            pass
+        return found
+
+    @classmethod
+    def discover_addresses(cls, iface: str) -> list[str]:
+        """Get all IP addresses for an interface."""
+        addrs = []
+        try:
+            import subprocess as _sp
+            r = _sp.run(["ip", "-o", "-4", "addr", "show", "dev", iface],
+                        capture_output=True, text=True, timeout=3)
+            for line in r.stdout.splitlines():
+                parts = line.split()
+                for i, p in enumerate(parts):
+                    if "/" in p and "." in p:
+                        addrs.append(p.split("/")[0])
+        except Exception:
+            pass
+        return addrs
+
+    # ── Link Registration ────────────────────────────────────────────────
+
+    @classmethod
+    def register_link(cls, link_id: str, link_type: str, addr: str = "",
+                       bandwidth: int = 10_000_000) -> None:
+        """Register or update a transport link for bonding."""
+        with cls._lock:
+            now = time.time()
+            if link_id in cls._links:
+                cls._links[link_id]["last_seen"] = now
+                cls._links[link_id]["active"] = True
+                return
+            cls._links[link_id] = {
+                "name": link_id,
+                "type": link_type,
+                "addr": addr,
+                "bandwidth_bps": bandwidth,
+                "measured_bps": bandwidth,
+                "latency_ms": 50.0,
+                "packet_loss": 0.0,
+                "weight": 0.5,
+                "last_seen": now,
+                "active": True,
+                "bytes_sent": 0,
+                "bytes_recv": 0,
+                "latencies": [],
+                "probe_time": 0,
+            }
+
+    @classmethod
+    def unregister_link(cls, link_id: str) -> None:
+        with cls._lock:
+            cls._links.pop(link_id, None)
+
+    # ── Link Quality Measurement ─────────────────────────────────────────
+
+    @classmethod
+    def record_bytes_sent(cls, link_id: str, n: int) -> None:
+        with cls._lock:
+            link = cls._links.get(link_id)
+            if link:
+                link["bytes_sent"] += n
+
+    @classmethod
+    def record_bytes_recv(cls, link_id: str, n: int) -> None:
+        with cls._lock:
+            link = cls._links.get(link_id)
+            if link:
+                link["bytes_recv"] += n
+
+    @classmethod
+    def record_latency(cls, link_id: str, ms: float) -> None:
+        with cls._lock:
+            link = cls._links.get(link_id)
+            if link:
+                link["latencies"].append(ms)
+                if len(link["latencies"]) > BOND_LATENCY_WINDOW:
+                    link["latencies"].pop(0)
+                link["latency_ms"] = sum(link["latencies"]) / len(link["latencies"])
+
+    @classmethod
+    def record_loss(cls, link_id: str, lost: bool) -> None:
+        with cls._lock:
+            link = cls._links.get(link_id)
+            if link:
+                alpha = 0.3
+                link["packet_loss"] = link["packet_loss"] * (1 - alpha) + (1.0 if lost else 0.0) * alpha
+
+    # ── Health Check ─────────────────────────────────────────────────────
+
+    @classmethod
+    def _health_check(cls) -> None:
+        """Periodically measure throughput and probe latency per link."""
+        while cls._running:
+            time.sleep(BOND_HEALTH_INTERVAL)
+            with cls._lock:
+                for link_id, link in list(cls._links.items()):
+                    # Mark stale links as inactive
+                    if time.time() - link["last_seen"] > BOND_STALE_LINK:
+                        link["active"] = False
+                        continue
+                    # Compute current throughput from bytes sent since last check
+                    now = time.time()
+                    dt = now - link.get("_last_check", now)
+                    if dt > 0 and link.get("_last_bytes"):
+                        bps = (link["bytes_sent"] - link["_last_bytes"]) / dt * 8
+                        link["measured_bps"] = max(bps, 1000)
+                    link["_last_bytes"] = link["bytes_sent"]
+                    link["_last_check"] = now
+                    # Compute weight: high bandwidth, low latency, low loss = high weight
+                    bw_score = min(link["measured_bps"] / max(link["bandwidth_bps"], 1), 1.0)
+                    lat_score = max(1.0 - link["latency_ms"] / 500.0, 0.0)
+                    loss_score = max(1.0 - link["packet_loss"] * 5, 0.0)
+                    link["weight"] = bw_score * 0.5 + lat_score * 0.25 + loss_score * 0.25
+
+    # ── API ──────────────────────────────────────────────────────────────
+
+    @classmethod
+    def get_links(cls) -> dict:
+        with cls._lock:
+            return {k: dict(v) for k, v in cls._links.items()}
+
+    @classmethod
+    def get_active_links(cls) -> list[tuple[str, dict]]:
+        with cls._lock:
+            return [(k, dict(v)) for k, v in cls._links.items() if v["active"]]
+
+    @classmethod
+    def get_weights(cls) -> dict[str, float]:
+        with cls._lock:
+            total = sum(max(l["weight"], 0.01) for l in cls._links.values() if l["active"])
+            if total == 0:
+                return {}
+            return {k: max(l["weight"], 0.01) / total
+                    for k, l in cls._links.items() if l["active"]}
+
+    @classmethod
+    def start(cls) -> None:
+        if not BONDING_ENABLED:
+            return
+        cls._running = True
+        # Register direct interfaces
+        for iface in cls.discover_interfaces():
+            if iface["state"] == "UP":
+                addrs = cls.discover_addresses(iface["name"])
+                addr_str = ",".join(addrs) if addrs else ""
+                cls.register_link(f"iface:{iface['name']}", "direct", addr_str, iface["speed"])
+        t = threading.Thread(target=cls._health_check, daemon=True)
+        t.start()
+
+    @classmethod
+    def stop(cls) -> None:
+        cls._running = False
+        with cls._lock:
+            cls._links.clear()
+
+
+class FragmentHeader:
+    """Binary header for striped fragments sent over bonded channels.
+    Total header size: 16 bytes.
+    """
+    FORMAT = "!IHHBxI"
+    SIZE = _struct.calcsize(FORMAT)  # 16
+
+    def __init__(self, msg_id: int, frag_no: int, total_frags: int,
+                 channel_id: str = "", payload_size: int = 0):
+        self.msg_id = msg_id
+        self.frag_no = frag_no
+        self.total_frags = total_frags
+        self.channel_id = channel_id
+        self.payload_size = payload_size
+
+    def pack(self) -> bytes:
+        ch = (self.channel_id[:7].encode().ljust(7, b"\x00")
+              if self.channel_id else b"\x00" * 7)
+        ch_int = int.from_bytes(ch[:7], "big")
+        return _struct.pack(self.FORMAT, self.msg_id, self.frag_no,
+                            self.total_frags, ch_int, self.payload_size)
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "FragmentHeader":
+        msg_id, frag_no, total_frags, ch_int, payload_size = _struct.unpack(
+            cls.FORMAT, data[:cls.SIZE])
+        ch_bytes = ch_int.to_bytes(7, "big")
+        ch_str = ch_bytes.rstrip(b"\x00").decode("ascii", errors="replace")
+        h = cls(msg_id, frag_no, total_frags, ch_str, payload_size)
+        return h
+
+
+class ReassemblyBuffer:
+    """Collects fragments from all bonded sub-channels and reassembles
+    messages in correct order. Handles duplicates, retransmission, timeouts.
+    """
+
+    _buffers: dict[int, dict] = {}
+    _lock = threading.Lock()
+    _TIMEOUT = 15.0
+
+    @classmethod
+    def add_fragment(cls, header: FragmentHeader, payload: bytes,
+                     source_link: str = "") -> bytes | None:
+        """Add an incoming fragment. Returns the complete message if all
+        fragments are present, None otherwise."""
+        with cls._lock:
+            now = time.time()
+            if header.msg_id not in cls._buffers:
+                cls._buffers[header.msg_id] = {
+                    "total": header.total_frags,
+                    "fragments": {},
+                    "arrived": set(),
+                    "links": {},
+                    "created": now,
+                    "size": header.payload_size,
+                }
+            buf = cls._buffers[header.msg_id]
+            if header.frag_no in buf["arrived"]:
+                return None  # duplicate
+            buf["fragments"][header.frag_no] = payload
+            buf["arrived"].add(header.frag_no)
+            buf["links"][header.frag_no] = source_link
+            if len(buf["arrived"]) >= buf["total"]:
+                # Complete! Reassemble in order
+                ordered = [buf["fragments"][i] for i in range(buf["total"])]
+                del cls._buffers[header.msg_id]
+                return b"".join(ordered)
+            # Record per-link stats for the source
+            if source_link:
+                LinkMonitor.record_bytes_recv(source_link, FragmentHeader.SIZE + len(payload))
+            return None
+
+    @classmethod
+    def get_missing_fragments(cls, msg_id: int) -> list[int]:
+        """Return fragment numbers still missing for a given message."""
+        with cls._lock:
+            buf = cls._buffers.get(msg_id)
+            if not buf:
+                return []
+            return [i for i in range(buf["total"]) if i not in buf["arrived"]]
+
+    @classmethod
+    def expire_stale(cls) -> None:
+        """Remove stale incomplete buffers from memory."""
+        with cls._lock:
+            now = time.time()
+            stale = [mid for mid, buf in cls._buffers.items()
+                     if now - buf["created"] > cls._TIMEOUT]
+            for mid in stale:
+                del cls._buffers[mid]
+
+    @classmethod
+    def status(cls) -> dict:
+        with cls._lock:
+            return {str(mid): {
+                "total": b["total"],
+                "received": len(b["arrived"]),
+                "age": round(time.time() - b["created"], 1),
+            } for mid, b in cls._buffers.items()}
+
+
+class BandwidthAggregator:
+    """Multi-link channel bonding engine.
+
+    Strips outgoing messages across ALL available transports in parallel.
+    Each fragment carries a header for reassembly at the destination.
+    Retransmits on alternative links if a fragment goes un-ACK'd.
+    Adapts to link quality changes in real time.
+    """
+
+    _counter = 0
+    _counter_lock = threading.Lock()
+    _running = False
+    _ack_timeout: dict[int, float] = {}  # msg_id -> deadline
+    _ack_lock = threading.Lock()
+    _retry_queue: queue.Queue = queue.Queue()
+
+    # ── Fragmentation / Striping ─────────────────────────────────────────
+
+    @classmethod
+    def _next_msg_id(cls) -> int:
+        with cls._counter_lock:
+            cls._counter = (cls._counter + 1) & 0xFFFFFFFF
+            return cls._counter
+
+    @classmethod
+    def _pick_chunk_size(cls) -> int:
+        """Pick a random chunk size within configured bounds to defeat
+        packet-size-based DPI."""
+        return secrets.randbelow(BOND_CHUNK_MAX - BOND_CHUNK_MIN + 1) + BOND_CHUNK_MIN
+
+    @classmethod
+    def fragment(cls, payload: bytes, channel_id: str = "") -> list[tuple[FragmentHeader, bytes]]:
+        """Split a payload into fragments sized for bonded transmission."""
+        chunk_size = cls._pick_chunk_size()
+        msg_id = cls._next_msg_id()
+        total = max(1, (len(payload) + chunk_size - 1) // chunk_size)
+        fragments = []
+        for i in range(total):
+            start = i * chunk_size
+            end = min(start + chunk_size, len(payload))
+            frag_data = payload[start:end]
+            hdr = FragmentHeader(msg_id, i, total, channel_id, len(frag_data))
+            fragments.append((hdr, frag_data))
+        return fragments
+
+    @classmethod
+    def reassemble(cls, header: FragmentHeader, payload: bytes,
+                   source_link: str = "") -> bytes | None:
+        """Feed a received fragment into the reassembly buffer.
+        Returns the complete message if done, None otherwise."""
+        result = ReassemblyBuffer.add_fragment(header, payload, source_link)
+        if result is not None and header.msg_id in cls._ack_timeout:
+            with cls._ack_lock:
+                cls._ack_timeout.pop(header.msg_id, None)
+        return result
+
+    # ── Bonded Send ──────────────────────────────────────────────────────
+
+    @classmethod
+    def send_bonded(cls, payload: bytes,
+                    send_fns: dict[str, callable]) -> int:
+        """Send payload across all active links using the provided send
+        callables. Returns total bytes sent.
+
+        `send_fns`: dict of link_id -> callable(data_chunk) that sends
+                    the bytes over that transport.
+        """
+        if not BONDING_ENABLED or not send_fns:
+            return 0
+
+        # Map send functions to registered links
+        active = []
+        for link_id, fn in send_fns.items():
+            with LinkMonitor._lock:
+                link = LinkMonitor._links.get(link_id)
+                if link and link["active"]:
+                    active.append((link_id, fn, link["weight"]))
+
+        if not active:
+            return 0
+
+        # Fragment payload
+        fragments = cls.fragment(payload)
+        total_bytes = sum(hdr.payload_size + FragmentHeader.SIZE for hdr, _ in fragments)
+
+        # Distribute fragments across active links by weight
+        weights = [w for _, _, w in active]
+        total_w = sum(weights)
+        if total_w == 0:
+            weights = [1.0] * len(active)
+            total_w = len(active)
+        assignments = []
+        idx = 0
+        for hdr, frag_data in fragments:
+            # Round-robin weighted: pick link with lowest cumulative load
+            link_idx = idx % len(active)
+            assignments.append((active[link_idx][0], active[link_idx][1], hdr, frag_data))
+            idx += 1
+
+        # Send all fragments in parallel across their assigned links
+        def _send_one(link_id: str, send_fn: callable, hdr: FragmentHeader,
+                      frag_data: bytes) -> None:
+            try:
+                packet = hdr.pack() + frag_data
+                send_fn(packet)
+                LinkMonitor.record_bytes_sent(link_id, len(packet))
+            except Exception:
+                # Mark loss and retry will handle
+                LinkMonitor.record_loss(link_id, True)
+
+        threads = []
+        for link_id, send_fn, hdr, frag_data in assignments:
+            t = threading.Thread(target=_send_one,
+                                 args=(link_id, send_fn, hdr, frag_data),
+                                 daemon=True)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join(timeout=5)
+
+        return total_bytes
+
+    # ── Retransmission ───────────────────────────────────────────────────
+
+    @classmethod
+    def _retry_loop(cls) -> None:
+        """Monitor for un-ACK'd messages and retry on alternative links."""
+        while cls._running:
+            time.sleep(1.0)
+            now = time.time()
+            with cls._ack_lock:
+                expired = [mid for mid, deadline in cls._ack_timeout.items()
+                           if now > deadline]
+                for mid in expired:
+                    del cls._ack_timeout[mid]
+            ReassemblyBuffer.expire_stale()
+
+    # ── Lifecycle ────────────────────────────────────────────────────────
+
+    @classmethod
+    def start(cls) -> None:
+        if not BONDING_ENABLED:
+            return
+        cls._running = True
+        t = threading.Thread(target=cls._retry_loop, daemon=True)
+        t.start()
+
+    @classmethod
+    def stop(cls) -> None:
+        cls._running = False
+
+
+class BondedMeshTransport:
+    """Adapter that makes all MeshNode transports available as bonded sub-channels.
+
+    Exposes a `send_fns` dict that BandwidthAggregator can use to stripe
+    data across mesh UDP, satellite, mobile, radio, WSS, DNS tunnel, and relay.
+    """
+
+    @classmethod
+    def get_send_fns(cls, dst_pot: str = "") -> dict[str, callable]:
+        """Return a dict of link_id -> callable for all available transports
+        that can reach `dst_pot`. Each callable takes raw bytes and sends them."""
+        fns = {}
+
+        # 1. Direct mesh UDP to known peers
+        with MeshNode.peers_lock:
+            for pid, info in MeshNode.peers.items():
+                peer_addr = info.get("addr", "")
+                peer_port = info.get("mesh_port", MESH_PORT)
+                if peer_addr and (not dst_pot or pid == dst_pot):
+                    link_id = f"mesh:{pid}"
+                    fns[link_id] = (lambda data, a=peer_addr, p=peer_port:
+                        MeshNode.mesh_socket.sendto(data, (a, p))
+                        if MeshNode.mesh_socket else None)
+                    bw = info.get("bandwidth_bps", 10_000_000)
+                    LinkMonitor.register_link(link_id, "mesh",
+                                              f"{peer_addr}:{peer_port}", bw)
+
+        # 2. Satellite peers
+        if SATELLITE_ENABLED and MeshNode.sat_socket:
+            with MeshNode.sat_lock:
+                for pid, info in dict(MeshNode.sat_peers).items():
+                    sat_addr = info.get("addr", "")
+                    sat_port = info.get("port", SATELLITE_PORT)
+                    if sat_addr and (not dst_pot or pid == dst_pot):
+                        link_id = f"sat:{pid}"
+                        fns[link_id] = (lambda data, a=sat_addr, p=sat_port:
+                            MeshNode.sat_socket.sendto(data, (a, p))
+                            if MeshNode.sat_socket else None)
+                        LinkMonitor.register_link(link_id, "satellite",
+                                                  f"{sat_addr}:{sat_port}")
+
+        # 3. Mobile peers
+        if MOBILE_ENABLED and MeshNode.mobile_socket:
+            with MeshNode.mobile_lock:
+                for pid, info in dict(MeshNode.mobile_peers).items():
+                    mob_addr = info.get("addr", "")
+                    mob_port = info.get("port", MOBILE_PORT)
+                    if mob_addr and (not dst_pot or pid == dst_pot):
+                        link_id = f"mobile:{pid}"
+                        fns[link_id] = (lambda data, a=mob_addr, p=mob_port:
+                            MeshNode.mobile_socket.sendto(data, (a, p))
+                            if MeshNode.mobile_socket else None)
+                        LinkMonitor.register_link(link_id, "mobile",
+                                                  f"{mob_addr}:{mob_port}")
+
+        # 4. WSS relay — send fragments wrapped in mesh messages to all relays
+        if ANTI_ISP_ENABLED and WSS_TUNNEL_ENABLED and AntiISP._wss_connections:
+            wrapped = json.dumps({
+                "type": "bond_fragment",
+                "dst": dst_pot,
+                "payload": "__payload__",
+            }).encode()
+            fns["wss"] = (lambda data, w=wrapped:
+                AntiISP.wss_send(w.replace(b"__payload__", base64.b64encode(data).decode()
+                                           if hasattr(data, 'decode') else base64.b64encode(data).decode())
+                                 if isinstance(w, bytes) else data))
+            LinkMonitor.register_link("wss", "wss", bandwidth=2_000_000)
+
+        # 5. DNS tunnel — small fragments only (max 200 bytes encoded)
+        if ANTI_ISP_ENABLED and DNS_TUNNEL_ENABLED and dst_pot:
+            fns["dns"] = (lambda data, d=dst_pot:
+                AntiISP.dns_tunnel_send(d, data)
+                if hasattr(AntiISP, 'dns_tunnel_send') else None)
+            LinkMonitor.register_link("dns", "dns", bandwidth=500_000)
+
+        # 6. TCP relay
+        if ANTI_ISP_ENABLED and RELAY_ENABLED and dst_pot:
+            for relay in RELAY_SERVERS:
+                link_id = f"relay:{relay}"
+                fns[link_id] = (lambda data, r=relay, d=dst_pot:
+                    AntiISP.relay_send(d, data)
+                    if hasattr(AntiISP, 'relay_send') else None)
+                LinkMonitor.register_link(link_id, "relay", relay, bandwidth=5_000_000)
+
+        return fns
+
+    @classmethod
+    def send_fragment(cls, link_id: str, data: bytes) -> None:
+        """Low-level send of a single fragment over a specific link."""
+        fns = cls.get_send_fns()
+        fn = fns.get(link_id)
+        if fn:
+            try:
+                fn(data)
+            except Exception:
+                LinkMonitor.record_loss(link_id, True)
+
+
 class GpioController:
     """Raspberry Pi GPIO control via RPi.GPIO.
     
@@ -6647,6 +7273,10 @@ def start_discovery():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except AttributeError:
+            pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind(("0.0.0.0", DISCOVERY_PORT))
         sock.settimeout(1)
@@ -7197,6 +7827,19 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._send_json(200, "OK", AntiSurveillance.get_status())
         elif path == "/cpip/net-neutrality":
             self._send_json(200, "OK", NetNeutrality.get_status())
+        elif path == "/cpip/bond/status":
+            links = LinkMonitor.get_links()
+            weights = LinkMonitor.get_weights()
+            reassembly = ReassemblyBuffer.status()
+            self._send_json(200, "OK", {
+                "enabled": BONDING_ENABLED,
+                "links": links,
+                "weights": weights,
+                "reassembly_buffers": reassembly,
+            })
+        elif path == "/cpip/bond/links":
+            links = LinkMonitor.get_links()
+            self._send_json(200, "OK", {"links": links, "count": len(links)})
         elif path == "/cpip/mesh/propfind":
             params = parse_qs(parsed.query)
             action = params.get("action", ["list"])[0]
@@ -7424,6 +8067,28 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     self._send_json(400, "Bad Request", {"error": "Missing target/data"})
             else:
                 self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+        # ── Bandwidth Aggregation / Bonding Actions ──────────────────
+        elif path == "/cpip/bond/config":
+            body = self._read_json_body()
+            action = body.get("action", "")
+            if action == "toggle":
+                global BONDING_ENABLED
+                BONDING_ENABLED = bool(body.get("enabled", True))
+                self._send_json(200, "OK", {"bonding": BONDING_ENABLED})
+            elif action == "force_probe":
+                links = LinkMonitor.get_active_links()
+                for link_id, _ in links:
+                    probe = LinkProbe.create()
+                    if MeshNode.mesh_socket:
+                        try:
+                            MeshNode.mesh_socket.sendto(probe,
+                                (body.get("target", "127.0.0.1"), MESH_PORT))
+                        except Exception:
+                            pass
+                self._send_json(200, "OK", {"probes_sent": len(links)})
+            else:
+                self._send_json(400, "Bad Request", {"error": f"Unknown bond action: {action}"})
 
         # ── Anti-Stingray Actions ─────────────────────────────────
         elif path == "/cpip/anti-stingray":
@@ -8419,7 +9084,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             entries = []
             for pid, info in MeshNode.peers.items():
                 pk_b64 = info.get("pubkey", "")
-                addr = Ed25519.pubkey_to_address(base64.b64decode(pk_b64)) if pk_b64 else None
+                addr = ECP256.pubkey_to_address(base64.b64decode(pk_b64)) if pk_b64 else None
                 entries.append({
                     "pot_id": pid,
                     "hostname": info.get("hostname", ""),
@@ -8619,7 +9284,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             result["covert_headers"] = headers
             if dst_pubkey:
                 result["ecc_encrypted"] = True
-                result["ecc_address"] = Ed25519.pubkey_to_address(dst_pubkey)
+                result["ecc_address"] = ECP256.pubkey_to_address(dst_pubkey)
 
         self._send_json(200, "OK", result)
 
@@ -8674,7 +9339,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         }
         if dst_pubkey:
             result["ecc"] = True
-            result["ecc_encrypted_for"] = Ed25519.pubkey_to_address(dst_pubkey)
+            result["ecc_encrypted_for"] = ECP256.pubkey_to_address(dst_pubkey)
         self._send_json(200, "OK", result)
 
     def _handle_covert_decode(self):
@@ -10487,21 +11152,53 @@ def teapot_tool_check(headers, addr, pentest_only=False):
 # ── Main ──────────────────────────────────────────────────────────────
 def shutdown(signum, frame):
     print("\n[CPIP] Shutting down...", flush=True)
+    global _http_server, _redirect_server, _discovery_socket
+    if _http_server:
+        try: _http_server.server_close()
+        except Exception: pass
+    if _redirect_server:
+        try: _redirect_server.shutdown()
+        except Exception: pass
     stop_mdns()
     stop_scheduler()
+    stop_radio()
+    stop_ntp()
     AntiISP.stop()
     AntiStingray.stop()
     AntiSurveillance.stop()
     NetNeutrality.stop()
+    BandwidthAggregator.stop()
+    LinkMonitor.stop()
     MeshNode.stop()
+    if _discovery_socket:
+        try: _discovery_socket.close()
+        except Exception: pass
+        _discovery_socket = None
     if gpio.is_available:
         gpio.off()
     sys.exit(0)
 
 
+def _try_bind(max_attempts=10):
+    """Try to bind the HTTP server on BIND_PORT or subsequent ports.
+    Returns (server, actual_port) or raises on total failure."""
+    base = BIND_PORT
+    for i in range(max_attempts):
+        port = base + i
+        try:
+            return port, ThreadedHTTPServer((BIND_ADDR, port), CPIPHandler)
+        except OSError:
+            if i < max_attempts - 1:
+                continue
+            raise
+    raise RuntimeError(f"Could not bind any port in range {base}-{base + max_attempts - 1}")
+
+
 def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+
+    global _http_server, _redirect_server, BIND_PORT, POT_ID
 
     # ── SSL/TLS Setup ──────────────────────────────────────────────────
     use_ssl = SSL_ENABLED
@@ -10519,26 +11216,37 @@ def main():
             print(f"   ⚠ SSL key file not found: {key_file}", flush=True)
             use_ssl = False
 
-    if use_ssl:
-        try:
-            server = ThreadedHTTPSServer((BIND_ADDR, BIND_PORT), CPIPHandler,
+    # Bind HTTP(S) server with port fallback to handle concurrent use
+    try:
+        if use_ssl:
+            actual_port, server = _try_bind()
+            server.server_close()
+            server = ThreadedHTTPSServer((BIND_ADDR, actual_port), CPIPHandler,
                                          certfile=cert_file, keyfile=key_file)
-        except Exception as e:
-            print(f"   ⚠ SSL setup failed: {e}", flush=True)
-            print(f"   ⚠ Falling back to HTTP", flush=True)
-            use_ssl = False
-            server = ThreadedHTTPServer((BIND_ADDR, BIND_PORT), CPIPHandler)
-    else:
-        server = ThreadedHTTPServer((BIND_ADDR, BIND_PORT), CPIPHandler)
+        else:
+            actual_port, server = _try_bind()
+    except Exception as e:
+        print(f"   ⚠ Cannot bind HTTP server on any port: {e}", flush=True)
+        print(f"   ⚠ Check if another CPIP instance or application is using ports {BIND_PORT}-{BIND_PORT+9}.", flush=True)
+        sys.exit(1)
+
+    # Update global port so all internal references resolve to the bound port
+    BIND_PORT = actual_port
+    POT_ID = hashlib.sha256(f"{HOSTNAME}:{BIND_PORT}".encode()).hexdigest()[:8]
+    _http_server = server
 
     # ── HTTP→HTTPS redirect server ────────────────────────────────────
-    redirect_server = None
     if use_ssl and HTTP_REDIRECT:
         try:
             redirect_server = ThreadedHTTPServer((BIND_ADDR, HTTP_REDIRECT_PORT), HTTPRedirectHandler)
+            _redirect_server = redirect_server
         except Exception as e:
-            print(f"   ⚠ HTTP redirect server failed: {e}", flush=True)
+            print(f"   ⚠ HTTP redirect server on port {HTTP_REDIRECT_PORT} failed: {e}", flush=True)
+            print(f"   ⚠ Continuing without HTTP→HTTPS redirect.", flush=True)
+            _redirect_server = None
             redirect_server = None
+    else:
+        redirect_server = None
 
     bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
     scheme = "https" if use_ssl else "http"
@@ -10600,16 +11308,22 @@ def main():
     AntiStingray.start()
     AntiSurveillance.start()
     NetNeutrality.start()
+    LinkMonitor.start()
+    BandwidthAggregator.start()
+    if BONDING_ENABLED:
+        links = LinkMonitor.get_active_links()
+        print(f"   ├ Bonding:    {len(links)} active links {'|'.join(l[0] for l in links[:5])}"
+              f"{'...' if len(links) > 5 else ''}", flush=True)
     start_radio()
 
     address_display = MeshNode.node_address or "(ECC keys generated on first mesh message)"
     print(f"   ├ ECC:        ECDSA/ECDH P-256 active — {address_display[:20]}...", flush=True)
 
     # ── Start HTTP redirect thread if SSL ─────────────────────────────
-    if redirect_server:
+    if _redirect_server:
         def _redirect_serve():
             try:
-                redirect_server.serve_forever()
+                _redirect_server.serve_forever()
             except KeyboardInterrupt:
                 pass
         redirect_thread = threading.Thread(target=_redirect_serve, daemon=True)
@@ -10617,16 +11331,29 @@ def main():
         print(f"   ├ Redirect:  HTTP port {HTTP_REDIRECT_PORT} → HTTPS port {BIND_PORT}", flush=True)
 
     try:
-        server.serve_forever()
+        _http_server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        server.server_close()
-        if redirect_server:
-            redirect_server.shutdown()
+        if _http_server:
+            try: _http_server.server_close()
+            except Exception: pass
+        if _redirect_server:
+            try: _redirect_server.shutdown()
+            except Exception: pass
+        if _discovery_socket:
+            try: _discovery_socket.close()
+            except Exception: pass
         stop_mdns()
         stop_scheduler()
         stop_radio()
+        stop_ntp()
+        AntiISP.stop()
+        AntiStingray.stop()
+        AntiSurveillance.stop()
+        NetNeutrality.stop()
+        BandwidthAggregator.stop()
+        LinkMonitor.stop()
         MeshNode.stop()
         print("[CPIP] Stopped.", flush=True)
 

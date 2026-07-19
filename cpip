@@ -98,6 +98,7 @@ Usage:
   cpip cluster start [N]                Start N-node cluster on localhost
   cpip cluster stop                     Stop all cluster nodes
   cpip cluster status                   Show cluster health
+  cpip tui [host] [port]                Launch Terminal UI (OpenTUI)
 
 Environment:
   CPIP_HOST   Server hostname (default: localhost)

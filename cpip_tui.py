@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v4.0.1"""
+"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v4.0.2"""
 
 import json
 import os
@@ -113,7 +113,7 @@ def Sidebar():
 
     return Box(
         Box(
-            Text(" CPIP v4.0.1 ", bold=True, fg="#0366d6"),
+            Text(" CPIP v4.0.2 ", bold=True, fg="#0366d6"),
             Text(" Coffee Protocol", fg="#888"),
             Spacer(height=1),
             *items,
@@ -470,7 +470,7 @@ def HistoryPanel():
 def AboutPanel():
     return ScrollBox(
         Box(
-            Text("CPIP v4.0.1 — Coffee Pot Internet Protocol", bold=True),
+            Text("CPIP v4.0.2 — Coffee Pot Internet Protocol", bold=True),
             Spacer(height=1),
             Markdown(
                 "## Protocol Support\n"
@@ -485,6 +485,9 @@ def AboutPanel():
                 "- AES-256-GCM (FIPS 197)\n"
                 "- ECDSA/ECDH P-256 (FIPS 186-4)\n"
                 "- HybridKEM: ECDH + Kyber\n\n"
+                "## CLI Tools\n"
+                "- `cpip tui` — Terminal UI (OpenTUI)\n"
+                "- `b4dm4n-cw tui` — Crypto Workbench REPL\n\n"
                 "## Controls\n"
                 "- `[Tab]` / arrows: Navigate\n"
                 "- `[r]`: Refresh current page\n"

@@ -21,7 +21,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 from server import (
-    CoffeeCipher, Ed25519, MLKEM, HybridKEM, SecureHash,
+    CoffeeCipher, ECP256, HybridKEM, SecureHash,
     IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
     CovertChannel,
     PQCKEM, HQC128, HQC192, HQC256,
@@ -32,94 +32,94 @@ from server import (
 )
 
 
-class TestEd25519(unittest.TestCase):
+class TestECP256(unittest.TestCase):
     """ECDSA/ECDH P-256 (FIPS 186-4) signature and key exchange."""
 
     def test_keypair_generation(self):
-        pk, seed, privkey, pubkey = Ed25519.generate_keypair()
+        pk, seed, privkey, pubkey = ECP256.generate_keypair()
         self.assertGreater(len(pk), 0)
         self.assertEqual(len(seed), 32)
         self.assertIsNotNone(privkey)
         self.assertIsNotNone(pubkey)
 
     def test_encode_decode_roundtrip(self):
-        pk, seed, privkey, pubkey = Ed25519.generate_keypair()
-        decoded = Ed25519._decode_point(pk)
-        re_encoded = Ed25519._encode_point(decoded)
+        pk, seed, privkey, pubkey = ECP256.generate_keypair()
+        decoded = ECP256._decode_point(pk)
+        re_encoded = ECP256._encode_point(decoded)
         self.assertEqual(pk, re_encoded, "encode/decode roundtrip failed")
 
     def test_sign_verify(self):
-        pk, seed, privkey, pubkey = Ed25519.generate_keypair()
+        pk, seed, privkey, pubkey = ECP256.generate_keypair()
         msg = b"hello coffee protocol"
-        sig = Ed25519.sign(msg, seed)
+        sig = ECP256.sign(msg, seed)
         self.assertGreater(len(sig), 0)
-        self.assertTrue(Ed25519.verify(msg, sig, pk))
+        self.assertTrue(ECP256.verify(msg, sig, pk))
 
     def test_sign_verify_wrong_message(self):
-        pk, seed, _, _ = Ed25519.generate_keypair()
-        sig = Ed25519.sign(b"correct message", seed)
-        self.assertFalse(Ed25519.verify(b"wrong message", sig, pk))
+        pk, seed, _, _ = ECP256.generate_keypair()
+        sig = ECP256.sign(b"correct message", seed)
+        self.assertFalse(ECP256.verify(b"wrong message", sig, pk))
 
     def test_sign_verify_wrong_key(self):
-        pk1, seed1, _, _ = Ed25519.generate_keypair()
-        pk2, seed2, _, _ = Ed25519.generate_keypair()
-        sig = Ed25519.sign(b"test", seed1)
-        self.assertFalse(Ed25519.verify(b"test", sig, pk2))
+        pk1, seed1, _, _ = ECP256.generate_keypair()
+        pk2, seed2, _, _ = ECP256.generate_keypair()
+        sig = ECP256.sign(b"test", seed1)
+        self.assertFalse(ECP256.verify(b"test", sig, pk2))
 
     def test_sign_verify_tampered_signature(self):
-        pk, seed, _, _ = Ed25519.generate_keypair()
-        sig = Ed25519.sign(b"test", seed)
+        pk, seed, _, _ = ECP256.generate_keypair()
+        sig = ECP256.sign(b"test", seed)
         tampered = bytearray(sig)
         tampered[10] ^= 0xff
-        self.assertFalse(Ed25519.verify(b"test", bytes(tampered), pk))
+        self.assertFalse(ECP256.verify(b"test", bytes(tampered), pk))
 
     def test_sign_verify_empty_message(self):
-        pk, seed, _, _ = Ed25519.generate_keypair()
-        sig = Ed25519.sign(b"", seed)
-        self.assertTrue(Ed25519.verify(b"", sig, pk))
+        pk, seed, _, _ = ECP256.generate_keypair()
+        sig = ECP256.sign(b"", seed)
+        self.assertTrue(ECP256.verify(b"", sig, pk))
 
     def test_sign_verify_large_message(self):
-        pk, seed, _, _ = Ed25519.generate_keypair()
+        pk, seed, _, _ = ECP256.generate_keypair()
         msg = os.urandom(10000)
-        sig = Ed25519.sign(msg, seed)
-        self.assertTrue(Ed25519.verify(msg, sig, pk))
+        sig = ECP256.sign(msg, seed)
+        self.assertTrue(ECP256.verify(msg, sig, pk))
 
     def test_ecdh_shared_secret(self):
-        pk1, s1, _, _ = Ed25519.generate_keypair()
-        pk2, s2, _, _ = Ed25519.generate_keypair()
-        shared1 = Ed25519.key_exchange(s1, pk2)
-        shared2 = Ed25519.key_exchange(s2, pk1)
+        pk1, s1, _, _ = ECP256.generate_keypair()
+        pk2, s2, _, _ = ECP256.generate_keypair()
+        shared1 = ECP256.key_exchange(s1, pk2)
+        shared2 = ECP256.key_exchange(s2, pk1)
         self.assertEqual(shared1, shared2, "ECDH shared secrets must match")
 
     def test_ecdh_multiple_iterations(self):
         for _ in range(5):
-            pk1, s1, _, _ = Ed25519.generate_keypair()
-            pk2, s2, _, _ = Ed25519.generate_keypair()
+            pk1, s1, _, _ = ECP256.generate_keypair()
+            pk2, s2, _, _ = ECP256.generate_keypair()
             self.assertEqual(
-                Ed25519.key_exchange(s1, pk2),
-                Ed25519.key_exchange(s2, pk1),
+                ECP256.key_exchange(s1, pk2),
+                ECP256.key_exchange(s2, pk1),
             )
 
     def test_ecdh_different_peers_produce_different_secrets(self):
-        pk1, s1, _, _ = Ed25519.generate_keypair()
-        pk2, s2, _, _ = Ed25519.generate_keypair()
-        pk3, s3, _, _ = Ed25519.generate_keypair()
-        ss12 = Ed25519.key_exchange(s1, pk2)
-        ss13 = Ed25519.key_exchange(s1, pk3)
+        pk1, s1, _, _ = ECP256.generate_keypair()
+        pk2, s2, _, _ = ECP256.generate_keypair()
+        pk3, s3, _, _ = ECP256.generate_keypair()
+        ss12 = ECP256.key_exchange(s1, pk2)
+        ss13 = ECP256.key_exchange(s1, pk3)
         self.assertNotEqual(ss12, ss13)
 
     def test_pubkey_to_address(self):
-        pk, _, _, _ = Ed25519.generate_keypair()
-        addr = Ed25519.pubkey_to_address(pk)
+        pk, _, _, _ = ECP256.generate_keypair()
+        addr = ECP256.pubkey_to_address(pk)
         self.assertTrue(addr.startswith("coffee:"))
-        self.assertTrue(Ed25519.address_matches(addr, pk))
-        pk_other, _, _, _ = Ed25519.generate_keypair()
-        self.assertFalse(Ed25519.address_matches(addr, pk_other))
+        self.assertTrue(ECP256.address_matches(addr, pk))
+        pk_other, _, _, _ = ECP256.generate_keypair()
+        self.assertFalse(ECP256.address_matches(addr, pk_other))
 
     def test_deterministic_keypair(self):
         seed = os.urandom(32)
-        pk1, s1, a1, A1 = Ed25519.generate_keypair(seed)
-        pk2, s2, a2, A2 = Ed25519.generate_keypair(seed)
+        pk1, s1, a1, A1 = ECP256.generate_keypair(seed)
+        pk2, s2, a2, A2 = ECP256.generate_keypair(seed)
         self.assertEqual(pk1, pk2)
         self.assertEqual(s1, s2)
 
