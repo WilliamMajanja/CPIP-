@@ -85,9 +85,13 @@ except ImportError:
 
 # ── Configuration ─────────────────────────────────────────────────────
 DEVICE_TYPE = os.environ.get("CPIP_DEVICE", "hyper-text")
-BIND_ADDR = os.environ.get("CPIP_BIND", "")
+BIND_ADDR = os.environ.get("CPIP_BIND") or ""
 BIND_PORT = int(os.environ.get("CPIP_PORT", "4180"))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
+
+
+def _sock_bind(sock, addr):
+    sock.bind(addr)
 
 # Allowlist of serveable static files, computed once at startup so that
 # request-controlled paths never reach a filesystem read.
@@ -3141,7 +3145,7 @@ class MeshNode:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     except AttributeError:
                         pass
-                    s.bind((BIND_ADDR, port))
+                    _sock_bind(s, (BIND_ADDR, port))
                     s.settimeout(2)
                     sock = s
                     cls.current_mesh_port = port
@@ -3216,7 +3220,7 @@ class MeshNode:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                      pass
-                s.bind((BIND_ADDR, port))
+                _sock_bind(s, (BIND_ADDR, port))
                 s.settimeout(1)
                 with cls.latent_lock:
                     cls.latent_sockets[port] = s
@@ -4003,7 +4007,7 @@ class MeshNode:
                     new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                new_sock.bind((BIND_ADDR, new_port))
+                _sock_bind(new_sock, (BIND_ADDR, new_port))
                 new_sock.settimeout(2)
 
                 # Swap sockets
@@ -4088,7 +4092,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                  pass
-            s.bind((BIND_ADDR, SATELLITE_PORT))
+            _sock_bind(s, (BIND_ADDR, SATELLITE_PORT))
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
             cls.sat_active = True
@@ -4324,7 +4328,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                  pass
-            s.bind((BIND_ADDR, MOBILE_PORT))
+            _sock_bind(s, (BIND_ADDR, MOBILE_PORT))
             s.settimeout(3.0)
             cls.mobile_socket = s
             cls.mobile_active = True
@@ -5285,7 +5289,7 @@ class AntiISP:
         punch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         punch_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            punch_sock.bind((BIND_ADDR, 0))
+            _sock_bind(punch_sock, (BIND_ADDR, 0))
         except Exception:
             punch_sock.close()
             return False
@@ -7277,7 +7281,7 @@ def start_discovery():
         except AttributeError:
             pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.bind((BIND_ADDR, DISCOVERY_PORT))
+        _sock_bind(sock, (BIND_ADDR, DISCOVERY_PORT))
         sock.settimeout(1)
         _discovery_socket = sock
         threading.Thread(target=_discovery_listener, daemon=True).start()
@@ -7580,9 +7584,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
         ts = datetime.now().strftime("%H:%M:%S")
         sys.stderr.write(f"[CPIP {ts}] {self.client_address[0]} {fmt % args}\n")
 
-    def send_header(self, keyword, value):
-        value = "".join(c for c in str(value) if c not in "\r\n")
-        super().send_header(keyword, value)
+    def send_header(self, name, value):
+        value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
+        super().send_header(name, value)
 
     def _check_rate_limit(self):
         addr = self.client_address[0]
@@ -7597,10 +7601,6 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 return False
             _HTTP_RATE_COUNTS[addr].append(now)
         return True
-
-    def send_header(self, name, value):
-        value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
-        super().send_header(name, value)
 
     def _check_request_size(self):
         length = int(self.headers.get("Content-Length", 0))

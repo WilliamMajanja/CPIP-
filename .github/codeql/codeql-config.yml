@@ -1,0 +1,3 @@
+name: CPIP custom CodeQL configuration
+queries:
+  - uses: security-and-quality
