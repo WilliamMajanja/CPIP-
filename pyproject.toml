@@ -19,7 +19,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
-dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0", "opentui >= 0.1.0"]
+dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0"]
+
+[project.optional-dependencies]
+tui = ["opentui >= 0.1.0"]
 
 [project.scripts]
 cpip-server = "server:main"
