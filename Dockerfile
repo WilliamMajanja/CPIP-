@@ -1,18 +1,21 @@
 FROM python:3.13-alpine
 
 LABEL description="CPIP v4 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
-LABEL version="4.0.1"
+LABEL version="4.0.2"
 
 RUN apk add --no-cache gcc make musl-dev openssl
 
 WORKDIR /opt/cpip
 
+COPY pyproject.toml .
 COPY server.py .
+COPY inf1del_kyber.py .
 COPY cpip /usr/local/bin/cpip
 COPY radio/ radio/
 COPY web/ web/
 
 RUN chmod +x /usr/local/bin/cpip && \
+    pip install --no-cache-dir -e . && \
     make -C radio 2>/dev/null || true && \
     mkdir -p /opt/cpip/.ssl && \
     chmod 777 /opt/cpip/.ssl
