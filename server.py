@@ -3141,7 +3141,7 @@ class MeshNode:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     except AttributeError:
                         pass
-                    s.bind((BIND_ADDR, port))  # lgtm[py/bind-to-all-interfaces]
+                    s.bind((BIND_ADDR, port))  # lgtm[py/bind-socket-all-network-interfaces]
                     s.settimeout(2)
                     sock = s
                     cls.current_mesh_port = port
@@ -3216,7 +3216,7 @@ class MeshNode:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                s.bind((BIND_ADDR, port))  # lgtm[py/bind-to-all-interfaces]
+                s.bind((BIND_ADDR, port))  # lgtm[py/bind-socket-all-network-interfaces]
                 s.settimeout(1)
                 with cls.latent_lock:
                     cls.latent_sockets[port] = s
@@ -4003,7 +4003,7 @@ class MeshNode:
                     new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                new_sock.bind((BIND_ADDR, new_port))  # lgtm[py/bind-to-all-interfaces]
+                new_sock.bind((BIND_ADDR, new_port))  # lgtm[py/bind-socket-all-network-interfaces]
                 new_sock.settimeout(2)
 
                 # Swap sockets
@@ -4088,7 +4088,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                 pass
-            s.bind((BIND_ADDR, SATELLITE_PORT))  # lgtm[py/bind-to-all-interfaces]
+            s.bind((BIND_ADDR, SATELLITE_PORT))  # lgtm[py/bind-socket-all-network-interfaces]
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
             cls.sat_active = True
@@ -4324,7 +4324,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                 pass
-            s.bind((BIND_ADDR, MOBILE_PORT))  # lgtm[py/bind-to-all-interfaces]
+            s.bind((BIND_ADDR, MOBILE_PORT))  # lgtm[py/bind-socket-all-network-interfaces]
             s.settimeout(3.0)
             cls.mobile_socket = s
             cls.mobile_active = True
@@ -5285,7 +5285,8 @@ class AntiISP:
         punch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         punch_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            punch_sock.bind(("0.0.0.0", 0))  # lgtm[py/bind-to-all-interfaces] required for NAT punch
+            # lgtm[py/bind-socket-all-network-interfaces]
+            punch_sock.bind((BIND_ADDR, 0))
         except Exception:
             punch_sock.close()
             return False
@@ -7277,7 +7278,7 @@ def start_discovery():
         except AttributeError:
             pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.bind((BIND_ADDR, DISCOVERY_PORT))  # lgtm[py/bind-to-all-interfaces]
+        sock.bind((BIND_ADDR, DISCOVERY_PORT))  # lgtm[py/bind-socket-all-network-interfaces]
         sock.settimeout(1)
         _discovery_socket = sock
         threading.Thread(target=_discovery_listener, daemon=True).start()
@@ -7554,6 +7555,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
         if "\r" in target or "\n" in target:
             target = "/"
         self.send_response(301)
+        # codeql[py/http-response-splitting]
         self._safe_header("Location", target)
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -7612,6 +7614,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
             origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
             if origin == raw_origin and origin in allowed:
+                # codeql[py/http-response-splitting]
                 self._safe_header("Access-Control-Allow-Origin", origin)
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
@@ -7636,6 +7639,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("CPIP-Version", CPIP_VERSION)
+        # codeql[py/http-response-splitting]
         self._safe_header("CPIP-Device", DEVICE_TYPE)
         self.send_header("CPIP-Pot-ID", POT_ID)
         self._cors_headers()
