@@ -513,12 +513,12 @@ class Inf1delKyber:
 
     @classmethod
     def hybrid_keygen(cls, ecc_seed=None, recipe="espresso"):
-        from server import Ed25519
+        from server import ECP256
 
         if ecc_seed is None:
             ecc_seed = secrets.token_bytes(32)
 
-        ecc_pk, ecc_seed_out, _, _ = Ed25519.generate_keypair(ecc_seed)
+        ecc_pk, ecc_seed_out, _, _ = ECP256.generate_keypair(ecc_seed)
         kyber_pk, kyber_sk = cls.keygen(recipe)
 
         ecc_pk_len = len(ecc_pk).to_bytes(2, 'big')
@@ -529,15 +529,15 @@ class Inf1delKyber:
 
     @classmethod
     def hybrid_encapsulate(cls, hybrid_pk, recipe="espresso"):
-        from server import Ed25519, CoffeeCipher
+        from server import ECP256, CoffeeCipher
 
         ecc_pk_len = int.from_bytes(hybrid_pk[:2], 'big')
         ecc_pk = hybrid_pk[2:2 + ecc_pk_len]
         kyber_pk = hybrid_pk[2 + ecc_pk_len:]
 
         ecc_ephem_seed = secrets.token_bytes(32)
-        ecc_ephem_pk, _, _, _ = Ed25519.generate_keypair(ecc_ephem_seed)
-        ecdh_shared = Ed25519.key_exchange(ecc_ephem_seed, ecc_pk)
+        ecc_ephem_pk, _, _, _ = ECP256.generate_keypair(ecc_ephem_seed)
+        ecdh_shared = ECP256.key_exchange(ecc_ephem_seed, ecc_pk)
 
         kyber_ct, kyber_ss = cls.encaps(kyber_pk, recipe)
 
@@ -551,7 +551,7 @@ class Inf1delKyber:
 
     @classmethod
     def hybrid_decapsulate(cls, hybrid_sk, ciphertext, recipe="espresso"):
-        from server import Ed25519, CoffeeCipher
+        from server import ECP256, CoffeeCipher
 
         ecc_seed = hybrid_sk[:32]
         kyber_sk = hybrid_sk[32:]
@@ -560,7 +560,7 @@ class Inf1delKyber:
         ecc_ephem_pk = ciphertext[2:2 + ecc_ephem_len]
         kyber_ct = ciphertext[2 + ecc_ephem_len:]
 
-        ecdh_shared = Ed25519.key_exchange(ecc_seed, ecc_ephem_pk)
+        ecdh_shared = ECP256.key_exchange(ecc_seed, ecc_ephem_pk)
 
         kyber_ss = cls.decaps(kyber_sk, kyber_ct, recipe)
 
