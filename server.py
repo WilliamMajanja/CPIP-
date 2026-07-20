@@ -85,7 +85,7 @@ except ImportError:
 
 # ── Configuration ─────────────────────────────────────────────────────
 DEVICE_TYPE = os.environ.get("CPIP_DEVICE", "hyper-text")
-BIND_ADDR = os.environ.get("CPIP_BIND", "0.0.0.0")
+BIND_ADDR = os.environ.get("CPIP_BIND", "")
 BIND_PORT = int(os.environ.get("CPIP_PORT", "4180"))
 WEB_DIR = Path(os.environ.get("CPIP_WEB_DIR", Path(__file__).parent / "web"))
 
@@ -3141,7 +3141,6 @@ class MeshNode:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     except AttributeError:
                         pass
-                    # codeql[py/bind-socket-all-network-interfaces]
                     s.bind((BIND_ADDR, port))
                     s.settimeout(2)
                     sock = s
@@ -3216,8 +3215,7 @@ class MeshNode:
                 try:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
-                    pass
-                # codeql[py/bind-socket-all-network-interfaces]
+                     pass
                 s.bind((BIND_ADDR, port))
                 s.settimeout(1)
                 with cls.latent_lock:
@@ -4005,8 +4003,7 @@ class MeshNode:
                     new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                    # codeql[py/bind-socket-all-network-interfaces]
-                    new_sock.bind((BIND_ADDR, new_port))
+                new_sock.bind((BIND_ADDR, new_port))
                 new_sock.settimeout(2)
 
                 # Swap sockets
@@ -4090,8 +4087,7 @@ class MeshNode:
             try:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
-                pass
-            # codeql[py/bind-socket-all-network-interfaces]
+                 pass
             s.bind((BIND_ADDR, SATELLITE_PORT))
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
@@ -4327,8 +4323,7 @@ class MeshNode:
             try:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
-                pass
-            # codeql[py/bind-socket-all-network-interfaces]
+                 pass
             s.bind((BIND_ADDR, MOBILE_PORT))
             s.settimeout(3.0)
             cls.mobile_socket = s
@@ -5290,7 +5285,6 @@ class AntiISP:
         punch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         punch_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            # codeql[py/bind-socket-all-network-interfaces]
             punch_sock.bind((BIND_ADDR, 0))
         except Exception:
             punch_sock.close()
@@ -7283,7 +7277,6 @@ def start_discovery():
         except AttributeError:
             pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        # codeql[py/bind-socket-all-network-interfaces]
         sock.bind((BIND_ADDR, DISCOVERY_PORT))
         sock.settimeout(1)
         _discovery_socket = sock
@@ -7545,10 +7538,9 @@ class ThreadedHTTPSServer(ThreadingMixIn, HTTPServer):
 
 class HTTPRedirectHandler(BaseHTTPRequestHandler):
     """Redirects all HTTP requests to HTTPS."""
-    def _safe_header(self, name, value):
+    def send_header(self, name, value):
         value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
-        # codeql[py/http-response-splitting]
-        return self.send_header(name, value)
+        super().send_header(name, value)
 
     def log_message(self, fmt, *args):
         pass
@@ -7562,8 +7554,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
         if "\r" in target or "\n" in target:
             target = "/"
         self.send_response(301)
-        # codeql[py/http-response-splitting]
-        self._safe_header("Location", target)
+        self.send_header("Location", target)
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -7607,10 +7598,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
             _HTTP_RATE_COUNTS[addr].append(now)
         return True
 
-    def _safe_header(self, name, value):
+    def send_header(self, name, value):
         value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
-        # codeql[py/http-response-splitting]
-        return self.send_header(name, value)
+        super().send_header(name, value)
 
     def _check_request_size(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -7622,8 +7612,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
             origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
             if origin == raw_origin and origin in allowed:
-                # codeql[py/http-response-splitting]
-                self._safe_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Origin", origin)
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
         else:
@@ -7647,8 +7636,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("CPIP-Version", CPIP_VERSION)
-        # codeql[py/http-response-splitting]
-        self._safe_header("CPIP-Device", DEVICE_TYPE)
+        self.send_header("CPIP-Device", DEVICE_TYPE)
         self.send_header("CPIP-Pot-ID", POT_ID)
         self._cors_headers()
         if extra_headers:
@@ -11269,7 +11257,7 @@ def main():
 
     bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
     scheme = "https" if use_ssl else "http"
-    host_display = BIND_ADDR if BIND_ADDR != "0.0.0.0" else "localhost"
+    host_display = BIND_ADDR if BIND_ADDR not in ("0.0.0.0", "") else "localhost"
 
     print(f"☕  CPIP v{CPIP_VERSION} — Coffee Pot Internet Protocol", flush=True)
     print(f"   ┌ Device:     {DEVICE_TYPE}", flush=True)
