@@ -4005,7 +4005,8 @@ class MeshNode:
                     new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                new_sock.bind((BIND_ADDR, new_port))  # lgtm[py/bind-socket-all-network-interfaces]
+                    # codeql[py/bind-socket-all-network-interfaces]
+                    new_sock.bind((BIND_ADDR, new_port))
                 new_sock.settimeout(2)
 
                 # Swap sockets
@@ -5289,7 +5290,7 @@ class AntiISP:
         punch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         punch_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            # lgtm[py/bind-socket-all-network-interfaces]
+            # codeql[py/bind-socket-all-network-interfaces]
             punch_sock.bind((BIND_ADDR, 0))
         except Exception:
             punch_sock.close()
@@ -7546,6 +7547,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
     """Redirects all HTTP requests to HTTPS."""
     def _safe_header(self, name, value):
         value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
+        # codeql[py/http-response-splitting]
         return self.send_header(name, value)
 
     def log_message(self, fmt, *args):
@@ -7607,6 +7609,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _safe_header(self, name, value):
         value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
+        # codeql[py/http-response-splitting]
         return self.send_header(name, value)
 
     def _check_request_size(self):
