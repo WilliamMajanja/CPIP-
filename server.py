@@ -10,32 +10,31 @@ Cryptography:
 """
 
 TEAPOT_SNAKE_ART = r"""
-      .-----------------------.
-      |   ☕  COFFEE  POT     |
-      |     _______________   |
-      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
-      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
-      |    |  ▓▓▓▓▓▓▓▓▓▓▓ |  |
-      |    |_______________|  |
-      '----------+-----------'
-                 |
-               ==+==
-              ====+====
-             =====+=====
-            ======+======
-           =======+=======
-          ========+========
-         =========+=========
-        ==========+==========
-       ===========+===========
-      .============+============.
-      |       / O  O \           |
-      |       \  ~~  /           |
-      |        |____|            |
-      |         |  |             |
-      |         |  |             |
-      |          \/              |
-      '-------------------------'
+           .-..-.
+          (  f   )_
+         (  / \    \
+        ( J |  \_   |7
+        (   |    \  |
+         \  |     \ |
+          \  \     \|
+           \  '.____.'
+            \.'
+             | |
+             | |
+              \ \
+               \ \
+                \ \    .--..--.
+                 \ \  ( @    @ )
+                  \ \  )  __  (
+                   \ \ | /ff\ |
+                    \ \| |   | |
+                     \ | |   | |
+                      \| |   | |
+                       | |   | |
+                        \ \ / /
+                         \ \/ /
+                          \  /
+                           \/
 """
 
 
@@ -3142,7 +3141,7 @@ class MeshNode:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     except AttributeError:
                         pass
-                    s.bind(("0.0.0.0", port))
+                    s.bind((BIND_ADDR, port))
                     s.settimeout(2)
                     sock = s
                     cls.current_mesh_port = port
@@ -3217,7 +3216,7 @@ class MeshNode:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                s.bind(("0.0.0.0", port))
+                s.bind((BIND_ADDR, port))
                 s.settimeout(1)
                 with cls.latent_lock:
                     cls.latent_sockets[port] = s
@@ -4004,7 +4003,7 @@ class MeshNode:
                     new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except AttributeError:
                     pass
-                new_sock.bind(("0.0.0.0", new_port))
+                new_sock.bind((BIND_ADDR, new_port))
                 new_sock.settimeout(2)
 
                 # Swap sockets
@@ -4089,7 +4088,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                 pass
-            s.bind(("0.0.0.0", SATELLITE_PORT))
+            s.bind((BIND_ADDR, SATELLITE_PORT))
             s.settimeout(MESH_SAT_TIMEOUT)
             cls.sat_socket = s
             cls.sat_active = True
@@ -4325,7 +4324,7 @@ class MeshNode:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except AttributeError:
                 pass
-            s.bind(("0.0.0.0", MOBILE_PORT))
+            s.bind((BIND_ADDR, MOBILE_PORT))
             s.settimeout(3.0)
             cls.mobile_socket = s
             cls.mobile_active = True
@@ -7278,7 +7277,7 @@ def start_discovery():
         except AttributeError:
             pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.bind(("0.0.0.0", DISCOVERY_PORT))
+        sock.bind((BIND_ADDR, DISCOVERY_PORT))
         sock.settimeout(1)
         _discovery_socket = sock
         threading.Thread(target=_discovery_listener, daemon=True).start()
@@ -7551,7 +7550,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
         if "\r" in target or "\n" in target:
             target = "/"
         self.send_response(301)
-        self.send_header("Location", target)  # lgtm[py/http-response-splitting] sanitized above
+        self.send_header("Location", target)  # codeql[py/http-response-splitting] sanitized above
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -7605,7 +7604,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             allowed = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
             origin = "".join(c for c in raw_origin if c.isprintable() and c not in "\r\n\t")
             if origin == raw_origin and origin in allowed:
-                self.send_header("Access-Control-Allow-Origin", origin)  # lgtm[py/http-response-splitting] origin validated against allowlist + sanitized
+                self.send_header("Access-Control-Allow-Origin", origin)  # codeql[py/http-response-splitting] origin validated against allowlist + sanitized
             else:
                 self.send_header("Access-Control-Allow-Origin", "")
         else:
@@ -7629,7 +7628,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("CPIP-Version", CPIP_VERSION)
-        self.send_header("CPIP-Device", DEVICE_TYPE)  # lgtm[py/http-response-splitting] DEVICE_TYPE is constrained by CPIPHandler.send_header which strips \r\n
+        self.send_header("CPIP-Device", DEVICE_TYPE)  # codeql[py/http-response-splitting] DEVICE_TYPE is constrained by CPIPHandler.send_header which strips \r\n
         self.send_header("CPIP-Pot-ID", POT_ID)
         self._cors_headers()
         if extra_headers:
