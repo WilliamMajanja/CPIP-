@@ -1,15 +1,18 @@
-.TH CPIP 1 "2026-07-17" "CPIP v3.0" "Coffee Pot Internet Protocol"
+.TH CPIP 1 "2026-07-23" "CPIP v4.0.2" "Coffee Pot Internet Protocol"
 .SH NAME
 cpip \- command-line client for the Coffee Pot Internet Protocol
 .SH SYNOPSIS
 .B cpip
-[\fBstatus\fR|\fBbrew\fR|\fBpour\fR|\fBwhen\fR|\fBinfo\fR|\fBconfig\fR|\fBstats\fR|\fBversion\fR|\fBwhoami\fR|\fBmesh\fR|\fBitf\fR|\fBcovert\fR|\fBecc\fR|\fBdeaddrop\fR|\fBdefense\fR]
+[\fBtui\fR|\fBstatus\fR|\fBbrew\fR|\fBpour\fR|\fBwhen\fR|\fBinfo\fR|\fBconfig\fR|\fBstats\fR|\fBversion\fR|\fBwhoami\fR|\fB418\fR|\fBadditions\fR|\fBmesh\fR|\fBitf\fR|\fBcovert\fR|\fBecc\fR|\fBdeaddrop\fR|\fBdefense\fR|\fBidentity\fR|\fBdns\fR|\fBgroups\fR|\fBsync\fR|\fBcluster\fR]
 .SH DESCRIPTION
 cpip communicates with a running CPIP/HTCPCP server. It implements RFC 2324
 (Hyper Text Coffee Pot Control Protocol) and RFC 7168 (HTCPCP-TEA), plus the
 CPIP mesh extension for peer-to-peer messaging, covert channels, E2EE, and
 multi-transport routing.
 .SH COMMANDS
+.TP
+.B tui [\fIhost\fR] [\fIport\fR]
+Launch the Terminal UI (OpenTUI). Default: localhost:4180.
 .TP
 .B status
 Show server status.
@@ -39,6 +42,15 @@ Show server version.
 .B whoami
 Show local node identity (POT_ID, address, hostname, device).
 .TP
+.B 418
+Trigger HTTP 418 by brewing coffee on a teapot.
+.TP
+.B 418-alcohol
+Trigger HTTP 418 by brewing alcohol on a teapot.
+.TP
+.B additions
+List supported addition types.
+.TP
 .B mesh status
 Mesh network status.
 .TP
@@ -53,6 +65,9 @@ Send E2EE message to a peer.
 .TP
 .B mesh broadcast \fImessage\fR
 Broadcast to all peers.
+.TP
+.B mesh send-raw \fIpot\fR \fImessage\fR
+Send a raw (unencrypted) message to a peer (debugging).
 .TP
 .B mesh scan
 Scan for peers on the network.
@@ -119,6 +134,9 @@ List dead-drop messages held by this node.
 .TP
 .B deaddrop claim \fIid\fR
 Claim a dead-drop message.
+.TP
+.B defense status
+Show the full ITF defense posture (alias for \fBitf status\fR).
 .TP
 .B identity
 List all known identities.
@@ -189,8 +207,11 @@ Encode a covert message
 .I /usr/local/bin/cpip
 CLI client.
 .SH BUGS
-The Coffee Blend Cipher is deliberately non-FIPS compliant. Do not use for
-actual cryptographic security.
+Classical cryptography (AES-256-GCM, ECDSA/ECDH P-256, HKDF/HMAC-SHA256) is
+FIPS-compliant via the \fBcryptography\fR library. 1nf1D3L's Kyber (ML-KEM-768
+variant with η=3) is NOT FIPS 203 validated — it is intended for research,
+red-teaming, and coffee-protocol use cases, not FIPS-required deployments.
+CPIP does not implement RSA-KEM; the hybrid KEM is ECDH P-256 + Kyber.
 .SH SEE ALSO
 .BR server.py (1),
 RFC 2324 (https://datatracker.ietf.org/doc/html/rfc2324),

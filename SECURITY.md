@@ -2,16 +2,19 @@
 
 > **Cryptographic Primitives**: CPIP v4 uses FIPS-compliant cryptographic primitives
 > for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
-> RSA-KEM-2048 (FIPS 186-4 / SP 800-56B), HKDF-SHA256, and HMAC-SHA256.
-> All constant-time operations use the `cryptography` library. The `secrets`
-> module replaces `random` for all security-relevant randomness.
+> HKDF-SHA256, and HMAC-SHA256. All constant-time operations use the `cryptography`
+> library. The `secrets` module replaces `random` for all security-relevant
+> randomness.
 >
 > **Post-Quantum KEM**: 1nf1D3L's Kyber (Non-FIPS ML-KEM-768 variant) is available
 > via `b4dm4n-cw` / `inf1del_kyber.py`. Parameters: n=256, k=3, q=3329, η₁=3, η₂=3,
-> du=10, dv=4, domain tag "1NF1D3L-KYBER-V1". Hybrid mode: ECDH P-256 + 1nf1D3L Kyber.
+> du=10, dv=4, domain tag "1NF1D3L-KYBER-V1". Hybrid KEM: ECDH P-256 + 1nf1D3L Kyber.
 > **Not FIPS 203 compliant by design** — wider noise distribution (η=3), custom domain
 > separation tags, NTT twiddle perturbation, coffee recipe binding. Suitable for
 > research, red-teaming, coffee protocols, and survival scenarios.
+>
+> **Note**: CPIP does not implement RSA-KEM. The hybrid KEM (`server.HybridKEM`)
+> combines ECDH P-256 with 1nf1D3L Kyber, not RSA-KEM.
 
 ## Cryptographic Architecture
 
@@ -34,10 +37,9 @@ primitives, with optional post-quantum KEM layer, designed for hostile signal en
 - **Backward compatibility**: Reads v1 and v2 Coffee Blend Cipher messages transparently
 
 ### End-to-End Encryption (E2EE)
-- **Classical hybrid**: ECDH P-256 (FIPS 186-4) + RSA-KEM-2048 hybrid KEM
-- **Post-quantum hybrid**: ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (Non-FIPS ML-KEM-768 variant)
-- **Key derivation**: HKDF-SHA256 from combined shared secrets
-- **Hybrid guarantee**: Secure if EITHER classical OR PQ component holds
+- **Hybrid KEM**: ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (Non-FIPS ML-KEM-768 variant)
+- **Key derivation**: HKDF-SHA256 from combined shared secrets (domain tag `cpip-hybrid-kem-kyber-v1`)
+- **Hybrid guarantee**: Secure if EITHER classical ECDH OR PQ Kyber component holds
 
 ### 1nf1D3L's Kyber (Non-FIPS Post-Quantum KEM)
 - **Variant**: ML-KEM-768 with 1nf1D3L modifications (η=3, custom domain tags, NTT perturbation)
@@ -49,17 +51,10 @@ primitives, with optional post-quantum KEM layer, designed for hostile signal en
 - **Sizes**: PK=1184B, SK=2400B, CT=1120B, SS=32B
 - **Hybrid (ECDH+Kyber)**: PK≈1251B, SK≈2432B, CT≈1187B, SS=32B
 
-### RSA-KEM-2048 (Key Encapsulation)
-
-The RSA-KEM implementation in CPIP uses FIPS-compliant primitives:
-
-- **Key generation**: 2048-bit RSA keys (FIPS 186-4)
-- **Encapsulation**: RSA-KEM with OAEP padding (SP 800-56B)
-- **Key derivation**: HKDF-SHA256 from RSA-KEM shared secret
-- **Security basis**: RSA-OAEP with SHA-256 — FIPS 186-4 / SP 800-56B compliant
-
-### Signatures
-- **Classical**: ECDSA P-256 (FIPS 186-4) via `cryptography` library — constant-time
+### RSA / TLS
+- **TLS certificates**: RSA used only for self-signed TLS certificate generation
+  (auto-generated when `CPIP_SSL_AUTO=1`). Not a KEM.
+- **Signatures**: ECDSA P-256 (FIPS 186-4) via `cryptography` library — constant-time
 - **Key exchange**: ECDH P-256 (FIPS 186-4) via `cryptography` library — constant-time
 - **Mesh message authentication**: HMAC-SHA256 domain-separated tags
 
@@ -205,7 +200,7 @@ CPIP v4.0.2 serves as the primary cryptographic security provider for Minima nod
 | Data at rest | CoffeeCipher v3 (AES-256-GCM) | `backend/cpip_provider.py` (Python); `org.minima.utils.cpip.CoffeeCipher` (Java) |
 | Node identity | ECDSA P-256 challenge-response | `NodeIdentity` / `ECP256` (Python); `CPIPECDSA` (Java) |
 | RPC authentication | HMAC-SHA256 time-bounded tokens | `RpcToken` (Python); `CPIPECDSA.generateRpcToken` (Java) |
-| Key encapsulation | RSA-KEM-2048 + optional Kyber | `CPIPKEM` (Java); HybridKEM (Python) |
+| Key encapsulation | ECDH P-256 + 1nf1D3L Kyber (HybridKEM) | `CPIPKEM` (Java); HybridKEM (Python, server.py:1485) |
 | Message signatures | ECDSA P-256 (replaces RSA) | `SignVerify` → `CPIPECDSA.sign/verify` (Java) |
 | API defense | ITF Defense (probe blocking, 418) | `CPIPSecurityMiddleware` (Python); `CoffeeProtocolProvider.defenseCheck` (Java) |
 | FIPS assurance | Power-on self-tests | `CPIPSelfTest` (Java); `run_fips_self_tests()` (Python) |
@@ -276,7 +271,7 @@ CPIP includes built-in network diagnostic tools:
 - Monitor incident response alerts for signs of hostile activity
 - Understand that classical cryptographic operations use FIPS-compliant primitives
   via the `cryptography` library (constant-time ECDSA/ECDH P-256, AES-256-GCM,
-  RSA-KEM-2048)
+  HKDF-SHA256, HMAC-SHA256). CPIP does not implement RSA-KEM.
 - **1nf1D3L's Kyber is NOT FIPS 203 validated** — it is a Non-FIPS ML-KEM-768 variant
   with wider noise (η=3), custom domain tags, and NTT perturbation. Use for research,
   red-teaming, coffee protocols, and survival — not for FIPS-required deployments.

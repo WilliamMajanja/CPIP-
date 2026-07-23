@@ -175,7 +175,7 @@ ${CONNECT_AUTH_KEY:+rpi-connect signin "${CONNECT_AUTH_KEY}"}
 echo "Creating CPIP service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v4.0.1 — Coffee Pot Internet Protocol
+Description=CPIP v4.0.2 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -219,7 +219,7 @@ fi
 
 echo ""
 echo "══════════════════════════════════════════════════════"
-echo "  CPIP v3.0 provisioned on ${hostname}"
+echo "  CPIP v4.0.2 provisioned on ${hostname}"
 echo "  HTTP : ${http_port} | Mesh UDP : ${mesh_port}"
 echo "  Pot ID : \$POT_ID"
 echo "  Service: systemctl status cpip"
@@ -414,7 +414,7 @@ sudo systemctl enable rpi-connect 2>/dev/null || true
 # Create service
 sudo tee /etc/systemd/system/cpip.service > /dev/null << 'SVCEOF'
 [Unit]
-Description=CPIP v3.0 — Node ${node_num}
+Description=CPIP v4.0.2 — Node ${node_num}
 After=network.target
 [Service]
 Type=simple

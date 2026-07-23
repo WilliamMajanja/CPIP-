@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Comprehensive tests for CPIP cryptographic and security subsystems.
 
-Tests: ECDSA/ECDH P-256, RSA-KEM, HybridKEM, CoffeeCipher v3 (AES-256-GCM),
+Tests: ECDSA/ECDH P-256, HybridKEM (ECDH P-256 + Kyber), CoffeeCipher v3 (AES-256-GCM),
 SecureHash, IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
 CovertChannel, mesh HMAC, persistence encryption, and HTTP security.
 
-All cryptographic primitives are FIPS-compliant:
+All classical cryptographic primitives are FIPS-compliant:
 - ECDSA/ECDH P-256 (FIPS 186-4)
-- RSA-KEM (SP 800-56B)
 - AES-256-GCM (FIPS 197)
 - SHA-256 (FIPS 180-4)
+
+The 1nf1D3L Kyber KEM (ML-KEM-768 variant, η=3) is non-FIPS.
 
 Run: python3 test_crypto.py
 """

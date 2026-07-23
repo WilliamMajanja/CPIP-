@@ -4,7 +4,9 @@ b4dm4n-cw — Cipher Workbench CLI
 ==================================
 
 Next-generation cryptographic workbench for The Coffee Protocol.
-16 KEM algorithms, symmetric encryption, ECDSA signing, ECDH key exchange,
+Up to 17 KEM aliases (1 inf1del-kyber + 15 pqcrypto-backed PQC KEMs when pqcrypto
+is installed, minus the overwritten mlkem768 duplicate, plus hybrid-ecdh-kyber
+and mlkem768-pure), symmetric encryption, ECDSA signing, ECDH key exchange,
 covert channels, entropy analysis, interactive REPL, and more.
 
 "brew crypto. stay paranoid. survive."

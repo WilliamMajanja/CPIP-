@@ -60,13 +60,13 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **Runtime defense policy toggles** — Independent enable/disable of every Anti-ISP, Anti-Stingray, Anti-Surveillance, and Net-Neutrality vector via API or dashboard
 - **Covert channel** — Data embedded in Accept-Additions brew headers with LocalStorage-backed message history
 - **ITF (In The Face) defense** — Active probe blocking with HTTP 418 responses
-- **Pentest tool detection** — Fingerprinting of Burp Suite, Nmap, SQLMap, Nikto, and 12 additional security tools
+- **Pentest tool detection** — Fingerprinting of 16 security tools (Burp Suite, Nmap, SQLMap, Nikto, and 12 more)
 - **IP blacklist management** — Rate-limited exponential ban duration
 - **CoffeeCipher v3 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
-- **RSA-KEM-2048** — FIPS 186-4 / SP 800-56B key encapsulation with OAEP
-- **HybridKEM** — ECDH P-256 + RSA-KEM hybrid key exchange
-- **Post-quantum KEM** — 1nf1D3L's Kyber ML-KEM-768 variant via b4dm4n-cw CLI (non-FIPS)
-- **Hybrid PQ+Classical** — ECDH P-256 + Kyber hybrid key exchange
+- **ECDSA/ECDH P-256** — FIPS 186-4 signatures and key exchange
+- **HybridKEM** — ECDH P-256 + Kyber (ML-KEM-768) hybrid key exchange; secure if either component holds
+- **Post-quantum KEM** — 1nf1D3L's Kyber ML-KEM-768 variant via b4dm4n-cw CLI (non-FIPS, η=3)
+- **Hybrid PQ+Classical** — ECDH P-256 + 1nf1D3L Kyber combined key exchange via HKDF-SHA256
 - **SHA-256 domain-separated hashing** — Tamper-evident audit chain
 - **ECDSA/ECDH P-256** — FIPS 186-4 end-to-end encryption, address book, port hopping
 - **Incident response** — Auto-detection, severity alerts, auto-mitigation
@@ -75,7 +75,7 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **GPIO relay control** — Physical coffee maker control on Raspberry Pi
 - **HTTP security** — Rate limiting, request size limits, security headers
 - **TLS/SSL** — Built-in HTTPS with auto-generated self-signed certificates, custom certificate support, and HTTP-to-HTTPS redirect
-- **Kubernetes support** — Production-ready manifests with ConfigMap, Secret, Ingress, and NetworkPolicy
+- **Kubernetes support** — Manifests with ConfigMap, Secret, Ingress, and NetworkPolicy (see Kubernetes section for version note)
 - **Encrypted persistence** — Data at rest encrypted with HMAC integrity verification
 - **CLI client** — Full-featured bash CLI
 - **mDNS advertising** — Zero-config discovery via Avahi
@@ -306,18 +306,7 @@ All cryptographic primitives use FIPS-compliant algorithms via the `cryptography
 - Key exchange: ECDH over NIST P-256 (FIPS 186-4)
 - Signatures: ECDSA with P-256 (FIPS 186-4)
 - Constant-time implementations via `cryptography` library
-
-### RSA-KEM-2048
-
-- Key encapsulation: RSA-KEM with 2048-bit keys (FIPS 186-4 / SP 800-56B)
-- Padding: OAEP with SHA-256 label
-- Key derivation: HKDF-SHA256 from RSA-KEM shared secret
-
-### HybridKEM (Classical)
-
-- ECDH P-256 + RSA-KEM-2048 combined key exchange
-- Key derivation: HKDF-SHA256 from combined ECDH + RSA-KEM shared secrets
-- Secure if either classical component holds
+- Used for mesh E2EE, node identity, and address book
 
 ### 1nf1D3L's Kyber KEM (Post-Quantum, Non-FIPS)
 
@@ -331,15 +320,20 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 - Coffee recipe binding: Recipe string mixed into KDF
 - Key confirmation: Re-encapsulation check (implicit rejection via KDF with z)
 - Sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B
-- CLI: `b4dm4n-cw {keygen,encaps,decaps,bench,info,tui}`
+- CLI: `b4dm4n-cw {keygen,encaps,decaps,bench,info,tui,coffee}`
 
-### Hybrid PQ+Classical
+### HybridKEM (Classical + Post-Quantum)
 
-- ECDH P-256 + 1nf1D3L Kyber combined key exchange
-- Key derivation: HKDF-SHA3-256 from combined ECDH + Kyber shared secrets
-- Secure if either component holds
-- Sizes: PK~1251B, SK~2432B, CT~1187B, SS=32B
-- CLI: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps,tui}`
+CPIP's hybrid key exchange combines ECDH P-256 with 1nf1D3L's Kyber (ML-KEM-768):
+
+- ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (non-FIPS ML-KEM-768)
+- Key derivation: HKDF-SHA256 from combined ECDH + Kyber shared secrets
+  (domain tag `cpip-hybrid-kem-kyber-v1`)
+- Secure if EITHER classical ECDH OR PQ Kyber component holds
+- Sizes: PK~1251B, SK~2432B, CT~1155B, SS=32B
+- Implemented in `server.HybridKEM` (server.py:1485)
+- CLI: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps,tui}` (via the
+  `hybrid` KEM alias → `hybrid-ecdh-kyber`)
 
 ### HMAC-SHA256
 
@@ -353,7 +347,7 @@ Domain-separated hashing for audit chain and identity; SHA3-256 for Kyber KDF/H.
 
 v4 format with AES-256-GCM encryption and HMAC integrity verification. v1/v2 backward-compatible load.
 
-Classical primitives (AES-256-GCM, ECDSA/ECDH P-256, RSA-KEM-2048, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant. 1nf1D3L's Kyber is not FIPS 203 validated — it is a non-FIPS ML-KEM-768 variant intended for research and experimental use.
+Classical primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant. 1nf1D3L's Kyber is not FIPS 203 validated — it is a non-FIPS ML-KEM-768 variant intended for research and experimental use. CPIP does not implement RSA-KEM; the hybrid KEM uses ECDH P-256 + Kyber.
 
 ## TLS/SSL
 
@@ -402,7 +396,7 @@ sudo chmod +x /opt/cpip/server.py
 The deploy script installs:
 - Server to `/opt/cpip/server.py`
 - CLI to `/usr/local/bin/cpip`
-- Web dashboard to `/opt/cpip/web/`
+- Web dashboard override to `/opt/cpip/web/` (only if `web/` contains files; otherwise the embedded dashboard in `server.py` is used)
 - Systemd service (`cpip.service`)
 - Pi-Apps package (if `pi-apps/` directory is present)
 
@@ -443,7 +437,8 @@ Produces `radio_if` — a standalone binary with zero external dependencies.
 
 ## Kubernetes
 
-CPIP includes production-ready Kubernetes manifests for self-hosting.
+CPIP includes Kubernetes manifests for self-hosting. The bundled `k8s/deployment.yaml`
+targets v4.0.2 labels and `image: cpip:4.0.2`.
 
 ### Quick Deploy
 
@@ -838,7 +833,7 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 │  ┌──────────────────┐  ┌──────────────────┐                  │
 │  │  Crypto Engine   │  │ Incident Response│                  │
 │  │ (AES-256-GCM,    │  │ (auto-detect,    │                  │
-│  │  RSA-KEM, Hybrid)│  │  alert, mitigate)│                  │
+│  │  ECDH+Kyber)     │  │  alert, mitigate)│                  │
 │  └──────────────────┘  └──────────────────┘                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -846,28 +841,47 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ## Project Structure
 
 ```
-├── server.py              # Main server (Python)
+├── server.py              # Main server (Python stdlib http.server, ~11k lines)
 ├── cpip                   # CLI client (bash)
-├── deploy.sh              # Raspberry Pi deployment script
-├── deploy_cpip.sh         # Minimal HTCPCP-only deployment
+├── cpip.1                 # CLI man page (roff)
+├── cpip_tui.py            # Terminal UI (OpenTUI) — 12 pages
+├── b4dm4n_cw.py           # Cipher Workbench CLI v2.0
+├── b4dm4n-cw-commands.txt # b4dm4n-cw command reference
+├── inf1del_kyber.py       # 1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
+├── pyproject.toml         # Package metadata (name: cpip, v4.0.2)
 ├── Dockerfile             # Docker image (Alpine, SSL-enabled)
+├── docker-compose.yml      # Single-service compose with volumes + limits
+├── deploy.sh              # Raspberry Pi deployment script (systemd)
+├── deploy-pi.sh           # Pi fleet deployer (scan/flash/provision/connect)
+├── cluster.sh             # Local multi-node cluster launcher
+├── test_crypto.py         # Cryptographic unit tests (pytest)
+├── test_cpip.py           # Server integration tests (pytest)
+├── test_key.{pk,sk}       # Kyber test fixtures (PK=1184B, SK=2400B)
+├── test_ct                # Kyber test ciphertext (1120B)
+├── test_hybrid.{hp,hs,ct} # Hybrid KEM test fixtures
+├── mkcert                 # Self-signed cert generator (openssl/cryptography)
 ├── web/
-│   └── index.html         # Web dashboard SPA
+│   └── .gitkeep           # Optional override slot — see note below
 ├── k8s/
-│   ├── deployment.yaml    # Kubernetes manifests
+│   ├── deployment.yaml    # Kubernetes manifests (Namespace→NetworkPolicy)
 │   └── kustomization.yaml # Kustomize configuration
 ├── radio/
 │   ├── radio_if.c         # C radio interface (LoRa SPI, KISS TNC, RTL-SDR, sim)
 │   ├── radio_if.h         # C header
-│   ├── radio_protocol.py  # Python bridge to C binary
+│   ├── radio_protocol.py  # Python bridge to C binary (Unix socket)
 │   └── Makefile           # Build (zero external dependencies)
-└── pi-apps/
-    ├── install
-    ├── uninstall
-    ├── credits
-    ├── description
-    └── icon-64.png
+├── pi-apps/
+│   ├── install            # Writes systemd cpip.service
+│   ├── uninstall
+│   ├── credits
+│   ├── description
+│   └── icon-64.png
+└── .github/workflows/ci.yml  # CI matrix (Python 3.10–3.13 + Docker)
 ```
+
+> **Web dashboard note:** `web/` ships empty (just `.gitkeep`). The dashboard is an
+> inline `DASHBOARD_HTML` string embedded in `server.py` (~1060 lines). Drop a
+> `web/index.html` to override the embedded UI at runtime (`CPIP_WEB_DIR=./web`).
 
 ## Minima / PiNet-OS Integration
 
@@ -878,7 +892,7 @@ CPIP v4.0.2 serves as the primary cryptographic security provider for Minima blo
 | Data at rest | CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256) |
 | Node identity | ECDSA P-256 challenge-response authentication |
 | RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
-| Key encapsulation | RSA-KEM-2048 + optional 1nf1D3L Kyber PQ hybrid |
+| Key encapsulation | HybridKEM — ECDH P-256 + 1nf1D3L Kyber (PQ hybrid) |
 | Message signatures | ECDSA P-256 (replaces RSA in Maxima messaging) |
 | API defense | ITF Defense (probe blocking, pentest detection, IP blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
@@ -897,4 +911,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This is free and unencumbered software released into the public domain. See [LICENSE](LICENSE) for details.
 
-The CoffeeCipher v3 uses FIPS-compliant cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, RSA-KEM-2048, HKDF-SHA256, HMAC-SHA256).
+The CoffeeCipher v3 uses FIPS-compliant cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256). The hybrid KEM combines ECDH P-256 with 1nf1D3L's Kyber (non-FIPS ML-KEM-768).

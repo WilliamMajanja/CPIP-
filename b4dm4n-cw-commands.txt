@@ -78,7 +78,7 @@ b4dm4n-cw encaps --recipe cappuccino -k cap_keys.pk
 - Domain tag: "1NF1D3L-KYBER-V1"
 - NTT twiddle perturbation per session
 - Sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B
-- Hybrid: ECDH P-256 + Kyber, HKDF-SHA3-256 combiner
+- Hybrid: ECDH P-256 + Kyber, HMAC-SHA3-256 KDF combiner (domain tag "1NF1D3L-KYBER-V1-HYBRID")
 
 ## Security Notes
 - NOT FIPS 203 compliant (by design: η=3, custom domain tags)

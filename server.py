@@ -9018,8 +9018,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", {
             "mesh": MeshNode.get_status(),
             "covert": {"enabled": COVERT_ENABLED, "cover_traffic": COVER_TRAFFIC},
-            "cipher": "AES-256-GCM (FIPS 197) + ECDSA P-256 (FIPS 186-4) + RSA-KEM (SP 800-56B)",
-            "cipher_note": "FIPS-compliant authenticated encryption (AES-GCM), constant-time ECDSA/ECDH P-256, RSA-KEM key encapsulation.",
+            "cipher": "AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS)",
+            "cipher_note": "FIPS-compliant authenticated encryption (AES-GCM), constant-time ECDSA/ECDH P-256; hybrid KEM is ECDH P-256 + 1nf1D3L Kyber (non-FIPS ML-KEM-768).",
             "ecc": {
                 "algorithm": "ECDSA/ECDH P-256 (FIPS 186-4)",
                 "implementation": "Pure Python — no libsodium, no pycryptodome",
@@ -9133,7 +9133,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "cipher": "AES-256-GCM (FIPS 197)",
             "ecc_available": MeshNode.node_pubkey is not None,
             "pq_kem_available": True,
-            "hybrid_kem": "ECDH P-256 + RSA-KEM",
+            "hybrid_kem": "ECDH P-256 + Kyber (ML-KEM-768, non-FIPS)",
         })
 
     def _handle_defense_get(self):
@@ -9494,11 +9494,11 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", {
             "cipher": "AES-256-GCM (FIPS 197)",
             "ecc": "ECDSA/ECDH P-256 (FIPS 186-4)",
-            "pq_kem": "RSA-KEM (FIPS 186-4 / SP 800-56B) hybrid with ECDH P-256",
+            "pq_kem": "1nf1D3L Kyber (non-FIPS ML-KEM-768, η=3) hybrid with ECDH P-256",
             "hash": "SHA-256 + SHA-3-256",
             "hmac": "HMAC-SHA256 + HMAC-SHA3-256",
             "key_derivation": "HKDF-SHA256",
-            "e2ee": "ECDH P-256 + RSA-KEM hybrid + AES-256-GCM",
+            "e2ee": "ECDH P-256 + Kyber (ML-KEM-768, non-FIPS) hybrid + AES-256-GCM",
             "node_address": MeshNode.node_address,
             "node_pubkey_present": MeshNode.node_pubkey is not None,
             "node_cert_hash": CoffeeCipher.hash(MeshNode.node_secret) if MeshNode.node_secret else None,
@@ -11295,7 +11295,7 @@ def main():
     print(f"   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print(f"   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
-    print(f"   Crypto: AES-256-GCM (FIPS 197) + ECDSA P-256 (FIPS 186-4) + RSA-KEM (SP 800-56B) + ML-KEM-768 (FIPS 203)", flush=True)
+    print(f"   Crypto: AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS) hybrid KEM", flush=True)
     print(f"   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
     print(f"   Anti-Stingray: IMSI catcher detection + RF anomaly monitoring", flush=True)
     print(f"   Anti-Surveillance: DPI detection + SSL intercept + exploit detection", flush=True)
