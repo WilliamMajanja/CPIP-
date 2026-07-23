@@ -11224,8 +11224,8 @@ DEFENSE_MAX_BLACKLIST = int(os.environ.get("CPIP_DEFENSE_MAX_BLACKLIST", "1000")
 
 MAX_REQUEST_SIZE = int(os.environ.get("CPIP_MAX_REQUEST_SIZE", "65536"))
 CORS_ALLOWED_ORIGINS = os.environ.get("CPIP_CORS_ORIGINS", "")
-HTTP_RATE_LIMIT = int(os.environ.get("CPIP_HTTP_RATE_LIMIT", "100"))
-HTTP_RATE_WINDOW = int(os.environ.get("CPIP_HTTP_RATE_WINDOW", "60"))
+HTTP_RATE_LIMIT = int(os.environ.get("CPIP_HTTP_RATE_LIMIT", "500"))
+HTTP_RATE_WINDOW = int(os.environ.get("CPIP_HTTP_RATE_WINDOW", "120"))
 
 # ── RPC HMAC Authentication (Minima integration) ───────────────────────
 # When CPIP_RPC_AUTH=1, mutating CPIP REST endpoints (POST/PUT/DELETE on
