@@ -11302,6 +11302,16 @@ def _try_bind(max_attempts=10):
 
 
 def main():
+    # ── CLI flags (no server start) ───────────────────────────────────
+    if "--version" in sys.argv or "-V" in sys.argv:
+        print(f"CPIP {CPIP_VERSION}")
+        return
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(f"CPIP/HTCPCP Server v{CPIP_VERSION} — Coffee Pot Internet Protocol")
+        print("Usage: cpip-server [--version|-V] [--help|-h]")
+        print("       (all other configuration via environment variables; see README §Configuration)")
+        return
+
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
