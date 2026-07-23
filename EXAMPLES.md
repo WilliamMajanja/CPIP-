@@ -15,29 +15,33 @@ cpip 418
 
 ## 1nf1D3L's Kyber KEM (Post-Quantum)
 
+`b4dm4n_cw.py` is invoked directly (it is not registered as a console script).
+Its `encaps`/`decaps` take positional key/ciphertext args, and hybrid is selected
+via `-a hybrid`, not via separate `hybrid-*` subcommands.
+
 ```bash
-# Basic Kyber KEM
-b4dm4n-cw keygen -o mykeys
-b4dm4n-cw encaps -k mykeys.pk -o ct.bin
-b4dm4n-cw decaps -k mykeys.sk -c ct.bin
+# Basic Kyber KEM (positional pubkey for encaps; privkey + ct for decaps)
+./b4dm4n_cw.py keygen -o mykeys
+./b4dm4n_cw.py encaps mykeys.pk -o ct.bin
+./b4dm4n_cw.py decaps mykeys.sk ct.bin
 
-# With different coffee recipe (domain separation)
-b4dm4n-cw keygen --recipe cappuccino -o cap_keys
-b4dm4n-cw encaps --recipe cappuccino -k cap_keys.pk -o cap_ct.bin
+# With a different coffee recipe (domain separation)
+./b4dm4n_cw.py keygen --recipe cappuccino -o cap_keys
+./b4dm4n_cw.py encaps --recipe cappuccino cap_keys.pk -o cap_ct.bin
 
-# Hybrid ECDH P-256 + Kyber (defense in depth)
-b4dm4n-cw hybrid-keygen -o hybrid
-b4dm4n-cw hybrid-encaps -k hybrid.hp -o hyb_ct.bin
-b4dm4n-cw hybrid-decaps -k hybrid.hs -c hyb_ct.bin
+# Hybrid ECDH P-256 + Kyber (defense in depth) — use the -a hybrid alias
+./b4dm4n_cw.py keygen -a hybrid -o hybrid
+./b4dm4n_cw.py encaps -a hybrid hybrid.pk -o hyb_ct.bin
+./b4dm4n_cw.py decaps -a hybrid hybrid.sk hyb_ct.bin
 
 # Benchmark
-b4dm4n-cw bench -n 50
+./b4dm4n_cw.py bench -n 50
 
 # Show parameters
-b4dm4n-cw info
+./b4dm4n_cw.py info
 
 # Show ASCII art
-b4dm4n-cw art
+./b4dm4n_cw.py coffee
 ```
 
 ## Mesh Messaging

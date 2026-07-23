@@ -202,6 +202,19 @@ cmd_status() {
 }
 
 cmd_connect() {
+    local target="${1:-}"
+    if [ -n "$target" ]; then
+        local http_port=$((4180 + target))
+        log "Mesh-connecting node $target to gateway (node 0)..."
+        curl -sk -X POST "https://localhost:${http_port}/cpip/mesh/send" \
+            -H "Content-Type: application/json" \
+            -d "{\"dst\": \"$(printf '%08x' 0)\", \"message\": \"Cluster connect from node $target\"}" \
+            2>/dev/null || warn "  Node $target not reachable"
+        sleep 2
+        local peers=$(curl -sk "https://localhost:${http_port}/cpip/mesh/peers" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('peers',{})))" 2>/dev/null || echo "?")
+        echo -e "  Node $target: ${peers} peers"
+        return
+    fi
     log "Mesh-connecting all nodes via peer discovery..."
     for i in $(seq 1 $((NODES - 1))); do
         local http_port=$((4180 + i))
@@ -300,7 +313,7 @@ Usage:
   ./cluster.sh start [N]     Start N nodes (default: 3)
   ./cluster.sh stop          Stop all nodes
   ./cluster.sh status        Show cluster health
-  ./cluster.sh connect       Mesh-connect all nodes
+  ./cluster.sh connect [N]   Mesh-connect all nodes (or just node N to gateway)
   ./cluster.sh demo          Full demo: start + connect + test
   ./cluster.sh help          This message
 
@@ -319,7 +332,7 @@ case "${1:-help}" in
     start)  cmd_start "${2:-3}" ;;
     stop)   cmd_stop ;;
     status) cmd_status ;;
-    connect) cmd_connect ;;
+    connect) cmd_connect "$2" ;;
     demo)   cmd_demo "${2:-3}" ;;
     help|*) cmd_help ;;
 esac

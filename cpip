@@ -8,7 +8,7 @@ die() { echo "error: $*" >&2; exit 1; }
 
 usage() {
 cat << 'HELP'
-CPIP v4.0.2 — Coffee Pot Internet Protocol CLI
+CPIP v5.0.0 — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
 
 Usage:
@@ -882,7 +882,11 @@ print(f'Total: {d.get(\"count\",0)}')
     # ── Cluster ────────────────────────────────────────────────────────
     cluster)
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-        exec "${SCRIPT_DIR}/cluster.sh" "${2:-help}" "${3:-3}"
+        if [ "$2" = "connect" ]; then
+            exec "${SCRIPT_DIR}/cluster.sh" "${2:-help}" "${3:-}"
+        else
+            exec "${SCRIPT_DIR}/cluster.sh" "${2:-help}" "${3:-3}"
+        fi
         ;;
 
     # ── Help ────────────────────────────────────────────────────────────

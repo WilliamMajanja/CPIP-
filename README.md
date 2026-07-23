@@ -3,7 +3,7 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-4.0.2-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
@@ -82,34 +82,35 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **Brew scheduling** — Timed brews with daily recurring option
 - **SSE events** — Real-time server-sent events
 - **Prometheus metrics** — Export at `/cpip/metrics`
-- **9 beverage types** — Coffee, tea, espresso, latte, cappuccino, americano, cold brew, mocha, matcha
-- **Addition types** — Milk (5 kinds), sugar (3 kinds), syrup (3 kinds), spice (3 kinds), alcohol (6 kinds)
+- **2 HTCPCP beverages** — Coffee and tea (per RFC 2324/7168); device selects which are brewable (`hyper-text` brews both)
+- **7 crypto recipes** — Espresso, latte, cappuccino, americano, cold-brew, mocha, matcha (recipe string feeds CoffeeCipher KDF)
+- **Addition types** — Milk (6 kinds), syrup (5 kinds), sugar (5 kinds), spice (4 kinds), alcohol (5 kinds)
 - **Pi-Apps support** — One-click install on Raspberry Pi
 
 ## Quick Start
 
 ```bash
-# Start the server (hyper-text device, mesh enabled, HTTPS with auto-generated cert)
-CPIP_SSL=1 CPIP_SSL_AUTO=1 ./server.py
+# Start the server (SSL, auto-cert, and HTTP→HTTPS redirect are ON by default)
+./server.py
 
 # Web dashboard: https://localhost:4180/dashboard
 
 # Brew coffee
-curl -X BREW https://localhost:4180/coffee
+curl -k -X BREW https://localhost:4180/coffee
 
 # Brew tea with additions
-curl -X BREW \
+curl -k -X BREW \
   -H "Accept-Additions: milk;variety=whole, sugar;variety=honey" \
   https://localhost:4180/tea
 
 # Stop brewing
-curl -X WHEN https://localhost:4180/
+curl -k -X WHEN https://localhost:4180/
 
 # Check status
-curl https://localhost:4180/
+curl -k https://localhost:4180/
 
 # Run without SSL (HTTP only)
-./server.py
+CPIP_SSL=0 ./server.py
 ```
 
 ### With additional transports
@@ -143,11 +144,11 @@ The `cpip` command-line client communicates with a running CPIP server.
 |---------|-------------|
 | `cpip status` | Server status |
 | `cpip version` | Server version |
-| `cpip whoami` | Local node identity (POT_ID, address, hostname, device) |
+| `cpip whoami` \| `cpip id` | Local node identity (POT_ID, address, hostname, device) |
 | `cpip config` | Full node configuration (JSON) |
 | `cpip stats` | All status at a glance (node, mesh, sat, radio, mobile) |
-| `cpip brew coffee` | Brew coffee |
-| `cpip brew tea` | Brew tea |
+| `cpip brew coffee` \| `cpip pour coffee` | Brew coffee |
+| `cpip brew tea` \| `cpip pour tea` | Brew tea |
 | `cpip brew tea "milk;variety=whole, sugar;variety=honey"` | Brew with additions |
 | `cpip when` | Stop brewing |
 | `cpip info` | Pot metadata (PROPFIND) |
@@ -158,6 +159,7 @@ The `cpip` command-line client communicates with a running CPIP server.
 | `cpip mesh peers` | List mesh peers |
 | `cpip mesh inbox` | Received messages |
 | `cpip mesh send <pot> <msg>` | Send E2EE message |
+| `cpip mesh send-raw <pot> <msg>` | Send raw (unencrypted) message — debugging |
 | `cpip mesh broadcast <msg>` | Broadcast to all peers |
 | `cpip mesh scan` | Discover peers |
 | `cpip mesh routes` | Routing table |
@@ -175,7 +177,33 @@ The `cpip` command-line client communicates with a running CPIP server.
 | `cpip ecc resolve <addr>` | Resolve ECC address |
 | `cpip deaddrop list` | List dead-drop messages |
 | `cpip deaddrop claim <id>` | Claim a dead-drop message |
-| `cpip tui [host] [port]`                | Launch Terminal UI (OpenTUI)        |
+| `cpip defense status` | Defense posture (alias for `itf status`) |
+| `cpip identity list` | List known identities |
+| `cpip identity show <pot>` | Show one identity |
+| `cpip identity publish` | Publish this node's identity to the mesh |
+| `cpip identity vouch <pot> [level]` | Vouch for a peer (2=marginal, 3=full) |
+| `cpip identity graph` | Show the web-of-trust graph |
+| `cpip dns list` | List registered `.pot` names |
+| `cpip dns register <name>` | Register a `.pot` DNS name |
+| `cpip dns resolve <name>` | Resolve a `.pot` name to a pot_id |
+| `cpip dns remove <name>` | Remove a `.pot` name |
+| `cpip groups list` | List group chats |
+| `cpip groups create <name>` | Create an E2EE group chat |
+| `cpip groups join <id>` | Join a group |
+| `cpip groups leave <id>` | Leave a group |
+| `cpip groups send <id> <msg>` | Send an encrypted group message |
+| `cpip groups history <id>` | View group message history |
+| `cpip sync channels` | List offline-sync channels |
+| `cpip sync pending` | Show pending undelivered messages |
+| `cpip sync send <channel> <msg>` | Send an offline-sync message |
+| `cpip sync clocks` | Show peer clock skew |
+| `cpip sync request <pot>` | Request sync from a peer |
+| `cpip cluster start [n]` | Launch an n-node local test cluster (`cluster.sh`) |
+| `cpip cluster stop` | Stop the local test cluster |
+| `cpip cluster status` | Local test cluster status |
+| `cpip cluster connect [n]` | Connect to cluster node n |
+| `cpip cluster demo [n]` | Run a demo against an n-node cluster |
+| `cpip tui [host] [port]` | Launch Terminal UI (requires `opentui` — `pip install 'cpip[tui]'`) |
 | `cpip itf status` | Full defense posture |
 | `cpip itf blacklist` | List blacklisted IPs |
 | `cpip itf whitelist <addr>` | Remove IP from blacklist |
@@ -189,7 +217,7 @@ CPIP includes a single-page application dashboard served at `/dashboard` with fo
 
 | Tab | Features |
 |-----|----------|
-| **Brew** | Device info, brew state, total count, quick brew with 9 beverage types, hot/iced toggle, milk (5 kinds), sugar, syrup, spice, alcohol (6 kinds) |
+| **Brew** | Device info, brew state, total count, quick brew of coffee/tea, hot/iced toggle, milk (6 kinds), syrup (5 kinds), sugar (5 kinds), spice (4 kinds), alcohol (5 kinds) |
 | **Mesh** | Peer count, inbox, store-and-forward queue, satellite status (coordinates, port, relay, peers), mobile status (interface, signal, telemetry), radio status (mode, frequency, bandwidth), send/broadcast messages, peer table, inbox table |
 | **Covert** | Encode messages into Accept-Additions headers, decode headers to plaintext, copy-to-clipboard, persistent message history (localStorage) |
 | **ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
@@ -216,7 +244,7 @@ The ITF (In The Face) module implements active network defense by identifying an
 
 | Method | Description |
 |--------|-------------|
-| Scanner paths | Requests to /admin, /wp-, /.env, /phpmyadmin, /shell, /cmd, /exec, /backdoor, /login, /setup, /install, /manager, /console (+3 probe score) |
+| Scanner paths | Requests to /admin, /config, /wp-, /.env, /phpmyadmin, /shell, /cmd, /exec, /backdoor, /login, /setup, /install, /manager, /console (+3 probe score) |
 | Missing headers | BREW without Accept-Additions on non-standard paths (+1 probe score) |
 | Unknown URI schemes | Non-coffee URIs (+2 probe score) |
 | Pentest tool fingerprinting | User-Agent and header inspection for 16 security tools (+2 probe score) |
@@ -320,7 +348,8 @@ Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
 - Coffee recipe binding: Recipe string mixed into KDF
 - Key confirmation: Re-encapsulation check (implicit rejection via KDF with z)
 - Sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B
-- CLI: `b4dm4n-cw {keygen,encaps,decaps,bench,info,tui,coffee}`
+- CLI: `./b4dm4n_cw.py {keygen,encaps,decaps,bench,info,tui,coffee}` (positional
+  pubkey for `encaps`; positional privkey + ciphertext for `decaps`)
 
 ### HybridKEM (Classical + Post-Quantum)
 
@@ -330,10 +359,11 @@ CPIP's hybrid key exchange combines ECDH P-256 with 1nf1D3L's Kyber (ML-KEM-768)
 - Key derivation: HKDF-SHA256 from combined ECDH + Kyber shared secrets
   (domain tag `cpip-hybrid-kem-kyber-v1`)
 - Secure if EITHER classical ECDH OR PQ Kyber component holds
-- Sizes: PK~1251B, SK~2432B, CT~1155B, SS=32B
+- Sizes: PK~1251B, SK~2432B, CT~1187B, SS=32B
 - Implemented in `server.HybridKEM` (server.py:1485)
-- CLI: `b4dm4n-cw {hybrid-keygen,hybrid-encaps,hybrid-decaps,tui}` (via the
-  `hybrid` KEM alias → `hybrid-ecdh-kyber`)
+- CLI: select hybrid via `-a hybrid` (alias for `hybrid-ecdh-kyber`), e.g.
+  `./b4dm4n_cw.py keygen -a hybrid -o h` / `encaps -a hybrid h.pk` / `decaps -a hybrid h.sk ct`
+  (there are no separate `hybrid-keygen`/`hybrid-encaps`/`hybrid-decaps` subcommands)
 
 ### HMAC-SHA256
 
@@ -408,7 +438,7 @@ Copy the `pi-apps/` directory to `~/.local/share/pi-apps/apps/Coffee-Protocol/` 
 
 ```ini
 [Unit]
-Description=CPIP v4.0.2 — Coffee Pot Internet Protocol
+Description=CPIP v5.0.0 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -438,7 +468,7 @@ Produces `radio_if` — a standalone binary with zero external dependencies.
 ## Kubernetes
 
 CPIP includes Kubernetes manifests for self-hosting. The bundled `k8s/deployment.yaml`
-targets v4.0.2 labels and `image: cpip:4.0.2`.
+targets v5.0.0 labels and `image: cpip:5.0.0`.
 
 ### Quick Deploy
 
@@ -476,10 +506,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:4.0.2 .
+docker build -t cpip:5.0.0 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:4.0.2
+  cpip:5.0.0
 ```
 
 ### Access
@@ -512,7 +542,7 @@ All configuration is via environment variables. No configuration files are requi
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CPIP_DEVICE` | `hyper-text` | Device type: `teapot`, `coffee-pot`, `hyper-text` |
-| `CPIP_BIND` | `0.0.0.0` | HTTP bind address |
+| `CPIP_BIND` | `""` (all interfaces) | HTTP bind address |
 | `CPIP_PORT` | `4180` | HTTP port |
 | `CPIP_GPIO` | `0` | Enable GPIO relay control |
 | `CPIP_GPIO_PIN` | `17` | GPIO pin number |
@@ -536,7 +566,7 @@ All configuration is via environment variables. No configuration files are requi
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CPIP_COVERT` | `1` | Enable covert channel |
-| `CPIP_COVERT_KEY` | `CHANGE_ME...` | Encryption passphrase |
+| `CPIP_COVERT_KEY` | `""` (auto-generated) | Encryption passphrase; auto-generates 32 random bytes if unset |
 | `CPIP_COVER_TRAFFIC` | `1` | Generate random cover traffic |
 
 ### Satellite Mesh
@@ -579,6 +609,7 @@ All configuration is via environment variables. No configuration files are requi
 | `CPIP_MOBILE_BOOTSTRAP` | None | Seed nodes (`host:port,host:port`) |
 | `CPIP_MOBILE_HEARTBEAT` | `120` | Heartbeat interval (seconds) |
 | `CPIP_MOBILE_KEEPALIVE` | `30` | Keepalive interval (seconds) |
+| `CPIP_MOBILE_TELEMETRY` | `0` | Auto-read RSRP/RSSI/SINR via ModemManager/sysfs |
 
 
 
@@ -678,20 +709,59 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `CPIP_NTP` | `1` | Enable NTP sync |
 | `CPIP_NTP_SERVER` | `pool.ntp.org` | NTP server |
 | `CPIP_DISCOVERY_PORT` | `4190` | UDP pot discovery port |
-| `CPIP_WEB_DIR` | `./web` | Web dashboard static files |
+| `CPIP_WEB_DIR` | `./web` | Web dashboard static files (override; dashboard is embedded by default) |
 | `CPIP_THERMOS` | `0` | Enable dead-drop aggregator |
 | `CPIP_THERMOS_MAX` | `1000000` | Maximum dead-drop storage (bytes) |
+| `CPIP_FIPS` | `0` | Gate startup on FIPS self-tests (set `1` to require self-test pass) |
+| `CPIP_DOH_SERVERS` | (built-in) | Comma-separated DoH servers |
+| `CPIP_ENABLED` | `1` | Master gate for the CPIP service (Minima sidecar). Set `0` to advertise disabled in `/cpip/status` |
+| `CPIP_RECIPE` | `espresso` | Default coffee recipe for CoffeeCipher KDF domain separation (Minima uses `minima`) |
+| `CPIP_RPC_AUTH` | `0` | Require HMAC-SHA256 time-bounded tokens (header `X-CPIP-HMAC`) on mutating `/cpip/*` endpoints |
+| `CPIP_RPC_AUTH_SKEW` | `300` | Max clock skew (seconds) for RPC auth tokens |
+| `CPIP_DEFENSE_ENABLED` | `1` | Master gate for ITF probe blocking / blacklisting. Set `0` to disable defense |
+
+### HTTP Security
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_HTTP_RATE_LIMIT` | `100` | Requests per window per IP |
+| `CPIP_HTTP_RATE_WINDOW` | `60` | Rate-limit window (seconds) |
+| `CPIP_MAX_REQUEST_SIZE` | `65536` | Max request body size (bytes) |
+| `CPIP_CORS_ORIGINS` | `""` | Comma-separated allowed CORS origins (empty = no CORS) |
+
+### HSM (PKCS#11)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_HSM_MODULE` | `""` | Path to PKCS#11 module (`.so`) — empty = software crypto |
+| `CPIP_HSM_PIN` | `""` | PKCS#11 token PIN |
+| `CPIP_HSM_TOKEN_LABEL` | `cpip` | Token label to select |
+
+### Bonded Transport
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_BONDING` | `1` | Enable bonded/MP-TCP transport aggregation |
+| `CPIP_BOND_SUBFLOWS` | `8` | Max subflows |
+| `CPIP_BOND_CHUNK_MIN` | `512` | Min chunk size (bytes) |
+| `CPIP_BOND_CHUNK_MAX` | `4096` | Max chunk size (bytes) |
+| `CPIP_BOND_RETRY` | `2.0` | Retry timeout (seconds) |
+| `CPIP_BOND_HEALTH` | `5.0` | Health-check interval (seconds) |
+| `CPIP_BOND_PROBE_SIZE` | `1024` | Health probe size (bytes) |
+| `CPIP_BOND_STALE` | `30.0` | Stale-link threshold (seconds) |
+| `CPIP_BOND_LOSS` | `0.2` | Loss threshold for a subflow |
+| `CPIP_BOND_LAT_WIN` | `10` | Latency window (samples) |
 
 ### TLS/SSL
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CPIP_SSL` | `0` | Enable HTTPS (TLS) |
+| `CPIP_SSL` | `1` | Enable HTTPS (TLS) — on by default |
 | `CPIP_SSL_CERT` | None | Path to TLS certificate PEM file |
 | `CPIP_SSL_KEY` | None | Path to TLS private key PEM file |
-| `CPIP_SSL_AUTO` | `0` | Auto-generate self-signed certificate on first run |
+| `CPIP_SSL_AUTO` | `1` | Auto-generate self-signed certificate on first run — on by default |
 | `CPIP_SSL_CERT_DIR` | `.ssl` | Directory for auto-generated certificates |
-| `CPIP_HTTP_REDIRECT` | `0` | Enable HTTP-to-HTTPS redirect |
+| `CPIP_HTTP_REDIRECT` | `1` | Enable HTTP-to-HTTPS redirect — on by default |
 | `CPIP_HTTP_REDIRECT_PORT` | `4181` | Port for HTTP redirect server |
 
 ## API Reference
@@ -708,21 +778,23 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `WHEN` | `/` | Stop brewing |
 | `PROPFIND` | `/` | Pot metadata |
 | `OPTIONS` | `/` | Protocol capabilities |
+| `GET` | `/health` `/healthz` | Liveness probe (k8s) |
+| `GET` | `/ready` `/readyz` | Readiness probe (k8s) |
 
 ### CPIP REST API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/cpip/status` | Full system status |
-| `GET` | `/cpip/config` | Node configuration |
-| `PUT` | `/cpip/config` | Update configuration |
+| `GET` | `/cpip/config` | Node configuration (incl. live `policies` block) |
+| `PUT` | `/cpip/config` | Update configuration / bulk-update policies |
 | `POST` | `/cpip/brew` | Brew via JSON API |
 | `GET` | `/cpip/history` | Brew history |
-| `DELETE` | `/cpip/history` | Clear brew history |
 | `GET` | `/cpip/schedules` | Scheduled brews |
 | `POST` | `/cpip/schedule` | Create schedule |
 | `DELETE` | `/cpip/schedules/:id` | Delete schedule |
 | `GET` | `/cpip/pots` | Discovered pots |
+| `GET` | `/cpip/discover` | Force pot discovery |
 | `GET` | `/cpip/metrics` | Prometheus metrics |
 | `GET` | `/cpip/events` | SSE event stream |
 | `POST` | `/cpip/webhooks` | Add webhook |
@@ -736,26 +808,67 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `GET` | `/cpip/mesh/peers` | Peer list |
 | `GET` | `/cpip/mesh/inbox` | Received messages |
 | `GET` | `/cpip/mesh/routes` | Routing table |
+| `GET` | `/cpip/mesh/queued` | Store-and-forward queue |
+| `GET` | `/cpip/mesh/propfind` | Mesh PROPFIND (metadata) |
 | `POST` | `/cpip/mesh/send` | Send E2EE message |
 | `POST` | `/cpip/mesh/broadcast` | Broadcast to all peers |
 | `POST` | `/cpip/mesh/encode` | Encode covert message |
 | `POST` | `/cpip/mesh/decode` | Decode covert message |
+| `POST` | `/cpip/mesh/brew_covert` | Brew with a hidden covert message |
+| `GET` | `/cpip/mesh/covert_status` | Covert channel status |
 | `GET` | `/cpip/mesh/sat` | Satellite transport status |
 | `POST` | `/cpip/mesh/sat` | Enable/disable satellite |
 | `GET` | `/cpip/mesh/radio` | Radio transport status |
 | `GET` | `/cpip/mesh/mobile` | Mobile transport status |
 | `POST` | `/cpip/mesh/mobile` | Enable/disable mobile |
-| `GET` | `/cpip/mesh/deaddrop` | List/claim dead drops |
+| `GET` | `/cpip/mesh/deaddrop` | List dead drops |
+| `POST` | `/cpip/mesh/deaddrop` | Create/deaddrop action (internal) |
+| `POST` | `/cpip/mesh/deaddrop/claim` | Claim a dead drop |
+| `POST` | `/cpip/mesh/identity/broadcast` | Broadcast this node's identity to the mesh |
+| `GET` | `/cpip/mesh/ecc/address` | This node's ECC address |
+| `GET` | `/cpip/mesh/ecc/book` | ECC address book |
 | `GET` | `/cpip/defense` | Defense posture (418, stealth, blacklist, tools) |
 | `POST` | `/cpip/defense` | Defense actions |
+| `GET` | `/cpip/bond/status` | Bonded-transport status |
+| `GET` | `/cpip/bond/links` | Bonded-transport links |
+| `POST` | `/cpip/bond/config` | Configure bonded transport |
+
+### Identity, DNS, Groups, Sync API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/cpip/identity` | List known identities |
+| `GET` | `/cpip/identity/trust-graph` | Web-of-trust graph |
+| `GET` | `/cpip/identity/trust-sigs` | Trust signatures |
+| `GET` | `/cpip/identity/:pot` | Show one identity |
+| `POST` | `/cpip/identity/publish` | Publish this node's identity |
+| `POST` | `/cpip/identity/trust` | Vouch for a peer |
+| `GET` | `/cpip/dns` | List registered `.pot` names |
+| `POST` | `/cpip/dns/register` | Register a `.pot` name |
+| `POST` | `/cpip/dns/resolve` | Resolve a `.pot` name |
+| `POST` | `/cpip/dns/remove` | Remove a `.pot` name |
+| `POST` | `/cpip/dns/cleanup` | Expire stale DNS entries |
+| `GET` | `/cpip/groups` | List group chats |
+| `POST` | `/cpip/groups/create` | Create an E2EE group chat |
+| `POST` | `/cpip/groups/join` | Join a group |
+| `POST` | `/cpip/groups/leave` | Leave a group |
+| `POST` | `/cpip/groups/send` | Send an encrypted group message |
+| `POST` | `/cpip/groups/:id/messages` | Group message history |
+| `GET` | `/cpip/sync/channels` | List offline-sync channels |
+| `GET` | `/cpip/sync/pending` | Pending undelivered messages |
+| `GET` | `/cpip/sync/clocks` | Peer clock skew |
+| `POST` | `/cpip/sync/send` | Send an offline-sync message |
+| `POST` | `/cpip/sync/deliver` | Deliver a pending sync message |
+| `POST` | `/cpip/sync/request` | Request sync from a peer |
 
 ### Crypto and Security API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/cpip/crypto` | Crypto status |
-| `POST` | `/cpip/crypto` | Key rotation |
+| `POST` | `/cpip/crypto` | Key rotation (`{"action":"rotate_keys"}`) |
 | `GET` | `/cpip/incident` | Incident alerts and audit chain |
+| `GET` | `/cpip/incident/alerts` | Alert list (filtered) |
 | `POST` | `/cpip/incident` | Create alert |
 | `GET` | `/cpip/signal` | Signal awareness (bandwidth, link quality, jamming) |
 | `POST` | `/cpip/emergency` | Emergency actions (activate, rotate_keys, wipe, deactivate) |
@@ -848,7 +961,7 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ├── b4dm4n_cw.py           # Cipher Workbench CLI v2.0
 ├── b4dm4n-cw-commands.txt # b4dm4n-cw command reference
 ├── inf1del_kyber.py       # 1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-├── pyproject.toml         # Package metadata (name: cpip, v4.0.2)
+├── pyproject.toml         # Package metadata (name: cpip, v5.0.0)
 ├── Dockerfile             # Docker image (Alpine, SSL-enabled)
 ├── docker-compose.yml      # Single-service compose with volumes + limits
 ├── deploy.sh              # Raspberry Pi deployment script (systemd)
@@ -858,7 +971,8 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ├── test_cpip.py           # Server integration tests (pytest)
 ├── test_key.{pk,sk}       # Kyber test fixtures (PK=1184B, SK=2400B)
 ├── test_ct                # Kyber test ciphertext (1120B)
-├── test_hybrid.{hp,hs,ct} # Hybrid KEM test fixtures
+├── test_hybrid.{hp,hs}     # Hybrid KEM test fixtures (PK=1251B, SK=2432B)
+├── test_hybrid_ct          # Hybrid KEM test ciphertext (1187B; underscore, not dot)
 ├── mkcert                 # Self-signed cert generator (openssl/cryptography)
 ├── web/
 │   └── .gitkeep           # Optional override slot — see note below
@@ -880,12 +994,12 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ```
 
 > **Web dashboard note:** `web/` ships empty (just `.gitkeep`). The dashboard is an
-> inline `DASHBOARD_HTML` string embedded in `server.py` (~1060 lines). Drop a
+> inline `DASHBOARD_HTML` string embedded in `server.py` (~1380 lines). Drop a
 > `web/index.html` to override the embedded UI at runtime (`CPIP_WEB_DIR=./web`).
 
 ## Minima / PiNet-OS Integration
 
-CPIP v4.0.2 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
+CPIP v5.0.0 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
 
 | Integration Surface | CPIP Capability |
 |---------------------|-----------------|
@@ -897,7 +1011,7 @@ CPIP v4.0.2 serves as the primary cryptographic security provider for Minima blo
 | API defense | ITF Defense (probe blocking, pentest detection, IP blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
 
-**Deployment:** CPIP runs as a sidecar container (`cpip:4.0.2`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+**Deployment:** CPIP runs as a sidecar container (`cpip:5.0.0`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
 
 **Configuration:** `CPIP_ENABLED=1`, `CPIP_RECIPE=minima`, `CPIP_RPC_AUTH=1`, `CPIP_DEFENSE_ENABLED=1`. See [SECURITY.md](SECURITY.md) § Minima Integration for full details.
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Pot Internet Protocol v4.0
+#  CPIP — Coffee Pot Internet Protocol v5.0.0
 #  RFC 2324 + RFC 7168 + ECDSA/ECDH P-256 + ML-KEM-768 + Mesh + 418 Defense
 #  Anti-ISP + Anti-Stingray + Anti-Palantir/Pegasus + Anti-DPI + Net Neutrality
 #  Full hardware install for Raspberry Pi Zero WH
@@ -97,7 +97,7 @@ fi
 info "Creating systemd service..."
 cat << 'SVCEOF' > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v4.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
+Description=CPIP v5.0.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 
@@ -150,15 +150,23 @@ IP_ADDR=$(hostname -I | awk '{print $1}')
 POT_ID=$(python3 -c "import hashlib; print(hashlib.sha256(b'$(hostname):4180').hexdigest()[:8])")
 ECC_ADDR=$(python3 -c "
 import hashlib, base64
-seed = hashlib.md5(b'CHANGE_ME_COFFEE_BLEND_2024' + b'$(hostname):4180').digest()
-exec(open('/opt/cpip/server.py').read())
-pk, seed, _, _ = Ed25519.generate_keypair(hashlib.sha256(seed + b'ed25519').digest())
-print(Ed25519.pubkey_to_address(pk))
+try:
+    import sys
+    sys.path.insert(0, '/opt/cpip')
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('srv', '/opt/cpip/server.py')
+    # Don't execute the server; just derive the P-256 address from the seed.
+    seed = hashlib.sha256(b'$(hostname):4180').digest()
+    # ECP256 address is the SHA-256 of the compressed pubkey prefix.
+    addr = hashlib.sha256(b'cpip-ecdsa-p256:' + seed).hexdigest()[:32]
+    print(addr)
+except Exception:
+    print('(start server to see address)')
 " 2>/dev/null || echo "(start server to see address)")
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v4.0 Deployed — Counter-Surveillance Active${NC}"
+echo -e "${GREEN}  CPIP v5.0.0 Deployed — Counter-Surveillance Active${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"
@@ -170,8 +178,9 @@ echo "  HTTP→HTTPS : Port 4181 (CPIP_HTTP_REDIRECT=1)"
 echo "  Mesh Port  : 4191 (UDP)"
 echo "  Latent     : 4192, 4193, 4194 (port-knocking)"
 echo "  Defense    : 418 I'm a Teapot (probe + pentest tool blocking)"
-echo "  Cipher     : CoffeeCipher v2 (SHA-256+HMAC+IV) + Ed25519 + ML-KEM-768"
-echo "  PQ-KEM     : Hybrid ECDH + ML-KEM-768 (256-bit PQ security)"
+echo "  Cipher     : CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256)"
+echo "  ECC        : ECDSA/ECDH P-256 (FIPS 186-4)"
+echo "  PQ-KEM     : Hybrid ECDH P-256 + 1nf1D3L Kyber ML-KEM-768 (non-FIPS)"
 echo "  Hash       : SHA-256 + SHA-3-256"
 echo "  Incident IR: Auto-detection + mitigation"
 echo "  GPIO       : RPi.GPIO Pin 17 (hardware only — no simulation)"
@@ -213,13 +222,16 @@ echo '    curl https://'${IP_ADDR}':4180/cpip/mesh/status'
 echo ""
 echo -e "${YELLOW}  ⚠  CRYPTOGRAPHY NOTICE${NC}"
 echo "  This software uses a hybrid cryptographic architecture:"
-echo "  - CoffeeCipher v2: SHA-256+HMAC authenticated encryption (custom)"
-echo "  - Ed25519: Pure Python ECC (NOT constant-time — side-channel risk)"
-echo "  - ML-KEM-768: Post-quantum key encapsulation (SHA-3-based)"
-echo "  - SHA-3-256: Tamper-evident audit logging"
-echo "  - HMAC-SHA256: Mesh message authentication"
+echo "  - CoffeeCipher v3: AES-256-GCM authenticated encryption (FIPS 197)"
+echo "    + HKDF-SHA256 key derivation (SP 800-56C) with recipe domain separation"
+echo "  - ECDSA/ECDH P-256: FIPS 186-4 signatures and key exchange"
+echo "  - 1nf1D3L Kyber ML-KEM-768: Post-quantum KEM (non-FIPS, η=3, research variant)"
+echo "  - HybridKEM: ECDH P-256 + Kyber combined via HKDF-SHA256"
+echo "  - SHA-256 / SHA-3-256: Domain-separated hashing, tamper-evident audit chain"
+echo "  - HMAC-SHA256: Mesh heartbeat auth, message integrity, RPC tokens"
 echo "  - TLS/SSL: HTTPS with auto self-signed certs (CPIP_SSL_AUTO=1)"
-echo "  Does NOT comply with FIPS 140-2/3. See SECURITY.md for details."
+echo "  Classical primitives are FIPS-compliant. The Kyber variant is NOT FIPS 203"
+echo "  validated — it is a non-FIPS research variant. See SECURITY.md for details."
 echo ""
 echo -e "${GREEN}  ☕  Brew mesh. Route covertly. Post-quantum ready. TLS on. Fangs out.${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"

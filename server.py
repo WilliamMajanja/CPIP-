@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server v4.0.2 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v5.0.0 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
@@ -147,6 +147,8 @@ if len(COVERT_KEY) < 16:
     print(f"   ⚠ WARNING: COVERT_KEY is shorter than 16 bytes — insecure.", flush=True)
     print(f"   ⚠ Use a key of at least 24 bytes (32 bytes recommended).", flush=True)
 COVERT_ENABLED = os.environ.get("CPIP_COVERT", "1") == "1"
+# Default coffee recipe for domain-separated KDF (Minima integration uses "minima").
+CPIP_RECIPE = os.environ.get("CPIP_RECIPE", "espresso")
 MESH_ENABLED = os.environ.get("CPIP_MESH", "1") == "1"
 MESH_PORT = int(os.environ.get("CPIP_MESH_PORT", "4191"))
 MESH_TTL = int(os.environ.get("CPIP_MESH_TTL", "5"))
@@ -165,15 +167,23 @@ def _env_bool(name, default):
     if v is None: return default
     return v.lower() in ("1", "yes", "true")
 
-SATELLITE_ENABLED = _env_bool("CPIP_SAT", False)
-SATELLITE_PORT = int(os.environ.get("CPIP_SAT_PORT", "4195"))
-SATELLITE_LAT = float(os.environ.get("CPIP_SAT_LAT", "0"))
-SATELLITE_LON = float(os.environ.get("CPIP_SAT_LON", "0"))
-SATELLITE_ALT = float(os.environ.get("CPIP_SAT_ALT", "0"))
-MESH_SAT_TIMEOUT = float(os.environ.get("CPIP_SAT_TIMEOUT", "10.0"))
-MESH_SAT_HEARTBEAT = int(os.environ.get("CPIP_SAT_HEARTBEAT", "60"))
-SATELLITE_BOOTSTRAP = os.environ.get("CPIP_SAT_BOOTSTRAP", "")
-SATELLITE_RELAY = _env_bool("CPIP_SAT_RELAY", False)
+def _sat_env(name, default):
+    """Read CPIP_SAT_* with CPIP_STARLINK_* alias fallback for backward compat."""
+    v = os.environ.get(name)
+    if v is None:
+        alias = name.replace("CPIP_SAT_", "CPIP_STARLINK_")
+        v = os.environ.get(alias)
+    return v if v is not None else default
+
+SATELLITE_ENABLED = _env_bool("CPIP_SAT", _env_bool("CPIP_STARLINK", False))
+SATELLITE_PORT = int(_sat_env("CPIP_SAT_PORT", "4195"))
+SATELLITE_LAT = float(_sat_env("CPIP_SAT_LAT", "0"))
+SATELLITE_LON = float(_sat_env("CPIP_SAT_LON", "0"))
+SATELLITE_ALT = float(_sat_env("CPIP_SAT_ALT", "0"))
+MESH_SAT_TIMEOUT = float(_sat_env("CPIP_SAT_TIMEOUT", "10.0"))
+MESH_SAT_HEARTBEAT = int(_sat_env("CPIP_SAT_HEARTBEAT", "60"))
+SATELLITE_BOOTSTRAP = _sat_env("CPIP_SAT_BOOTSTRAP", "")
+SATELLITE_RELAY = _env_bool("CPIP_SAT_RELAY", _env_bool("CPIP_STARLINK_RELAY", False))
 
 # ── Radio (LoRa / Packet Radio) ─────────────────────────────────────────
 RADIO_ENABLED = os.environ.get("CPIP_RADIO", "0") == "1"
@@ -273,7 +283,7 @@ BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
 BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
-CPIP_VERSION = "4.0.2"
+CPIP_VERSION = "5.0.0"
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding)"
 _START_TIME = time.time()
 
@@ -1488,10 +1498,10 @@ class HybridKEM:
     Post-quantum security: secure if EITHER classical ECDH or Kyber holds.
     Uses HKDF-SHA256 to combine shared secrets.
     
-    Key sizes:
-    - Hybrid public key: ECC_len(2) || ECC_pk(65) || Kyber_pk(1184) = ~1251 bytes
-    - Hybrid secret key: ECC_seed(32) || Kyber_sk(2400) = ~2432 bytes
-    - Ciphertext: ECC_ephem_len(2) || ECC_ephem_pk(65) || Kyber_ct(1088) = ~1155 bytes
+    Key sizes (with 1nf1D3L Kyber backend, CT=1120B):
+    - Hybrid public key: ECC_len(2) || ECC_pk(65) || Kyber_pk(1184) = 1251 bytes
+    - Hybrid secret key: ECC_seed(32) || Kyber_sk(2400) = 2432 bytes
+    - Ciphertext: ECC_ephem_len(2) || ECC_ephem_pk(65) || Kyber_ct(1120) = 1187 bytes
     - Shared secret: 32 bytes
     """
 
@@ -7606,6 +7616,25 @@ class CPIPHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         return length <= MAX_REQUEST_SIZE
 
+    def _rpc_auth_check(self, path):
+        """If CPIP_RPC_AUTH=1, require a valid X-CPIP-HMAC header on mutating
+        /cpip/* endpoints. GET/BREW/WHEN/PROPFIND/OPTIONS and the dashboard
+        are exempt. Returns True if the request is allowed to proceed."""
+        if not RPC_AUTH_ENABLED:
+            return True
+        if not path.startswith("/cpip"):
+            return True
+        token = self.headers.get("X-CPIP-HMAC", "")
+        if _rpc_hmac_check(self.command, path, token):
+            return True
+        self._send_json(401, "Unauthorized", {
+            "error": "Missing or invalid X-CPIP-HMAC token",
+            "hint": "Token format: '<unix_ts>:<hmac>' where "
+                    "hmac = HMAC-SHA256(COVERT_KEY, ts||method||path)",
+            "skew_seconds": RPC_AUTH_SKEW,
+        })
+        return False
+
     def _cors_headers(self):
         if CORS_ALLOWED_ORIGINS:
             raw_origin = self.headers.get("Origin", "")
@@ -7916,6 +7945,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         path = urlparse(self.path).path.rstrip("/")
+        if path.startswith("/cpip") and not self._rpc_auth_check(path):
+            return
         if path == "/cpip/config":
             self._handle_cpip_config_put()
         else:
@@ -7923,6 +7954,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path.rstrip("/")
+        if path.startswith("/cpip") and not self._rpc_auth_check(path):
+            return
         if path.startswith("/cpip/schedules/"):
             sid = path.split("/")[-1]
             self._handle_cpip_schedule_delete(sid)
@@ -8001,6 +8034,11 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_message_coffeepot()
             return
 
+        # RPC HMAC auth gate (only applies to /cpip/* mutating endpoints when
+        # CPIP_RPC_AUTH=1; HTCPCP brew paths above are exempt).
+        if path.startswith("/cpip") and not self._rpc_auth_check(path):
+            return
+
         if path == "/cpip/schedule":
             self._handle_cpip_schedule_post()
         elif path == "/cpip/webhooks":
@@ -8025,6 +8063,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_mobile_post()
         elif path == "/cpip/defense":
             self._handle_defense_post()
+        elif path == "/cpip/crypto":
+            self._handle_crypto_post()
         elif path == "/cpip/emergency":
             self._handle_emergency_post()
         elif path == "/cpip/incident":
@@ -8391,7 +8431,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     "POST /cpip/mesh/decode",
                 ],
                 "SECURITY": [
-                    "GET /cpip/crypto", "GET /cpip/incident", "GET /cpip/incident/alerts",
+                    "GET|POST /cpip/crypto", "GET /cpip/incident", "GET /cpip/incident/alerts",
                     "POST /cpip/incident", "GET /cpip/signal",
                     "GET|POST /cpip/emergency", "GET /cpip/defense",
                 ],
@@ -8672,6 +8712,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
         self._send_json(200, "OK", {
             "protocol": CPIP_PROTOCOL,
             "cpip_version": CPIP_VERSION,
+            "enabled": CPIP_ENABLED,
+            "recipe": CPIP_RECIPE,
+            "rpc_auth": RPC_AUTH_ENABLED,
+            "defense_enabled": DEFENSE_ENABLED,
             "device": DEVICE_TYPE,
             "pot_id": POT_ID,
             "hostname": HOSTNAME,
@@ -8726,7 +8770,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "beverages_allowed": DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"]),
             "allows_alcohol": DEVICE_TYPE in ALCOHOL_DEVICES,
             "ecc": "ECDSA/ECDH P-256 (FIPS 186-4)",
-            "ecc_curve": "Curve25519",
+            "ecc_curve": "NIST P-256",
             "ecc_implementation": "Pure Python (not constant-time)",
             "node_address": MeshNode.node_address,
             "node_pubkey": base64.b64encode(MeshNode.node_pubkey).decode() if MeshNode.node_pubkey else None,
@@ -9308,7 +9352,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         body = self._read_json_body()
         message = body.get("message", "")
         dst = body.get("dst", "")
-        recipe = body.get("recipe", "espresso")
+        recipe = body.get("recipe", CPIP_RECIPE)
         use_ecc = body.get("ecc", False)
 
         if not message:
@@ -9509,6 +9553,19 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "emergency_mode": EmergencyMode.is_active(),
             "incident_auto_response": IncidentResponse._auto_response_enabled,
         })
+
+    def _handle_crypto_post(self):
+        """Key rotation endpoint. Accepts {"action":"rotate_keys"} (alias for
+        POST /cpip/emergency rotate_keys) to rotate all cryptographic keys."""
+        body = self._read_json_body()
+        action = body.get("action", "")
+        if action == "rotate_keys":
+            result = EmergencyMode.rotate_keys()
+            self._send_json(200, "OK", {"status": "keys_rotated", **result})
+        else:
+            self._send_json(400, "Bad Request",
+                            {"error": f"Unknown crypto action: {action}",
+                             "hint": "Supported action: rotate_keys"})
 
     def _uptime(self):
         return time.time() - self._start_time
@@ -11013,6 +11070,45 @@ CORS_ALLOWED_ORIGINS = os.environ.get("CPIP_CORS_ORIGINS", "")
 HTTP_RATE_LIMIT = int(os.environ.get("CPIP_HTTP_RATE_LIMIT", "100"))
 HTTP_RATE_WINDOW = int(os.environ.get("CPIP_HTTP_RATE_WINDOW", "60"))
 
+# ── RPC HMAC Authentication (Minima integration) ───────────────────────
+# When CPIP_RPC_AUTH=1, mutating CPIP REST endpoints (POST/PUT/DELETE on
+# /cpip/*) require an X-CPIP-HMAC header of the form "<timestamp>:<hmac>"
+# where hmac = HMAC-SHA256(COVERT_KEY, timestamp||method||path). Timestamps
+# must be within ±300s of the server clock. Read-only (GET/BREW/WHEN/
+# PROPFIND/OPTIONS) and the dashboard are exempt so the UI keeps working.
+RPC_AUTH_ENABLED = os.environ.get("CPIP_RPC_AUTH", "0") == "1"
+RPC_AUTH_SKEW = int(os.environ.get("CPIP_RPC_AUTH_SKEW", "300"))
+
+
+def _rpc_hmac_check(method, path, header_value) -> bool:
+    """Validate an X-CPIP-HMAC token. Returns True if enabled-off or valid."""
+    if not RPC_AUTH_ENABLED:
+        return True
+    if not header_value or ":" not in header_value:
+        return False
+    ts_str, mac = header_value.split(":", 1)
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False
+    if abs(time.time() - ts) > RPC_AUTH_SKEW:
+        return False
+    try:
+        expected = hmac.new(
+            COVERT_KEY, f"{ts}:{method}:{path}".encode(), hashlib.sha256
+        ).hexdigest()
+    except Exception:
+        return False
+    return hmac.compare_digest(expected, mac)
+
+
+# Master gate for CPIP service (Minima sidecar). When CPIP_ENABLED=0 the
+# server still starts but advertises disabled state in /cpip/status.
+CPIP_ENABLED = os.environ.get("CPIP_ENABLED", "1") == "1"
+# When CPIP_DEFENSE_ENABLED=0, ITF probe blocking/blacklisting is skipped
+# (teapot_probe_check / teapot_defense return False/no-op). Default on.
+DEFENSE_ENABLED = os.environ.get("CPIP_DEFENSE_ENABLED", "1") == "1"
+
 _HTTP_RATE_LOCK = threading.Lock()
 _HTTP_RATE_COUNTS = {}
 
@@ -11050,6 +11146,8 @@ ALL_TOOLS = PENTEST_TOOLS + INFO_TOOLS
 
 def teapot_defense(addr):
     """Check if an address should be greeted with 418."""
+    if not DEFENSE_ENABLED:
+        return False
     if addr in ("127.0.0.1", "::1", "localhost"):
         return False
     with TEAPOT_BLACKLIST_LOCK:
@@ -11097,6 +11195,8 @@ def teapot_probe_check(headers, addr, path, method):
     - Requests to /admin, /config, /wp-content, etc. → probe
     - Known pentest tool User-Agents → probe (Burp Suite, Nmap, SQLMap, etc.)
     """
+    if not DEFENSE_ENABLED:
+        return False
     probe_indicators = 0
     # Check for common scanner paths
     scanner_paths = ["/admin", "/config", "/wp-", "/.env", "/phpmyadmin",

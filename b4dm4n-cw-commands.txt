@@ -1,74 +1,121 @@
-# b4dm4n-cw — Cryptographic Weapon Command Reference
+# b4dm4n-cw — Cipher Workbench CLI Reference
 # 1nf1D3L's Kyber KEM (Non-FIPS ML-KEM-768 variant)
 
 ## Global Options
   --recipe RECIPE   Coffee recipe for domain separation (default: espresso)
                     Options: espresso, cappuccino, latte, mocha, americano
   --b64             Also output base64 encoding
+  -q, --quiet       Suppress banner
+
+## KEM Algorithms (-a / --algo)
+  inf1del-kyber (default), hybrid | hybrid-ecdh-kyber | h,
+  mlkem768-pure,
+  hqc128, hqc192, hqc256,
+  mceliece348864, mceliece348864f, mceliece460896, mceliece460896f,
+  mceliece6688128, mceliece6688128f, mceliece6960119, mceliece6960119f,
+  mceliece8192128, mceliece8192128f,
+  mlkem512, mlkem768, mlkem1024
+  (PQC entries other than inf1del-kyber require the optional `pqcrypto` package.)
 
 ## Commands
 
 ### keygen
-Generate 1nf1D3L Kyber keypair
-  b4dm4n-cw keygen [-o PREFIX]
-  Output: PREFIX.pk (1184 bytes), PREFIX.sk (2400 bytes)
+Generate a keypair for the selected algorithm.
+  b4dm4n_cw.py keygen [-a ALGO] [-o PREFIX] [--recipe RECIPE]
+  inf1del-kyber output: PREFIX.pk (1184B), PREFIX.sk (2400B)
+  hybrid output:       PREFIX.pk (1251B), PREFIX.sk (2432B)
 
 ### encaps
-Encapsulate to a public key
-  b4dm4n-cw encaps -k PUBKEY [-o FILE]
-  Output: Ciphertext (1120 bytes) + Shared Secret (32 bytes)
+Encapsulate to a public key (public key is a positional argument).
+  b4dm4n_cw.py encaps PUBKEY [-a ALGO] [-o FILE] [--recipe RECIPE]
+  inf1del-kyber output: Ciphertext (1120B) + Shared Secret (32B)
+  hybrid output:       Ciphertext (1187B) + Shared Secret (32B)
 
 ### decaps
-Decapsulate with a private key
-  b4dm4n-cw decaps -k PRIVKEY -c CIPHERTEXT
-  Output: Shared Secret (32 bytes)
+Decapsulate with a private key (privkey and ciphertext are positional).
+  b4dm4n_cw.py decaps PRIVKEY CIPHERTEXT [-a ALGO] [--recipe RECIPE]
+  Output: Shared Secret (32B)
 
-### hybrid-keygen
-Generate hybrid ECDH P-256 + 1nf1D3L Kyber keypair
-  b4dm4n-cw hybrid-keygen [-o PREFIX]
-  Output: PREFIX.hp (1251 bytes), PREFIX.hs (2432 bytes)
+### encrypt
+AES-256-GCM symmetric encrypt (CoffeeCipher) — file or stdin.
+  b4dm4n_cw.py encrypt [FILE] [-k KEYFILE] [-o OUT]
 
-### hybrid-encaps
-Hybrid encapsulate (ECDH + Kyber)
-  b4dm4n-cw hybrid-encaps -k HYBRID_PK [-o FILE]
-  Output: Ciphertext (1187 bytes) + Shared Secret (32 bytes)
+### decrypt
+AES-256-GCM symmetric decrypt (CoffeeCipher) — file or stdin.
+  b4dm4n_cw.py decrypt [FILE] [-k KEYFILE] [-o OUT]
 
-### hybrid-decaps
-Hybrid decapsulate (ECDH + Kyber)
-  b4dm4n-cw hybrid-decaps -k HYBRID_SK -c CIPHERTEXT
-  Output: Shared Secret (32 bytes)
+### hash
+Hash data (file or stdin or --string).
+  b4dm4n_cw.py hash [FILE] [-s STR] [-a ALGS] [-d DOMAIN] [-o OUT]
+  Default algorithms: sha256,sha3_256
+
+### sign
+ECDSA P-256 sign (requires --seed).
+  b4dm4n_cw.py sign [FILE] [-s STR] --seed SEEDFILE [-o OUT]
+
+### verify
+ECDSA P-256 verify (positional signature + pubkey).
+  b4dm4n_cw.py verify SIGNATURE PUBKEY [FILE]
+
+### ecdh
+ECDH P-256 key agreement.
+  b4dm4n_cw.py ecdh [--generate | --seed OUR_SEED --peer PEER_PK] [-o PREFIX]
+
+### convert
+Convert key/data format.
+  b4dm4n_cw.py convert INPUT [-f {hex,base64,base32,binary,c-array,python-bytes}] [-o OUT]
+
+### fingerprint
+Generate a key fingerprint (one of -f / --hex / -s).
+  b4dm4n_cw.py fingerprint [-f FILE | --hex HEX | -s STR]
+
+### analyze
+Entropy analysis (one of -f / --hex).
+  b4dm4n_cw.py analyze [-f FILE | --hex HEX] [--hist]
+
+### list
+List available algorithms and recipes.
+  b4dm4n_cw.py list
 
 ### bench
-Run performance benchmarks
-  b4dm4n-cw bench [-n ITERATIONS]
-  Default: 10 iterations
-
-### art
-Display Coffee Protocol teapot-snake ASCII art
-  b4dm4n-cw art
+Benchmark cryptographic operations.
+  b4dm4n_cw.py bench [-a ALGO] [-n N] [--all]
+  Default iterations: 10
 
 ### info
-Show cryptographic parameters
-  b4dm4n-cw info
+Show cryptographic parameters.
+  b4dm4n_cw.py info
+
+### interactive
+Interactive cipher workbench REPL.
+  b4dm4n_cw.py interactive
+
+### tui
+Alias for `interactive` (launches the REPL).
+  b4dm4n_cw.py tui
+
+### coffee
+Display Coffee Protocol ASCII art.
+  b4dm4n_cw.py coffee
 
 ## Examples
 
 # Basic Kyber KEM
-b4dm4n-cw keygen -o mykeys
-b4dm4n-cw encaps -k mykeys.pk -o ct.bin
-b4dm4n-cw decaps -k mykeys.sk -c ct.bin
+./b4dm4n_cw.py keygen -o mykeys
+./b4dm4n_cw.py encaps mykeys.pk -o ct.bin
+./b4dm4n_cw.py decaps mykeys.sk ct.bin
 
-# Hybrid ECDH + Kyber (defense in depth)
-b4dm4n-cw hybrid-keygen -o hybrid
-b4dm4n-cw hybrid-encaps -k hybrid.hp -o hyb_ct.bin
-b4dm4n-cw hybrid-decaps -k hybrid.hs -c hyb_ct.bin
+# Hybrid ECDH + Kyber (defense in depth) — use the -a hybrid alias
+./b4dm4n_cw.py keygen -a hybrid -o hybrid
+./b4dm4n_cw.py encaps -a hybrid hybrid.pk -o hyb_ct.bin
+./b4dm4n_cw.py decaps -a hybrid hybrid.sk hyb_ct.bin
 
 # Benchmark
-b4dm4n-cw bench -n 50
+./b4dm4n_cw.py bench -n 50
 
-# With different coffee recipe (domain separation)
-b4dm4n-cw keygen --recipe cappuccino -o cap_keys
-b4dm4n-cw encaps --recipe cappuccino -k cap_keys.pk
+# With a different coffee recipe (domain separation)
+./b4dm4n_cw.py keygen --recipe cappuccino -o cap_keys
+./b4dm4n_cw.py encaps --recipe cappuccino cap_keys.pk
 
 ## Cryptographic Parameters
 - Variant: ML-KEM-768 (Non-FIPS, 1nf1D3L modifications)
@@ -86,3 +133,8 @@ b4dm4n-cw encaps --recipe cappuccino -k cap_keys.pk
 - Side-channel resistant: NTT twiddle perturbation + constant-time ops
 - Coffee recipe binding: domain separation per recipe
 - Suitable for: coffee protocols, red teaming, research, survival
+
+## Installation Note
+`b4dm4n-cw` is not registered as a console script in pyproject.toml — invoke it
+directly as `./b4dm4n_cw.py` (or `python3 b4dm4n_cw.py`). Only `cpip-server` is
+installed as an entry point.

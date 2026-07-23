@@ -49,7 +49,7 @@ sudo chmod +x "$CLI_BIN"
 echo "[CPIP] Creating systemd service..."
 sudo tee "$SYSTEMD_SERVICE" > /dev/null << 'SVC'
 [Unit]
-Description=CPIP — Coffee Pot Internet Protocol
+Description=CPIP v5.0.0 — Coffee Pot Internet Protocol
 Documentation=https://github.com/coffee-protocol/cpip
 After=network.target
 
@@ -82,7 +82,7 @@ fi
 
 echo ""
 echo "══════════════════════════════════════════════════"
-echo "  CPIP installed successfully!"
+echo "  CPIP v5.0.0 installed successfully!"
 echo ""
 echo "  Dashboard: http://$(hostname -I | awk '{print $1}'):4180/dashboard"
 echo "  CLI:       cpip status"
