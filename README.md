@@ -869,6 +869,26 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
     └── icon-64.png
 ```
 
+## Minima / PiNet-OS Integration
+
+CPIP v4.0.2 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
+
+| Integration Surface | CPIP Capability |
+|---------------------|-----------------|
+| Data at rest | CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256) |
+| Node identity | ECDSA P-256 challenge-response authentication |
+| RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
+| Key encapsulation | RSA-KEM-2048 + optional 1nf1D3L Kyber PQ hybrid |
+| Message signatures | ECDSA P-256 (replaces RSA in Maxima messaging) |
+| API defense | ITF Defense (probe blocking, pentest detection, IP blacklisting) |
+| FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
+
+**Deployment:** CPIP runs as a sidecar container (`cpip:4.0.2`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+
+**Configuration:** `CPIP_ENABLED=1`, `CPIP_RECIPE=minima`, `CPIP_RPC_AUTH=1`, `CPIP_DEFENSE_ENABLED=1`. See [SECURITY.md](SECURITY.md) § Minima Integration for full details.
+
+**PQ Complementarity:** Minima uses WOTS+ (FIPS 205, 128-bit PQ) for consensus signatures. CPIP adds Kyber (non-FIPS ML-KEM-768) for transport encryption. The two approaches are complementary — WOTS+ for consensus, Kyber for key exchange.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
