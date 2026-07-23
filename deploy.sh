@@ -108,12 +108,35 @@ if [ -d "${SCRIPT_DIR}/pi-apps" ]; then
     ok "Pi-Apps package installed"
 fi
 
+# ── Generate trusted TLS certs with mkcert ─────────────────────────
+info "Generating trusted TLS certificates..."
+if command -v mkcert &>/dev/null; then
+    CERT_DIR="/opt/cpip/certs"
+    mkdir -p "$CERT_DIR"
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    HOSTNAME=$(hostname)
+    mkcert -cert-file "$CERT_DIR/server.crt" -key-file "$CERT_DIR/server.key" \
+        localhost 127.0.0.1 ::1 "$LOCAL_IP" "$HOSTNAME" 2>/dev/null
+    chmod 644 "$CERT_DIR/server.crt"
+    chmod 600 "$CERT_DIR/server.key"
+    chown root:root "$CERT_DIR/server."*
+    ok "Trusted TLS certs generated (mkcert)"
+    SSL_AUTO="0"
+    SSL_CERT="$CERT_DIR/server.crt"
+    SSL_KEY="$CERT_DIR/server.key"
+else
+    warn "mkcert not found — using auto-generated self-signed cert (browser warning)"
+    SSL_AUTO="1"
+    SSL_CERT=""
+    SSL_KEY=""
+fi
+
 # ── Systemd service ──────────────────────────────────────────────────
 info "Creating systemd service..."
-cat << 'SVCEOF' > /etc/systemd/system/cpip.service
+cat << SVCEOF > /etc/systemd/system/cpip.service
 [Unit]
 Description=CPIP v5.0.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
-Documentation=https://github.com/coffee-protocol/cpip
+Documentation=https://github.com/WilliamMajanja/CPIP-.git
 After=network.target
 
 [Service]
@@ -133,7 +156,9 @@ Environment=CPIP_MESH_STEALTH=0
 Environment=CPIP_THERMOS=0
 Environment=CPIP_PITAIL=0
 Environment=CPIP_SSL=1
-Environment=CPIP_SSL_AUTO=1
+Environment=CPIP_SSL_AUTO=${SSL_AUTO}
+Environment=CPIP_SSL_CERT=${SSL_CERT}
+Environment=CPIP_SSL_KEY=${SSL_KEY}
 Environment=CPIP_HTTP_REDIRECT=1
 Environment=CPIP_HTTP_REDIRECT_PORT=4181
 ExecStart=/usr/bin/python3 /opt/cpip/server.py
