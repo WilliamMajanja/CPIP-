@@ -3,7 +3,7 @@
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
-- CoffeeCipher v3: AES-256-GCM (FIPS 197) + HKDF-SHA256
+- CoffeeCipher v5: AES-256-GCM (FIPS 197) + HKDF-SHA256
 - ECDSA P-256 (FIPS 186-4): Signatures + ECDH
 - HybridKEM: ECDH P-256 + Kyber (ML-KEM-768) (defense in depth)
 - All randomness: os.urandom (FIPS 140-2 compliant RNG)
@@ -515,9 +515,9 @@ COFFEE_LANGUAGE_MAP = {
     "kahawa": "Swahili",
 }
 
-# ── Coffee Cipher v3 — FIPS-Compliant AES-256-GCM ────────────────────
+# ── Coffee Cipher v5 — FIPS-Compliant AES-256-GCM ────────────────────
 class CoffeeCipher:
-    """Coffee Blend Cipher v3 — FIPS-compliant authenticated encryption.
+    """Coffee Blend Cipher v5 — FIPS-compliant authenticated encryption.
 
     Uses AES-256-GCM (FIPS 197) for authenticated encryption with
     HKDF-SHA256 key derivation (SP 800-56C). All random values use
@@ -560,7 +560,7 @@ class CoffeeCipher:
         """
         recipe_bytes = recipe.encode()
         salt = hashlib.sha256(b"\xc0\xff\xee" + recipe_bytes).digest()
-        return cls.hkdf(base_key, salt, b"cpip-cipher-v3:" + recipe_bytes, 32)
+        return cls.hkdf(base_key, salt, b"cpip-cipher-v5:" + recipe_bytes, 32)
 
     @classmethod
     def encrypt(cls, plaintext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
@@ -601,9 +601,9 @@ class CoffeeCipher:
     @classmethod
     def hash(cls, data: bytes) -> str:
         """SHA-256 based hash with domain separation (FIPS 180-4)."""
-        h = hashlib.sha256(b"cpip-hash-v3:" + data).digest()
+        h = hashlib.sha256(b"cpip-hash-v5:" + data).digest()
         for _ in range(4):
-            h = hashlib.sha256(b"cpip-hash-v3:" + h + data).digest()
+            h = hashlib.sha256(b"cpip-hash-v5:" + h + data).digest()
         return h.hex()[:16]
 
 
@@ -9185,6 +9185,17 @@ class CPIPHandler(BaseHTTPRequestHandler):
         with TEAPOT_BLACKLIST_LOCK:
             active = {k: v for k, v in TEAPOT_BLACKLIST.items() if v.get("expires", 0) > now}
             blacklist = sorted(active.keys())
+            blacklist_details = []
+            for addr in blacklist:
+                entry = active[addr]
+                remaining = max(0, int(entry.get("expires", 0) - now))
+                blacklist_details.append({
+                    "addr": addr,
+                    "reason": entry.get("reason", "auto"),
+                    "ttl": entry.get("ttl", DEFENSE_BLACKLIST_TTL),
+                    "remaining": remaining,
+                    "probe_count": len(TEAPOT_PROBE_COUNT.get(addr, [])),
+                })
         with TEAPOT_TOOL_LOCK:
             tools = {}
             for tool, info in TEAPOT_TOOL_HITS.items():
@@ -9200,6 +9211,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "latent_ports": MESH_LATENT_PORTS,
             "blacklisted_addrs": len(blacklist),
             "blacklist": blacklist,
+            "blacklist_details": blacklist_details,
             "hop_interval": MESH_HOP_INTERVAL,
             "rate_limit": {"max": DEFENSE_RATE_LIMIT, "window": DEFENSE_RATE_WINDOW},
             "blacklist_ttl": DEFENSE_BLACKLIST_TTL,
@@ -9224,6 +9236,52 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 TEAPOT_BLACKLIST.clear()
                 TEAPOT_PROBE_COUNT.clear()
             self._send_json(200, "OK", {"status": "blacklist_cleared"})
+        elif action == "blacklist":
+            addr = body.get("addr", "")
+            if not addr:
+                self._send_json(400, "Bad Request", {"error": "Missing 'addr'"})
+                return
+            ttl = int(body.get("ttl", DEFENSE_BLACKLIST_TTL))
+            reason = body.get("reason", "manual")
+            now = time.time()
+            with TEAPOT_BLACKLIST_LOCK:
+                TEAPOT_BLACKLIST[addr] = {
+                    "expires": now + ttl, "ttl": ttl,
+                    "reason": reason, "added": now,
+                }
+            self._send_json(200, "OK", {
+                "status": "blacklisted", "addr": addr,
+                "ttl": ttl, "reason": reason,
+            })
+        elif action == "bulk_blacklist":
+            addrs_raw = body.get("addrs", "")
+            ttl = int(body.get("ttl", DEFENSE_BLACKLIST_TTL))
+            reason = body.get("reason", "bulk_import")
+            if isinstance(addrs_raw, str):
+                addrs = [a.strip() for a in addrs_raw.replace(",", "\n").split("\n") if a.strip()]
+            elif isinstance(addrs_raw, list):
+                addrs = [str(a).strip() for a in addrs_raw if str(a).strip()]
+            else:
+                self._send_json(400, "Bad Request", {"error": "Invalid 'addrs' format"})
+                return
+            now = time.time()
+            added = []
+            skipped = []
+            for addr in addrs:
+                if addr in ("127.0.0.1", "::1", "localhost", ""):
+                    skipped.append(addr)
+                    continue
+                with TEAPOT_BLACKLIST_LOCK:
+                    TEAPOT_BLACKLIST[addr] = {
+                        "expires": now + ttl, "ttl": ttl,
+                        "reason": reason, "added": now,
+                    }
+                added.append(addr)
+            self._send_json(200, "OK", {
+                "status": "bulk_blacklisted",
+                "added": len(added), "skipped": len(skipped),
+                "addrs": added, "skipped_addrs": skipped,
+            })
         elif action == "probe":
             addr = body.get("addr", "")
             if not addr:
@@ -9549,7 +9607,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "persist_encrypted": True,
             "timestamp_validation": True,
             "mesh_hmac": True,
-            "covert_channel_version": "v3 (CBC2 + ECCv2 + HybridKEM)",
+            "covert_channel_version": "v5 (CBC2 + ECCv2 + HybridKEM)",
             "emergency_mode": EmergencyMode.is_active(),
             "incident_auto_response": IncidentResponse._auto_response_enabled,
         })
@@ -9869,10 +9927,48 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
     </div>
     <div class="card" style="margin-top:1rem">
-      <h2>Blacklist</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <h2 style="margin:0">Blacklist</h2>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn outline small" onclick="exportBlacklist()">Export</button>
+          <button class="btn outline small" onclick="clearBlacklist()">Clear All</button>
+        </div>
+      </div>
       <div id="itfBlacklist"><div style="color:var(--muted)">No addresses blacklisted</div></div>
     </div>
     <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Blacklist Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfBlacklistAddr" placeholder="IP address" style="flex:1">
+          <select id="itfBlacklistTtl" style="width:7rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.3rem;font-size:0.75rem">
+            <option value="300">5 min</option>
+            <option value="3600" selected>1 hour</option>
+            <option value="86400">24 hours</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="31536000">1 year</option>
+          </select>
+          <button class="btn secondary" onclick="blacklistAddr()">Block</button>
+        </div>
+        <input type="text" id="itfBlacklistReason" placeholder="Reason (optional)" style="width:100%;margin-top:0.3rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.3rem;font-size:0.75rem">
+      </div>
+      <div class="card">
+        <h2>Bulk Blacklist</h2>
+        <textarea id="itfBulkAddrs" rows="3" placeholder="One IP per line (or comma-separated)" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.4rem;font-size:0.75rem;font-family:inherit;resize:vertical"></textarea>
+        <div style="display:flex;gap:0.5rem;margin-top:0.3rem;align-items:center">
+          <select id="itfBulkTtl" style="width:7rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.3rem;font-size:0.75rem">
+            <option value="300">5 min</option>
+            <option value="3600" selected>1 hour</option>
+            <option value="86400">24 hours</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="31536000">1 year</option>
+          </select>
+          <button class="btn secondary" onclick="bulkBlacklist()">Block All</button>
+        </div>
+        <div id="itfBulkResult" style="margin-top:0.3rem;font-size:0.75rem"></div>
+      </div>
       <div class="card">
         <h2>Whitelist Address</h2>
         <div class="form-row">
@@ -9888,12 +9984,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
         <div id="itfProbeResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
       </div>
-      <div class="card">
-        <h2>Clear All</h2>
-        <div class="form-row">
-          <button class="btn outline" onclick="clearBlacklist()">Clear Blacklist</button>
-        </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Import Blacklist</h2>
+      <textarea id="itfImportAddrs" rows="3" placeholder="Paste IPs (one per line, comma-separated, or CIDR notation)" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.4rem;font-size:0.75rem;font-family:inherit;resize:vertical"></textarea>
+      <div style="display:flex;gap:0.5rem;margin-top:0.3rem;align-items:center">
+        <select id="itfImportTtl" style="width:7rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:0.3rem;font-size:0.75rem">
+          <option value="300">5 min</option>
+          <option value="3600" selected>1 hour</option>
+          <option value="86400">24 hours</option>
+          <option value="604800">7 days</option>
+          <option value="2592000">30 days</option>
+          <option value="31536000">1 year</option>
+        </select>
+        <button class="btn secondary" onclick="importBlacklist()">Import &amp; Block</button>
       </div>
+      <div id="itfImportResult" style="margin-top:0.3rem;font-size:0.75rem"></div>
     </div>
     <div class="card" style="margin-top:1rem">
       <h2>Detected Tools <span id="itfToolsCount" style="color:var(--muted);font-weight:400">(0)</span></h2>
@@ -10582,10 +10688,13 @@ async function refreshItf() {{
   document.getElementById('itfLatent').textContent = d.latent_ports?.length ? d.latent_ports.join(', ') : 'None';
   document.getElementById('itfBlackCount').textContent = d.blacklisted_addrs || 0;
   const el = document.getElementById('itfBlacklist');
-  if (!d.blacklist?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No addresses blacklisted</div>'; return; }}
-  let html = '<table><tr><th>IP Address</th><th></th></tr>';
-  for (const addr of d.blacklist) {{
-    html += `<tr><td class="mono">${{esc(addr)}}</td><td><button class="btn outline small" onclick="whitelistAddr('${{esc(addr)}}')">Whitelist</button></td></tr>`;
+  if (!d.blacklist_details?.length) {{ el.innerHTML = '<div style="color:var(--muted)">No addresses blacklisted</div>'; return; }}
+  let html = '<table><tr><th>IP</th><th>Reason</th><th>TTL</th><th>Expires</th><th></th></tr>';
+  for (const entry of d.blacklist_details) {{
+    const mins = Math.floor(entry.remaining / 60);
+    const hrs = Math.floor(mins / 60);
+    const dur = hrs > 0 ? hrs + 'h ' + (mins % 60) + 'm' : mins + 'm';
+    html += `<tr><td class="mono">${{esc(entry.addr)}}</td><td>${{esc(entry.reason)}}</td><td>${{dur}}</td><td>${{esc(entry.ttl)}}s</td><td><button class="btn outline small" onclick="whitelistAddr('${{esc(entry.addr)}}')">Unblock</button></td></tr>`;
   }}
   el.innerHTML = html;
   const tcEl = document.getElementById('itfTools');
@@ -10632,6 +10741,54 @@ async function probeAddr() {{
     <div>${{esc(r.addr)}} — ${{bl}}</div>
     <div style="color:var(--muted);margin-top:0.2rem">Probes: ${{r.probe_count}} | Remaining: ${{r.remaining_seconds}}s</div>
   </div>`;
+}}
+
+async function blacklistAddr() {{
+  const addr = document.getElementById('itfBlacklistAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const ttl = parseInt(document.getElementById('itfBlacklistTtl').value) || 3600;
+  const reason = document.getElementById('itfBlacklistReason').value || 'manual';
+  const r = await api('POST', '/cpip/defense', {{ action: 'blacklist', addr, ttl, reason }});
+  if (r && r.status === 'blacklisted') showToast('Blacklisted ' + addr + ' for ' + ttl + 's');
+  document.getElementById('itfBlacklistAddr').value = '';
+  document.getElementById('itfBlacklistReason').value = '';
+  refreshItf();
+}}
+
+async function bulkBlacklist() {{
+  const addrs = document.getElementById('itfBulkAddrs').value;
+  if (!addrs) {{ showToast('Enter IP addresses'); return; }}
+  const ttl = parseInt(document.getElementById('itfBulkTtl').value) || 3600;
+  const r = await api('POST', '/cpip/defense', {{ action: 'bulk_blacklist', addrs, ttl, reason: 'bulk_import' }});
+  const el = document.getElementById('itfBulkResult');
+  if (!r || r.status !== 'bulk_blacklisted') {{ el.innerHTML = '<div style="color:var(--accent)">Failed</div>'; return; }}
+  el.innerHTML = `<div style="color:#00ff88">Blocked ${{r.added}} | Skipped ${{r.skipped}}</div>`;
+  document.getElementById('itfBulkAddrs').value = '';
+  showToast('Bulk blacklisted ' + r.added + ' addresses');
+  refreshItf();
+}}
+
+function exportBlacklist() {{
+  const r = api('GET', '/cpip/defense');
+  r.then(d => {{
+    if (!d?.blacklist?.length) {{ showToast('Blacklist is empty'); return; }}
+    const lines = d.blacklist_details?.map(e => e.addr + ' #' + e.reason + ' ttl=' + e.ttl) || d.blacklist;
+    const text = lines.join('\\n');
+    navigator.clipboard.writeText(text).then(() => showToast('Copied ' + d.blacklist.length + ' IPs to clipboard'));
+  }});
+}}
+
+async function importBlacklist() {{
+  const addrs = document.getElementById('itfImportAddrs').value;
+  if (!addrs) {{ showToast('Paste IP addresses to import'); return; }}
+  const ttl = parseInt(document.getElementById('itfImportTtl').value) || 3600;
+  const r = await api('POST', '/cpip/defense', {{ action: 'bulk_blacklist', addrs, ttl, reason: 'import' }});
+  const el = document.getElementById('itfImportResult');
+  if (!r || r.status !== 'bulk_blacklisted') {{ el.innerHTML = '<div style="color:var(--accent)">Import failed</div>'; return; }}
+  el.innerHTML = `<div style="color:#00ff88">Imported ${{r.added}} | Skipped ${{r.skipped}}</div>`;
+  document.getElementById('itfImportAddrs').value = '';
+  showToast('Imported ' + r.added + ' addresses');
+  refreshItf();
 }}
 
 function connectSSE() {{
@@ -11158,14 +11315,13 @@ def teapot_defense(addr):
             del TEAPOT_BLACKLIST[addr]
         return False
 
-def teapot_blacklist_addr(addr):
+def teapot_blacklist_addr(addr, reason="auto"):
     """Add an address to the 418 blacklist. Tracks probe rate.
     Repeated probes within the rate window double the ban duration."""
     if addr in ("127.0.0.1", "::1", "localhost"):
         return
     now = time.time()
     with TEAPOT_BLACKLIST_LOCK:
-        # Rate tracking
         hits = TEAPOT_PROBE_COUNT.get(addr, [])
         hits = [t for t in hits if now - t < DEFENSE_RATE_WINDOW]
         hits.append(now)
@@ -11177,7 +11333,7 @@ def teapot_blacklist_addr(addr):
             base_ttl = entry.get("ttl", base_ttl)
         if len(hits) > DEFENSE_RATE_LIMIT:
             base_ttl = min(base_ttl * 2, 86400)
-        TEAPOT_BLACKLIST[addr] = {"expires": now + base_ttl, "ttl": base_ttl}
+        TEAPOT_BLACKLIST[addr] = {"expires": now + base_ttl, "ttl": base_ttl, "reason": reason, "added": now}
         if len(TEAPOT_BLACKLIST) > DEFENSE_MAX_BLACKLIST:
             oldest = sorted(TEAPOT_BLACKLIST.items(),
                            key=lambda x: x[1].get("expires", 0))[:len(TEAPOT_BLACKLIST)//2]
