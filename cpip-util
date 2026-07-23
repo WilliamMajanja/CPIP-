@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+# ── CPIP Utilities — Command Line Kung Fu Toolkit ────────────────────
+# Common utilities inspired by "Command Line Kung Fu" by Jason Cannon
+#
+# Usage:
+#   ./cpip-util password [length]     Generate random password (p.141)
+#   ./cpip-util backup <file>         Quick backup with date (p.142)
+#   ./cpip-util table <file>          Display as table (p.21)
+#   ./cpip-util strip <file>          Remove comments and blanks (p.19)
+#   ./cpip-util count <file> <str>    Count string occurrences (p.34)
+#   ./cpip-util lastword <line>       Get last word from line (p.22)
+#   ./cpip-util tabs <file>           View as tree (p.148)
+#   ./cpip-util findstr <dir> <str>   Find files containing string (p.146)
+#   ./cpip-util emptydirs <dir>       Delete empty directories (p.145)
+#   ./cpip-util watch <sec> <cmd>     Watch command output (p.180)
+#   ./cpip-util stopwatch             Time a task (p.185)
+#   ./cpip-util calc <expr>           Calculator (p.111)
+#   ./cpip-util repeat <n> <cmd>      Repeat command N times (p.71)
+#   ./cpip-util until <cmd>           Repeat until success (p.131)
+# ──────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+# ── Color Helpers (p.20-22) ──────────────────────────────────────────
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m'
+
+info()  { echo -e "${CYAN}[*]${NC} $*"; }
+ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $*" >&2; }
+die()   { echo -e "${RED}[X]${NC} $*" >&2; exit 1; }
+
+usage() {
+    cat << 'HELP'
+CPIP Utilities — Command Line Kung Fu Toolkit
+
+Usage:
+  ./cpip-util password [length]     Generate random password (default: 16)
+  ./cpip-util backup <file>         Quick backup with date stamp
+  ./cpip-util table <file>          Display file as table
+  ./cpip-util strip <file>          Remove comments and blank lines
+  ./cpip-util count <file> <str>    Count occurrences of string
+  ./cpip-util lastword <line>       Extract last word from line
+  ./cpip-util tabs <dir>            Display directory tree
+  ./cpip-util findstr <dir> <str>   Find files containing string
+  ./cpip-util emptydirs <dir>       Delete empty directories
+  ./cpip-util watch <sec> <cmd>     Watch command output repeatedly
+  ./cpip-util stopwatch             Time a task (press Enter to stop)
+  ./cpip-util calc <expr>           Calculate arithmetic expression
+  ./cpip-util repeat <n> <cmd>      Repeat command N times
+  ./cpip-util until <cmd>           Repeat until command succeeds
+  ./cpip-util help                  Show this help
+
+Techniques from "Command Line Kung Fu" by Jason Cannon.
+HELP
+}
+
+# ── Password Generator (p.141) ───────────────────────────────────────
+cmd_password() {
+    local length="${1:-16}"
+    if command -v openssl &>/dev/null; then
+        openssl rand -base64 48 | cut -c1-"$length"
+    else
+        tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom | head -c "$length"
+        echo
+    fi
+}
+
+# ── Quick Backup (p.142) ─────────────────────────────────────────────
+cmd_backup() {
+    local file="$1"
+    [ -z "$file" ] && die "Usage: cpip-util backup <file>"
+    [ ! -f "$file" ] && die "File not found: $file"
+    cp "$file"{,.bak}
+    ok "Backup: ${file}.bak"
+}
+
+# ── Table Display (p.21) ─────────────────────────────────────────────
+cmd_table() {
+    local file="$1"
+    [ -z "$file" ] && die "Usage: cpip-util table <file>"
+    [ ! -f "$file" ] && die "File not found: $file"
+    column -t "$file"
+}
+
+# ── Strip Comments and Blanks (p.19) ─────────────────────────────────
+cmd_strip() {
+    local file="$1"
+    [ -z "$file" ] && die "Usage: cpip-util strip <file>"
+    [ ! -f "$file" ] && die "File not found: $file"
+    grep -E -v "^#|^$" "$file"
+}
+
+# ── Count Occurrences (p.34) ─────────────────────────────────────────
+cmd_count() {
+    local file="$1" str="$2"
+    [ -z "$file" ] && die "Usage: cpip-util count <file> <string>"
+    [ -z "$str" ] && die "Usage: cpip-util count <file> <string>"
+    local count=$(grep -c "$str" "$file" 2>/dev/null || echo 0)
+    echo "$count"
+}
+
+# ── Last Word (p.22) ─────────────────────────────────────────────────
+cmd_lastword() {
+    echo "$@" | awk '{print $NF}'
+}
+
+# ── Directory Tree (p.148) ───────────────────────────────────────────
+cmd_tabs() {
+    local dir="${1:-.}"
+    if command -v tree &>/dev/null; then
+        tree "$dir"
+    else
+        find "$dir" -type d | sort | sed -e 's;[^/]*/;├──;g' -e 's;├──;│   ;g'
+    fi
+}
+
+# ── Find Files with String (p.146) ───────────────────────────────────
+cmd_findstr() {
+    local dir="$1" str="$2"
+    [ -z "$dir" ] && die "Usage: cpip-util findstr <dir> <string>"
+    [ -z "$str" ] && die "Usage: cpip-util findstr <dir> <string>"
+    grep -rl "$str" "$dir" 2>/dev/null
+}
+
+# ── Delete Empty Directories (p.145) ─────────────────────────────────
+cmd_emptydirs() {
+    local dir="${1:-.}"
+    local count=$(find "$dir" -type d -empty -delete -print 2>/dev/null | wc -l)
+    ok "Deleted $count empty directories"
+}
+
+# ── Watch Command (p.180) ────────────────────────────────────────────
+cmd_watch() {
+    local interval="$1"; shift
+    [ -z "$interval" ] && die "Usage: cpip-util watch <seconds> <command>"
+    echo -e "${CYAN}Watching: $* (every ${interval}s — Ctrl+C to stop)${NC}"
+    while true; do
+        clear
+        echo -e "${CYAN}[$(date +%H:%M:%S)]${NC} $*"
+        echo "────────────────────────────────────────"
+        "$@" 2>/dev/null || warn "Command failed"
+        sleep "$interval"
+    done
+}
+
+# ── Stopwatch (p.185) ────────────────────────────────────────────────
+cmd_stopwatch() {
+    echo -e "${CYAN}Stopwatch started. Press Enter to stop.${NC}"
+    local start=$SECONDS
+    read -r
+    local elapsed=$((SECONDS - start))
+    local mins=$((elapsed / 60))
+    local secs=$((elapsed % 60))
+    echo -e "${GREEN}Elapsed: ${mins}m ${secs}s${NC}"
+}
+
+# ── Calculator (p.111) ───────────────────────────────────────────────
+cmd_calc() {
+    [ -z "$*" ] && die "Usage: cpip-util calc <expression>"
+    echo "$*" | bc -l 2>/dev/null || python3 -c "print($*)" 2>/dev/null || die "Cannot calculate"
+}
+
+# ── Repeat Command (p.71) ────────────────────────────────────────────
+cmd_repeat() {
+    local n="$1"; shift
+    [ -z "$n" ] && die "Usage: cpip-util repeat <count> <command>"
+    for i in $(seq 1 "$n"); do
+        echo -e "${CYAN}[$i/$n]${NC} $*"
+        "$@"
+    done
+}
+
+# ── Repeat Until Success (p.131) ─────────────────────────────────────
+cmd_until() {
+    [ -z "$*" ] && die "Usage: cpip-util until <command>"
+    local i=0
+    while true; do
+        i=$((i + 1))
+        echo -e "${CYAN}[$i]${NC} Trying: $*"
+        "$@" && break
+        sleep 1
+    done
+    ok "Succeeded after $i attempts"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────
+case "${1:-help}" in
+    password)   shift; cmd_password "$@" ;;
+    backup)     shift; cmd_backup "$@" ;;
+    table)      shift; cmd_table "$@" ;;
+    strip)      shift; cmd_strip "$@" ;;
+    count)      shift; cmd_count "$@" ;;
+    lastword)   shift; cmd_lastword "$@" ;;
+    tabs)       shift; cmd_tabs "$@" ;;
+    findstr)    shift; cmd_findstr "$@" ;;
+    emptydirs)  shift; cmd_emptydirs "$@" ;;
+    watch)      shift; cmd_watch "$@" ;;
+    stopwatch)  shift; cmd_stopwatch "$@" ;;
+    calc)       shift; cmd_calc "$@" ;;
+    repeat)     shift; cmd_repeat "$@" ;;
+    until)      shift; cmd_until "$@" ;;
+    help|*)     usage ;;
+esac

@@ -25,12 +25,27 @@
 # ──────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# ── Trap Cleanup (Command Line Kung Fu, p.93-95) ─────────────────────
+TMPDIR="${TMPDIR:-/tmp}"
+DEPLOY_TMP=""
+cleanup() {
+    local exit_code=$?
+    [ -n "$DEPLOY_TMP" ] && rm -rf "$DEPLOY_TMP"
+    if [ "$exit_code" -ne 0 ]; then
+        printf "${RED:-}[X]%s Script failed with code %d${NC:-}\n" "" "$exit_code" >&2
+    fi
+    return "$exit_code"
+}
+trap cleanup EXIT
+mktmpdir() { DEPLOY_TMP=$(mktemp -d "${TMPDIR}/cpip-deploy.XXXXXX"); }
+
+# ── Color Helpers (p.20-22) ──────────────────────────────────────────
+readonly CYAN='\033[0;36m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly RED='\033[0;31m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_SRC="${SCRIPT_DIR}/server.py"
@@ -524,7 +539,7 @@ cmd_setup() {
     echo -e "${CYAN}══════════════════════════════════════════════════════${NC}"
     echo ""
 
-    # WiFi configuration
+    # WiFi configuration (Command Line Kung Fu, p.136-138)
     read -r -p "WiFi SSID (empty for no WiFi): " WIFI_SSID
     if [ -n "$WIFI_SSID" ]; then
         read -r -s -p "WiFi Password: " WIFI_PASS

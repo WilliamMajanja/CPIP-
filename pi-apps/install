@@ -1,16 +1,37 @@
 #!/usr/bin/env bash
 # Pi-Apps install script for CPIP — Coffee Pot Internet Protocol
+# Incorporates Command Line Kung Fu techniques
 set -euo pipefail
+
+# ── Trap Cleanup (p.93-95) ───────────────────────────────────────────
+cleanup() {
+    local exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        echo "[CPIP] ERROR: Install failed with code $exit_code" >&2
+    fi
+    return "$exit_code"
+}
+trap cleanup EXIT
+
+# ── Color Helpers (p.20-22) ──────────────────────────────────────────
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m'
+
+log()   { echo -e "${GREEN}[CPIP]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[CPIP]${NC} $*" >&2; }
+err()   { echo -e "${RED}[CPIP]${NC} $*" >&2; }
 
 APP_DIR="/opt/cpip"
 SYSTEMD_SERVICE="/etc/systemd/system/cpip.service"
 CLI_BIN="/usr/local/bin/cpip"
 
-echo "[CPIP] Installing Coffee Pot Internet Protocol..."
+log "Installing Coffee Pot Internet Protocol..."
 
-# Install Python3 if missing
+# Install Python3 if missing (p.71)
 if ! command -v python3 &>/dev/null; then
-    echo "[CPIP] Installing Python3..."
+    log "Installing Python3..."
     sudo apt-get update -qq
     sudo apt-get install -y -qq python3
 fi
@@ -19,25 +40,25 @@ fi
 sudo mkdir -p "$APP_DIR"
 
 # Write server
-echo "[CPIP] Installing server..."
+log "Installing server..."
 if [ -f "$(dirname "$0")/../server.py" ]; then
     sudo cp "$(dirname "$0")/../server.py" "$APP_DIR/"
 elif [ -f "$(dirname "$0")/../../server.py" ]; then
     sudo cp "$(dirname "$0")/../../server.py" "$APP_DIR/"
 else
     # Download from GitHub as fallback
-    echo "[CPIP] Downloading server.py..."
+    log "Downloading server.py..."
     sudo python3 -c "
 import urllib.request, json
 # Inline install - create basic server
 # Full server is embedded in the application
 " 2>/dev/null || true
-    echo "[CPIP] Please copy server.py to $APP_DIR manually"
+    warn "Please copy server.py to $APP_DIR manually"
 fi
 sudo chmod +x "$APP_DIR/server.py"
 
 # Write CLI
-echo "[CPIP] Installing CLI..."
+log "Installing CLI..."
 if [ -f "$(dirname "$0")/../cpip" ]; then
     sudo cp "$(dirname "$0")/../cpip" "$CLI_BIN"
 elif [ -f "$(dirname "$0")/../../cpip" ]; then
@@ -46,7 +67,7 @@ fi
 sudo chmod +x "$CLI_BIN"
 
 # Create systemd service
-echo "[CPIP] Creating systemd service..."
+log "Creating systemd service..."
 sudo tee "$SYSTEMD_SERVICE" > /dev/null << 'SVC'
 [Unit]
 Description=CPIP v5.0.0 — Coffee Pot Internet Protocol
@@ -75,9 +96,9 @@ sudo systemctl start cpip.service
 
 sleep 2
 if systemctl is-active --quiet cpip.service; then
-    echo "[CPIP] Service is running"
+    log "Service is running"
 else
-    echo "[CPIP] WARNING: Service may not have started — check: journalctl -u cpip"
+    warn "Service may not have started — check: journalctl -u cpip"
 fi
 
 echo ""

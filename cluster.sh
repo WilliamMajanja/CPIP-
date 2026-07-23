@@ -18,19 +18,32 @@
 # ──────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ── Trap Cleanup (Command Line Kung Fu, p.93-95) ─────────────────────
 CLUSTER_DIR="/tmp/cpip-cluster"
 LOG_DIR="$CLUSTER_DIR/logs"
 PID_DIR="$CLUSTER_DIR/pids"
-NODES=${1:-3}
-SERVER_SCRIPT="$(dirname "$0")/server.py"
 TLS_CERT_DIR="$CLUSTER_DIR/certs"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+cleanup() {
+    local exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        echo -e "${RED:-}[cluster] Script exited with code $exit_code${NC:-}" >&2
+    fi
+    return "$exit_code"
+}
+trap cleanup EXIT
+
+# ── Color Helpers (p.20-22) ──────────────────────────────────────────
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly BOLD='\033[1m'
+readonly NC='\033[0m'
+
+NODES=${1:-3}
+SERVER_SCRIPT="$(dirname "$0")/server.py"
 
 banner() {
     echo -e "${CYAN}"
@@ -184,6 +197,7 @@ cmd_status() {
     echo -e "${CYAN}Cluster Status${NC}"
     echo "────────────────────────────────────────────────"
     local running=0
+    local status_lines=""
     for i in $(seq 0 $((NODES - 1))); do
         local pid_file="$PID_DIR/node${i}.pid"
         local http_port=$((4180 + i))
@@ -197,7 +211,7 @@ cmd_status() {
         fi
     done
     echo ""
-    echo "Running: $running / $NODES"
+    echo -e "Running: ${GREEN}$running${NC} / $NODES"
     echo "────────────────────────────────────────────────"
 }
 

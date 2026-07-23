@@ -9,7 +9,22 @@ set -euo pipefail
 #  Zero simulation. Post-quantum ready. All fangs.
 # ═══════════════════════════════════════════════════════════════════════
 
-CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+# ── Trap Cleanup (Command Line Kung Fu, p.93-95) ─────────────────────
+cleanup() {
+    local exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        printf "${RED:-}[X]%s Script failed with code %d${NC:-}\n" "" "$exit_code" >&2
+    fi
+    return "$exit_code"
+}
+trap cleanup EXIT
+
+# ── Color Helpers (p.20-22) ──────────────────────────────────────────
+readonly CYAN='\033[0;36m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly RED='\033[0;31m'
+readonly NC='\033[0m'
 
 info()  { printf "${CYAN}[*]%s %s${NC}\n" "" "$1"; }
 ok()    { printf "${GREEN}[OK]%s %s${NC}\n" "" "$1"; }
