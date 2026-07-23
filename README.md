@@ -3,7 +3,7 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.0.5-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
@@ -62,7 +62,7 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **ITF (In The Face) defense** — Active probe blocking with HTTP 418 responses
 - **Pentest tool detection** — Fingerprinting of 16 security tools (Burp Suite, Nmap, SQLMap, Nikto, and 12 more)
 - **IP blacklist management** — Rate-limited exponential ban duration
-- **CoffeeCipher v3 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
+- **CoffeeCipher v5 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
 - **ECDSA/ECDH P-256** — FIPS 186-4 signatures and key exchange
 - **HybridKEM** — ECDH P-256 + Kyber (ML-KEM-768) hybrid key exchange; secure if either component holds
 - **Post-quantum KEM** — 1nf1D3L's Kyber ML-KEM-768 variant via b4dm4n-cw CLI (non-FIPS, η=3)
@@ -322,7 +322,7 @@ The system generates cover traffic (random brew requests at configurable interva
 
 All cryptographic primitives use FIPS-compliant algorithms via the `cryptography` library, which provides constant-time implementations. The `secrets` module replaces `random` for all security-relevant operations. Post-quantum KEM is available via the `b4dm4n-cw` CLI (non-FIPS).
 
-### CoffeeCipher v3 (AES-256-GCM)
+### CoffeeCipher v5 (AES-256-GCM)
 
 - Cipher: AES-256-GCM (FIPS 197) with 12-byte nonce and 16-byte authentication tag
 - Key derivation: HKDF-SHA256 with domain-separated info strings
@@ -438,7 +438,7 @@ Copy the `pi-apps/` directory to `~/.local/share/pi-apps/apps/Coffee-Protocol/` 
 
 ```ini
 [Unit]
-Description=CPIP v5.0.0 — Coffee Pot Internet Protocol
+Description=CPIP v5.0.5 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -468,7 +468,7 @@ Produces `radio_if` — a standalone binary with zero external dependencies.
 ## Kubernetes
 
 CPIP includes Kubernetes manifests for self-hosting. The bundled `k8s/deployment.yaml`
-targets v5.0.0 labels and `image: cpip:5.0.0`.
+targets v5.0.5 labels and `image: cpip:5.0.0`.
 
 ### Quick Deploy
 
@@ -961,7 +961,7 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ├── b4dm4n_cw.py           # Cipher Workbench CLI v2.0
 ├── b4dm4n-cw-commands.txt # b4dm4n-cw command reference
 ├── inf1del_kyber.py       # 1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-├── pyproject.toml         # Package metadata (name: cpip, v5.0.0)
+├── pyproject.toml         # Package metadata (name: cpip, v5.0.5)
 ├── Dockerfile             # Docker image (Alpine, SSL-enabled)
 ├── docker-compose.yml      # Single-service compose with volumes + limits
 ├── deploy.sh              # Raspberry Pi deployment script (systemd)
@@ -999,11 +999,11 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 
 ## Minima / PiNet-OS Integration
 
-CPIP v5.0.0 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
+CPIP v5.0.5 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
 
 | Integration Surface | CPIP Capability |
 |---------------------|-----------------|
-| Data at rest | CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256) |
+| Data at rest | CoffeeCipher v5 (AES-256-GCM + HKDF-SHA256) |
 | Node identity | ECDSA P-256 challenge-response authentication |
 | RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
 | Key encapsulation | HybridKEM — ECDH P-256 + 1nf1D3L Kyber (PQ hybrid) |
@@ -1025,4 +1025,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This is free and unencumbered software released into the public domain. See [LICENSE](LICENSE) for details.
 
-The CoffeeCipher v3 uses FIPS-compliant cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256). The hybrid KEM combines ECDH P-256 with 1nf1D3L's Kyber (non-FIPS ML-KEM-768).
+The CoffeeCipher v5 uses FIPS-compliant cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256). The hybrid KEM combines ECDH P-256 with 1nf1D3L's Kyber (non-FIPS ML-KEM-768).

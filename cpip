@@ -77,7 +77,7 @@ CPIP_PORT="${CPIP_PORT:-4180}"
 
 usage() {
 cat << 'HELP'
-CPIP v5.0.0 — Coffee Pot Internet Protocol CLI
+CPIP v5.0.5 — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
 
 Usage:

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Pot Internet Protocol v5.0.0
+#  CPIP — Coffee Pot Internet Protocol v5.0.5
 #  RFC 2324 + RFC 7168 + ECDSA/ECDH P-256 + ML-KEM-768 + Mesh + 418 Defense
 #  Anti-ISP + Anti-Stingray + Anti-Palantir/Pegasus + Anti-DPI + Net Neutrality
 #  Full hardware install for Raspberry Pi Zero WH
@@ -135,7 +135,7 @@ fi
 info "Creating systemd service..."
 cat << SVCEOF > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v5.0.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
+Description=CPIP v5.0.5 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
 Documentation=https://github.com/WilliamMajanja/CPIP-.git
 After=network.target
 
@@ -206,7 +206,7 @@ except Exception:
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v5.0.0 Deployed — Counter-Surveillance Active${NC}"
+echo -e "${GREEN}  CPIP v5.0.5 Deployed — Counter-Surveillance Active${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"
@@ -218,7 +218,7 @@ echo "  HTTP→HTTPS : Port 4181 (CPIP_HTTP_REDIRECT=1)"
 echo "  Mesh Port  : 4191 (UDP)"
 echo "  Latent     : 4192, 4193, 4194 (port-knocking)"
 echo "  Defense    : 418 I'm a Teapot (probe + pentest tool blocking)"
-echo "  Cipher     : CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256)"
+echo "  Cipher     : CoffeeCipher v5 (AES-256-GCM + HKDF-SHA256)"
 echo "  ECC        : ECDSA/ECDH P-256 (FIPS 186-4)"
 echo "  PQ-KEM     : Hybrid ECDH P-256 + 1nf1D3L Kyber ML-KEM-768 (non-FIPS)"
 echo "  Hash       : SHA-256 + SHA-3-256"
@@ -262,7 +262,7 @@ echo '    curl https://'${IP_ADDR}':4180/cpip/mesh/status'
 echo ""
 echo -e "${YELLOW}  ⚠  CRYPTOGRAPHY NOTICE${NC}"
 echo "  This software uses a hybrid cryptographic architecture:"
-echo "  - CoffeeCipher v3: AES-256-GCM authenticated encryption (FIPS 197)"
+echo "  - CoffeeCipher v5: AES-256-GCM authenticated encryption (FIPS 197)"
 echo "    + HKDF-SHA256 key derivation (SP 800-56C) with recipe domain separation"
 echo "  - ECDSA/ECDH P-256: FIPS 186-4 signatures and key exchange"
 echo "  - 1nf1D3L Kyber ML-KEM-768: Post-quantum KEM (non-FIPS, η=3, research variant)"

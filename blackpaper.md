@@ -1,13 +1,13 @@
 # Blackpaper: The Coffee Protocol (CPIP)
 ### A Multi-Transport Mesh with Hybrid Post-Quantum Cryptography and Active Network Defense
 
-**Version 5.0.0** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
+**Version 5.0.5** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
 
 ---
 
 ## Abstract
 
-CPIP (Coffee Pot Internet Protocol) is an implementation of the Hyper Text Coffee Pot Control Protocol (HTCPCP), originally specified as an April Fools' RFC (RFC 2324, 1998) and extended for tea in RFC 7168. This blackpaper describes how CPIP transforms that joke protocol into a production-grade, multi-transport mesh communication system with end-to-end encryption, hybrid post-quantum key exchange, store-and-forward messaging, covert channels, and active network defense. We document the protocol design, cryptographic architecture (CoffeeCipher v3 / AES-256-GCM, ECDSA/ECDH P-256, and a hybrid ECDH + 1nf1D3L Kyber ML-KEM-768 KEM), the four-transport routing fabric (LAN, satellite, radio, mobile), the ITF defense engine, and the integration surface with Minima blockchain nodes in the PiNet-OS edge stack. The system is intentionally FIPS-aligned for its classical primitives while keeping a non-FIPS post-quantum component for research and forward security.
+CPIP (Coffee Pot Internet Protocol) is an implementation of the Hyper Text Coffee Pot Control Protocol (HTCPCP), originally specified as an April Fools' RFC (RFC 2324, 1998) and extended for tea in RFC 7168. This blackpaper describes how CPIP transforms that joke protocol into a production-grade, multi-transport mesh communication system with end-to-end encryption, hybrid post-quantum key exchange, store-and-forward messaging, covert channels, and active network defense. We document the protocol design, cryptographic architecture (CoffeeCipher v5 / AES-256-GCM, ECDSA/ECDH P-256, and a hybrid ECDH + 1nf1D3L Kyber ML-KEM-768 KEM), the four-transport routing fabric (LAN, satellite, radio, mobile), the ITF defense engine, and the integration surface with Minima blockchain nodes in the PiNet-OS edge stack. The system is intentionally FIPS-aligned for its classical primitives while keeping a non-FIPS post-quantum component for research and forward security.
 
 ---
 
@@ -130,13 +130,13 @@ The covert channel (§7) hides data inside these addition strings.
 
 ## 5. Cryptographic Architecture
 
-### 5.1 CoffeeCipher v3 — AES-256-GCM with HKDF-SHA256
+### 5.1 CoffeeCipher v5 — AES-256-GCM with HKDF-SHA256
 
 - **Cipher**: AES-256-GCM (FIPS 197), 12-byte random nonce, 16-byte authentication tag.
 - **Wire format**: `nonce(12B) || ciphertext || GCM-tag(16B)`.
-- **Key derivation**: HKDF-SHA256 (SP 800-56C) with domain-separated `info` strings of the form `cpip-cipher-v3:<recipe>`.
+- **Key derivation**: HKDF-SHA256 (SP 800-56C) with domain-separated `info` strings of the form `cpip-cipher-v5:<recipe>`.
 - **Recipe binding**: A "coffee recipe" string (espresso, latte, cappuccino, americano, cold-brew, mocha, matcha, or a custom label such as `minima`) is mixed into the KDF. Different recipes produce cryptographically independent keys from the same base key material, giving cheap domain separation per deployment.
-- **Backward compatibility**: v1 and v2 ciphertexts are read transparently; v3 is the write format.
+- **Backward compatibility**: v1 and v2 ciphertexts are read transparently; v5 is the write format.
 
 Constant-time primitives are supplied by the `cryptography` library. The `secrets` module replaces `random` for all security-relevant randomness.
 
@@ -373,11 +373,11 @@ Three modes: auto self-signed (OpenSSL, falling back to `cryptography`, then a s
 
 ## 13. Minima / PiNet-OS Integration
 
-CPIP v5.0.0 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
+CPIP v5.0.5 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
 
 | Integration surface | CPIP capability |
 |---------------------|-----------------|
-| Data at rest | CoffeeCipher v3 (AES-256-GCM + HKDF-SHA256) |
+| Data at rest | CoffeeCipher v5 (AES-256-GCM + HKDF-SHA256) |
 | Node identity | ECDSA P-256 challenge-response authentication |
 | RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
 | Key encapsulation | HybridKEM — ECDH P-256 + 1nf1D3L Kyber |
@@ -459,7 +459,7 @@ cpip.1                 CLI man page (roff)
 cpip_tui.py            Terminal UI (OpenTUI, 12 pages)
 b4dm4n_cw.py           Cipher Workbench CLI v2.0
 inf1del_kyber.py       1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-pyproject.toml         Package metadata (name: cpip, v5.0.0)
+pyproject.toml         Package metadata (name: cpip, v5.0.5)
 Dockerfile / docker-compose.yml
 deploy.sh / deploy-pi.sh / cluster.sh
 test_crypto.py / test_cpip.py

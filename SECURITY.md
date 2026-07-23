@@ -21,14 +21,14 @@
 CPIP v4.0+ uses a layered cryptographic architecture built on FIPS-compliant
 primitives, with optional post-quantum KEM layer, designed for hostile signal environments:
 
-### Encryption (CoffeeCipher v3 / AES-256-GCM)
+### Encryption (CoffeeCipher v5 / AES-256-GCM)
 - **Cipher**: AES-256-GCM (FIPS 197) with 12-byte nonce and 16-byte authentication tag
 - **Key derivation**: HKDF-SHA256 with domain-separated info strings
 - **Nonce**: 12-byte random nonce per encryption (prevents identical-plaintext attacks)
 - **Authentication**: GCM authentication tag on every ciphertext (detects tampering)
 - **Format**: `nonce (12B) || ciphertext || GCM-tag (16B)`
 
-### CoffeeCipher v3 Format
+### CoffeeCipher v5 Format
 - **Structure**: `nonce(12B) || ciphertext || GCM-tag(16B)`
 - **Nonce**: Fresh random 12-byte nonce generated per encryption via `secrets` module
 - **Key derivation**: HKDF-SHA256 with domain-separated info strings
@@ -69,10 +69,10 @@ primitives, with optional post-quantum KEM layer, designed for hostile signal en
 - **Cover traffic**: Randomized padding to defeat traffic analysis
 
 ### Data at Rest
-- **Persistence**: Encrypted with CoffeeCipher v3 (AES-256-GCM) + HMAC integrity verification
+- **Persistence**: Encrypted with CoffeeCipher v5 (AES-256-GCM) + HMAC integrity verification
 - **Key material**: Derived from node secret with HKDF domain separation
 - **Plaintext**: Purged from message store after re-encryption
-- **Format**: v3 encrypted persistence format; v1/v2 data loads with backward-compatible
+- **Format**: v5 encrypted persistence format; v1/v2 data loads with backward-compatible
   migration path (v1/v2 is transparently upgraded on next write)
 
 ## FIPS 140-2/3 Mode
@@ -197,7 +197,7 @@ CPIP v4.0.2 serves as the primary cryptographic security provider for Minima nod
 
 | Integration Surface | CPIP Capability | Implementation |
 |---------------------|-----------------|----------------|
-| Data at rest | CoffeeCipher v3 (AES-256-GCM) | `backend/cpip_provider.py` (Python); `org.minima.utils.cpip.CoffeeCipher` (Java) |
+| Data at rest | CoffeeCipher v5 (AES-256-GCM) | `backend/cpip_provider.py` (Python); `org.minima.utils.cpip.CoffeeCipher` (Java) |
 | Node identity | ECDSA P-256 challenge-response | `NodeIdentity` / `ECP256` (Python); `CPIPECDSA` (Java) |
 | RPC authentication | HMAC-SHA256 time-bounded tokens | `RpcToken` (Python); `CPIPECDSA.generateRpcToken` (Java) |
 | Key encapsulation | ECDH P-256 + 1nf1D3L Kyber (HybridKEM) | `CPIPKEM` (Java); HybridKEM (Python, server.py:1485) |

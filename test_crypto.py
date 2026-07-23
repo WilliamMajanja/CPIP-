@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Comprehensive tests for CPIP cryptographic and security subsystems.
 
-Tests: ECDSA/ECDH P-256, HybridKEM (ECDH P-256 + Kyber), CoffeeCipher v3 (AES-256-GCM),
+Tests: ECDSA/ECDH P-256, HybridKEM (ECDH P-256 + Kyber), CoffeeCipher v5 (AES-256-GCM),
 SecureHash, IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
 CovertChannel, mesh HMAC, persistence encryption, and HTTP security.
 
@@ -225,7 +225,7 @@ class TestHybridKEM(unittest.TestCase):
 
 
 class TestCoffeeCipher(unittest.TestCase):
-    """CoffeeCipher v3 AES-256-GCM authenticated encryption (FIPS 197)."""
+    """CoffeeCipher v5 AES-256-GCM authenticated encryption (FIPS 197)."""
 
     def test_encrypt_decrypt_roundtrip(self):
         key = os.urandom(32)
