@@ -89,10 +89,10 @@ chmod +x /usr/local/bin/cpip
 ok "cpip CLI installed"
 
 # ── Install web dashboard (if web/ directory exists) ─────────────────
-if [ -d "${SCRIPT_DIR}/web" ]; then
+if [ -d "${SCRIPT_DIR}/web" ] && [ "$(ls -A "${SCRIPT_DIR}/web" 2>/dev/null | grep -v '^\.' || true)" ]; then
     info "Installing web dashboard..."
     mkdir -p /opt/cpip/web
-    cp -r "${SCRIPT_DIR}/web/"* /opt/cpip/web/
+    find "${SCRIPT_DIR}/web" -maxdepth 1 -not -name '.*' -not -path "${SCRIPT_DIR}/web" -exec cp -r {} /opt/cpip/web/ \;
     ok "Web dashboard installed"
 else
     warn "No web/ directory found — dashboard is embedded in server.py"

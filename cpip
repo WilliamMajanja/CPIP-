@@ -1052,7 +1052,16 @@ print(f'Total: {d.get(\"count\",0)}')
     cal)
         echo -e "${CYAN}$(date '+%B %Y')${NC}"
         echo "────────────────────────────────────────"
-        cal "${2:-}" "${3:-}" 2>/dev/null || cal
+        if command -v cal &>/dev/null; then
+            cal "${2:-}" "${3:-}" 2>/dev/null || cal
+        else
+            python3 -c "
+import calendar, datetime
+m = int('${2:-$(date +%-m)}') if '${2:-}' else datetime.date.today().month
+y = int('${3:-$(date +%Y)}') if '${3:-}' else datetime.date.today().year
+print(calendar.month(y, m))
+"
+        fi
         ;;
 
     stopwatch)
