@@ -194,6 +194,29 @@ CPIP is designed for operation in hostile signal environments:
 - Covert mesh communications under casual inspection
 - Post-disaster / field operations communications
 - Systems administration multi-tool for hostile network environments
+- **Security provider for Minima blockchain nodes (PiNet-OS integration)**
+
+## Minima / PiNet-OS Integration
+
+CPIP v4.0.2 serves as the primary cryptographic security provider for Minima nodes in the PiNet-OS edge computing stack:
+
+| Integration Surface | CPIP Capability | Implementation |
+|---------------------|-----------------|----------------|
+| Data at rest | CoffeeCipher v3 (AES-256-GCM) | `backend/cpip_provider.py` (Python); `org.minima.utils.cpip.CoffeeCipher` (Java) |
+| Node identity | ECDSA P-256 challenge-response | `NodeIdentity` / `ECP256` (Python); `CPIPECDSA` (Java) |
+| RPC authentication | HMAC-SHA256 time-bounded tokens | `RpcToken` (Python); `CPIPECDSA.generateRpcToken` (Java) |
+| Key encapsulation | RSA-KEM-2048 + optional Kyber | `CPIPKEM` (Java); HybridKEM (Python) |
+| Message signatures | ECDSA P-256 (replaces RSA) | `SignVerify` → `CPIPECDSA.sign/verify` (Java) |
+| API defense | ITF Defense (probe blocking, 418) | `CPIPSecurityMiddleware` (Python); `CoffeeProtocolProvider.defenseCheck` (Java) |
+| FIPS assurance | Power-on self-tests | `CPIPSelfTest` (Java); `run_fips_self_tests()` (Python) |
+
+**Deployment:** CPIP runs as a sidecar container in the Minima k3s DaemonSet (port 4180) and as a dedicated `cpip.service` systemd unit. The `minima.service` systemd unit depends on `cpip.service` via `After=cpip.service`.
+
+**Configuration:** `CPIP_ENABLED=1` (default), `CPIP_FIPS=0` (set to 1 for FIPS mode), `CPIP_RECIPE=minima` (domain separation), `CPIP_RPC_AUTH=1` (HMAC-SHA256 token auth), `CPIP_DEFENSE_ENABLED=1` (ITF Defense).
+
+**Key Management:** CPIP keys are derived from `CPIP_COVERT_KEY` via HKDF-SHA256 with domain separation (recipe: "minima"). Emergency key rotation via `POST /cpip/emergency {"action":"rotate_keys"}`.
+
+**Minima PQ Architecture:** Minima uses WOTS+ (FIPS 205 SPHINCS+ OTS, 128-bit PQ) for consensus signatures — this is NOT replaced by CPIP. CPIP adds Kyber (ML-KEM-768, non-FIPS) for optional PQ key exchange in the messaging/encryption layer. The two PQ approaches are complementary: WOTS+ for consensus, Kyber for transport encryption.
 
 ## What CPIP Is NOT Designed For
 
