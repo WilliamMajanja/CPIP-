@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+dist/
+build/
 
 # Build artifacts
 radio/radio_if
