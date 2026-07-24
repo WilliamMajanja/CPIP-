@@ -3,15 +3,24 @@
 
 import json
 import os
-import urllib.request
-import urllib.error
 import sys
-from typing import Optional
+import urllib.error
+import urllib.request
 
 from opentui import (
-    render, Box, Text, Input, Select, ScrollBox, Markdown,
-    TextTable, Spacer, Row, Column, Signal, component,
-    computed, effect, BorderStyle,
+    Box,
+    Input,
+    Markdown,
+    Row,
+    ScrollBox,
+    Select,
+    Signal,
+    Spacer,
+    Text,
+    TextTable,
+    component,
+    effect,
+    render,
 )
 from opentui.hooks import use_keyboard, use_terminal_dimensions
 
@@ -24,8 +33,8 @@ COVERT_KEY = os.environ.get("CPIP_COVERT_KEY", "")
 def _cpip_hmac(method: str, path: str) -> str:
     if not COVERT_KEY:
         return ""
-    import hmac as _hmac
     import hashlib
+    import hmac as _hmac
     ts = int(__import__('time').time())
     sig = _hmac.new(
         COVERT_KEY.encode(), f"{ts}:{method}:{path}".encode(), hashlib.sha256
@@ -33,7 +42,7 @@ def _cpip_hmac(method: str, path: str) -> str:
     return f"{ts}:{sig}"
 
 
-def api(method: str, path: str, data: dict = None) -> Optional[dict]:
+def api(method: str, path: str, data: dict | None = None) -> dict | None:
     url = f"{BASE_URL}{path}"
     try:
         headers = {"Content-Type": "application/json"} if data else {}
@@ -552,11 +561,7 @@ def App():
             pages = [p[0] for p in PAGES]
             idx = pages.index(current_page())
             current_page.set(pages[(idx - 1) % len(pages)])
-        elif key in ("down", "j"):
-            pages = [p[0] for p in PAGES]
-            idx = pages.index(current_page())
-            current_page.set(pages[(idx + 1) % len(pages)])
-        elif key in ("tab", "right", "l"):
+        elif key in ("down", "j") or key in ("tab", "right", "l"):
             pages = [p[0] for p in PAGES]
             idx = pages.index(current_page())
             current_page.set(pages[(idx + 1) % len(pages)])
@@ -566,9 +571,7 @@ def App():
             current_page.set(pages[(idx - 1) % len(pages)])
         elif key == "b" and current_page() == "brew":
             pass  # handled by BrewPanel
-        elif key == "w" and current_page() == "brew":
-            pass
-        elif key == "e" and current_page() == "covert":
+        elif key == "w" and current_page() == "brew" or key == "e" and current_page() == "covert":
             pass
         return True
 

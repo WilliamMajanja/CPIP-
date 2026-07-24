@@ -40,43 +40,43 @@ TEAPOT_SNAKE_ART = r"""
 
 
 import sys
+
 sys.dont_write_bytecode = True
 
-import json
-import os
-import signal
-import threading
-import time
-import subprocess
-import socket
-import struct
+import base64
 import hashlib
 import hmac
+import html
+import json
+import logging
+import os
 import queue
 import random
 import secrets
-import base64
-import textwrap
+import signal
+import socket
 import ssl
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime, timedelta
-from pathlib import Path
+import struct
+import subprocess
+import threading
+import time
 import uuid
-import html
-import traceback
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from socketserver import ThreadingMixIn
+from typing import ClassVar
+from urllib.parse import parse_qs, urlparse
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import ec, rsa, padding as asym_padding
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Radio interface (C binary for LoRa / packet radio)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "radio"))
 try:
-    from radio_protocol import RadioInterface, RadioError
+    from radio_protocol import RadioError, RadioInterface
     RADIO_IMPORT_OK = True
 except ImportError:
     RadioInterface = None
@@ -84,6 +84,7 @@ except ImportError:
     RADIO_IMPORT_OK = False
 
 # ── Configuration ─────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
 DEVICE_TYPE = os.environ.get("CPIP_DEVICE", "hyper-text")
 BIND_ADDR = os.environ.get("CPIP_BIND") or ""
 BIND_PORT = int(os.environ.get("CPIP_PORT", "4180"))
@@ -136,15 +137,15 @@ if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
     _raw_key = base64.b64encode(os.urandom(32)).decode()
     COVERT_KEY = _raw_key.encode()
     if _was_default:
-        print(f"   ⚠ REJECTED default COVERT_KEY — auto-generated (32 bytes, not logged)", flush=True)
+        print("   ⚠ REJECTED default COVERT_KEY — auto-generated (32 bytes, not logged)", flush=True)
     else:
-        print(f"   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
-    print(f"   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
+        print("   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
+    print("   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
 else:
     COVERT_KEY = _raw_key.encode()
 if len(COVERT_KEY) < 16:
-    print(f"   ⚠ WARNING: COVERT_KEY is shorter than 16 bytes — insecure.", flush=True)
-    print(f"   ⚠ Use a key of at least 24 bytes (32 bytes recommended).", flush=True)
+    print("   ⚠ WARNING: COVERT_KEY is shorter than 16 bytes — insecure.", flush=True)
+    print("   ⚠ Use a key of at least 24 bytes (32 bytes recommended).", flush=True)
 COVERT_ENABLED = os.environ.get("CPIP_COVERT", "1") == "1"
 # Default coffee recipe for domain-separated KDF (Minima integration uses "minima").
 CPIP_RECIPE = os.environ.get("CPIP_RECIPE", "espresso")
@@ -305,7 +306,7 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
             r = subprocess.run(
                 ["openssl", "x509", "-in", cert_path, "-checkend", "0",
                  "-noout", "-text"],
-                capture_output=True, text=True, timeout=10)
+                capture_output=True, text=True, timeout=10, check=False)
             if r.returncode == 0 and "Subject Alternative Name" in r.stdout:
                 return cert_path, key_path
         except (subprocess.SubprocessError, FileNotFoundError):
@@ -320,16 +321,15 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
     try:
         result = subprocess.run(
             [mkcert_bin, "-cert-file", cert_path, "-key-file", key_path] + names,
-            capture_output=True, text=True, timeout=30)
+            capture_output=True, text=True, timeout=30, check=False)
         if result.returncode == 0:
             ca_root = subprocess.run(
-                [mkcert_bin, "-CAROOT"], capture_output=True, text=True, timeout=10)
+                [mkcert_bin, "-CAROOT"], capture_output=True, text=True, timeout=10, check=False)
             if ca_root.returncode == 0:
                 ca_cert = os.path.join(ca_root.stdout.strip(), "rootCA.pem")
                 if os.path.exists(ca_cert):
-                    with open(cert_path, "ab") as f:
-                        with open(ca_cert, "rb") as ca:
-                            f.write(ca.read())
+                    with open(cert_path, "ab") as f, open(ca_cert, "rb") as ca:
+                        f.write(ca.read())
             os.chmod(key_path, 0o600)
             os.chmod(cert_path, 0o644)
             return cert_path, key_path
@@ -341,7 +341,7 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
             "openssl", "req", "-x509", "-newkey", "rsa:2048",
             "-keyout", key_path, "-out", cert_path,
             "-days", "365", "-nodes",
-            "-subj", f"/CN=localhost/O=CPIP/C=US",
+            "-subj", "/CN=localhost/O=CPIP/C=US",
             "-addext", f"subjectAltName={san}",
             "-addext", "basicConstraints=CA:FALSE",
             "-addext", "keyUsage=digitalSignature,keyEncipherment",
@@ -352,11 +352,12 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
     except (subprocess.SubprocessError, FileNotFoundError):
         pass
     try:
+        import datetime as dt
+
         from cryptography import x509
-        from cryptography.x509.oid import NameOID
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
-        import datetime as dt
+        from cryptography.x509.oid import NameOID
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name([
             x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
@@ -366,8 +367,8 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
                  .subject_name(subject).issuer_name(issuer)
                  .public_key(key.public_key())
                  .serial_number(x509.random_serial_number())
-                 .not_valid_before(dt.datetime.utcnow())
-                 .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=365))
+                 .not_valid_before(dt.datetime.now(tz=datetime.timezone.utc))
+                 .not_valid_after(dt.datetime.now(tz=datetime.timezone.utc) + dt.timedelta(days=365))
                  .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
                  .add_extension(x509.SubjectAlternativeName([
                      x509.DNSName("localhost"),
@@ -399,11 +400,11 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
 def _generate_pem_key() -> str:
     """Generate RSA-2048 private key via openssl. Fails if openssl unavailable."""
     try:
-        r = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True, text=True, timeout=10, check=False)
         if r.returncode == 0 and "BEGIN" in r.stdout:
             return r.stdout
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
     raise RuntimeError("Cannot generate SSL key: openssl not found. Install openssl or provide CPIP_SSL_KEY.")
 
 
@@ -416,11 +417,11 @@ def _generate_pem_cert(key_pem: str) -> str:
             "-days", "365", "-nodes", "-subj", "/CN=localhost/O=CPIP/C=US",
             "-addext", f"subjectAltName={san}",
             "-addext", "basicConstraints=CA:FALSE",
-        ], input=key_pem, capture_output=True, text=True, timeout=10)
+        ], input=key_pem, capture_output=True, text=True, timeout=10, check=False)
         if r.returncode == 0 and "BEGIN" in r.stdout:
             return r.stdout
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
     raise RuntimeError("Cannot generate SSL cert: openssl not found. Install openssl or provide CPIP_SSL_CERT.")
 
 
@@ -485,7 +486,7 @@ COFFEE_SCHEMES = [
     "%E0%B8%81%E0%B8%B2%E0%B9%81%E0%B8%9F", # Thai
     "kahawa",                      # Swahili
 ]
-COFFEE_SCHEME_NAMES = set(s.lower() for s in COFFEE_SCHEMES)
+COFFEE_SCHEME_NAMES = {s.lower() for s in COFFEE_SCHEMES}
 
 COFFEE_LANGUAGE_MAP = {
     "koffie": "Afrikaans, Dutch",
@@ -562,7 +563,7 @@ class CoffeeCipher:
         return cls.hkdf(base_key, salt, b"cpip-cipher-v5:" + recipe_bytes, 32)
 
     @classmethod
-    def encrypt(cls, plaintext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
+    def encrypt(cls, plaintext: bytes, base_key: bytes | None = None, recipe: str = "espresso") -> bytes:
         """Encrypt using AES-256-GCM (FIPS 197).
         
         Format: nonce (12 bytes) || ciphertext || GCM tag (16 bytes)
@@ -578,7 +579,7 @@ class CoffeeCipher:
         return nonce + ct
 
     @classmethod
-    def decrypt(cls, ciphertext: bytes, base_key: bytes = None, recipe: str = "espresso") -> bytes:
+    def decrypt(cls, ciphertext: bytes, base_key: bytes | None = None, recipe: str = "espresso") -> bytes:
         """Decrypt using AES-256-GCM (FIPS 197).
         
         Expects format: nonce (12 bytes) || ciphertext || GCM tag (16 bytes).
@@ -757,7 +758,7 @@ class ECP256:
                 cls._CURVE, their_public_key
             )
         else:
-            raise ValueError("Invalid public key type for key exchange")
+            raise TypeError("Invalid public key type for key exchange")
         shared_key = privkey.exchange(ec.ECDH(), pubkey_obj)
         return hashlib.sha256(shared_key).digest()
 
@@ -822,8 +823,8 @@ def _get_kyber_backend():
         Inf1delKyber.keygen()
         _KYBER_BACKEND = "inf1del"
         return _KYBER_BACKEND
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
     if _PQCRYPTO_AVAILABLE:
         _KYBER_BACKEND = "pqcrypto"
         return _KYBER_BACKEND
@@ -1605,8 +1606,8 @@ def _init_hsm():
                 _HSM_TOKEN_SERIAL = token.serial
                 _HSM_AVAILABLE = True
                 return True
-            except Exception:
-                continue
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
         return False
     except ImportError:
         return False
@@ -1619,7 +1620,7 @@ def hsm_encrypt(key_id: str, plaintext: bytes) -> bytes:
     if not _HSM_AVAILABLE or _HSM_SESSION is None:
         return CoffeeCipher.encrypt(plaintext)
     import pkcs11
-    from pkcs11 import Attribute, ObjectClass, Mechanism
+    from pkcs11 import Attribute, Mechanism, ObjectClass
     try:
         template = (
             (Attribute.CLASS, ObjectClass.SECRET_KEY),
@@ -1646,7 +1647,7 @@ def hsm_decrypt(key_id: str, ciphertext: bytes) -> bytes:
     if not _HSM_AVAILABLE or _HSM_SESSION is None:
         return CoffeeCipher.decrypt(ciphertext)
     import pkcs11
-    from pkcs11 import Attribute, ObjectClass, Mechanism
+    from pkcs11 import Attribute, Mechanism, ObjectClass
     try:
         template = (
             (Attribute.CLASS, ObjectClass.SECRET_KEY),
@@ -1673,8 +1674,7 @@ def hsm_store_key(key_id: str, key_bytes: bytes) -> bool:
     if not _HSM_AVAILABLE or _HSM_SESSION is None:
         return False
     try:
-        import pkcs11
-        from pkcs11 import Attribute, ObjectClass, KeyType, Mechanism
+        from pkcs11 import Attribute, KeyType, ObjectClass
         template = (
             (Attribute.CLASS, ObjectClass.SECRET_KEY),
             (Attribute.KEY_TYPE, KeyType.AES),
@@ -1715,13 +1715,13 @@ class WebOfTrust:
     
     MAX_TRUST_DEPTH = 5
     
-    _identities = {}
-    _trust_sigs = {}
-    _trust_scores = {}
+    _identities: ClassVar[dict] = {}
+    _trust_sigs: ClassVar[dict] = {}
+    _trust_scores: ClassVar[dict] = {}
     _lock = threading.Lock()
     
     @classmethod
-    def create_identity(cls, pot_id: str, pubkey_pem: bytes, metadata: dict = None) -> dict:
+    def create_identity(cls, pot_id: str, pubkey_pem: bytes, metadata: dict | None = None) -> dict:
         """Create and self-sign an identity certificate."""
         cert = {
             "pot_id": pot_id,
@@ -1799,8 +1799,8 @@ class WebOfTrust:
         with cls._lock:
             scores = {pid: cls.TRUST_ULTIMATE for pid, t in cls._trust_scores.items() if t == cls.TRUST_ULTIMATE}
             
-            for key, sig in cls._trust_sigs.items():
-                signer = sig["signer"]
+            for sig in cls._trust_sigs.values():
+                sig["signer"]
                 target = sig["target"]
                 level = sig.get("trust_level", cls.TRUST_MARGINAL)
                 if level >= cls.TRUST_FULL:
@@ -1834,7 +1834,7 @@ class WebOfTrust:
         """Return the full trust graph for visualization."""
         with cls._lock:
             edges = []
-            for key, sig in cls._trust_sigs.items():
+            for sig in cls._trust_sigs.values():
                 edges.append({
                     "from": sig["signer"],
                     "to": sig["target"],
@@ -1872,7 +1872,7 @@ class WebOfTrust:
         """Import trust data received from mesh peer."""
         for pot_id, cert in data.get("identities", {}).items():
             cls.publish_identity(pot_id, cert)
-        for key, sig in data.get("trust_sigs", {}).items():
+        for sig in data.get("trust_sigs", {}).values():
             cls.receive_trust_sig(sig)
 
 
@@ -1891,11 +1891,11 @@ class DistributedDNS:
     MAX_NAMES_PER_NODE = 10
     DEFAULT_TTL = 86400 * 7  # 7 days
     
-    _registry = {}
+    _registry: ClassVar[dict] = {}
     _lock = threading.Lock()
     
     @classmethod
-    def register(cls, name: str, pot_id: str, pubkey_pem: bytes, ttl: int = None, node_seed: bytes = None) -> dict:
+    def register(cls, name: str, pot_id: str, pubkey_pem: bytes, ttl: int | None = None, node_seed: bytes | None = None) -> dict:
         """Register a name. Returns registration record or error."""
         name = name.lower().strip()
         if not name.endswith(".pot"):
@@ -1961,13 +1961,13 @@ class DistributedDNS:
         names = []
         with cls._lock:
             now = time.time()
-            for name, record in cls._registry.items():
+            for record in cls._registry.values():
                 if record.get("pot_id") == pot_id and record.get("expires", 0) > now:
                     names.append(dict(record))
         return names
     
     @classmethod
-    def remove(cls, name: str, pot_id: str, node_seed: bytes = None) -> dict:
+    def remove(cls, name: str, pot_id: str, node_seed: bytes | None = None) -> dict:
         """Remove a name registration (only owner can remove)."""
         name = name.lower().strip()
         if not name.endswith(".pot"):
@@ -1992,9 +1992,7 @@ class DistributedDNS:
                     if record.get("expires", 0) > time.time():
                         cls._registry[name] = record
                 else:
-                    if record.get("sequence", 0) > existing.get("sequence", 0):
-                        cls._registry[name] = record
-                    elif (record.get("sequence", 0) == existing.get("sequence", 0) and
+                    if record.get("sequence", 0) > existing.get("sequence", 0) or (record.get("sequence", 0) == existing.get("sequence", 0) and
                           record.get("expires", 0) > existing.get("expires", 0)):
                         cls._registry[name] = record
     
@@ -2035,11 +2033,11 @@ class GroupChat:
     - Forward secrecy: new keys don't decrypt old messages
     """
     
-    _groups = {}
+    _groups: ClassVar[dict] = {}
     _lock = threading.Lock()
     
     @classmethod
-    def create_group(cls, group_id: str, name: str, owner_id: str, members: list = None) -> dict:
+    def create_group(cls, group_id: str, name: str, owner_id: str, members: list | None = None) -> dict:
         """Create a new encrypted group."""
         group_key = os.urandom(32)
         group_nonce = os.urandom(12)
@@ -2087,8 +2085,8 @@ class GroupChat:
             group["key_version"] += 1
             new_key = os.urandom(32)
             new_nonce = os.urandom(12)
-            old_key = base64.b64decode(group["group_key"])
-            old_nonce = base64.b64decode(group["group_nonce"])
+            base64.b64decode(group["group_key"])
+            base64.b64decode(group["group_nonce"])
             group["group_key"] = base64.b64encode(new_key).decode()
             group["group_nonce"] = base64.b64encode(new_nonce).decode()
         
@@ -2122,7 +2120,7 @@ class GroupChat:
         return {"status": "left", "group_id": group_id}
     
     @classmethod
-    def send_message(cls, group_id: str, sender_id: str, plaintext: str, node_seed: bytes = None) -> dict:
+    def send_message(cls, group_id: str, sender_id: str, plaintext: str, node_seed: bytes | None = None) -> dict:
         """Send an encrypted message to a group."""
         with cls._lock:
             group = cls._groups.get(group_id)
@@ -2132,7 +2130,7 @@ class GroupChat:
                 return {"error": "Not a member"}
             
             group_key = base64.b64decode(group["group_key"])
-            group_nonce = base64.b64decode(group["group_nonce"])
+            base64.b64decode(group["group_nonce"])
         
         encrypted = CoffeeCipher.encrypt(plaintext.encode(), group_key)
         
@@ -2232,9 +2230,9 @@ class OfflineSync:
     - Sync state tracking per peer
     """
     
-    _messages = {}
-    _vector_clocks = {}
-    _sync_state = {}
+    _messages: ClassVar[dict] = {}
+    _vector_clocks: ClassVar[dict] = {}
+    _sync_state: ClassVar[dict] = {}
     _lock = threading.Lock()
     
     @classmethod
@@ -2282,7 +2280,7 @@ class OfflineSync:
             return True
     
     @classmethod
-    def get_pending(cls, channel: str = None, limit: int = 100) -> list:
+    def get_pending(cls, channel: str | None = None, limit: int = 100) -> list:
         """Get undelivered messages, optionally filtered by channel."""
         with cls._lock:
             now = time.time()
@@ -2382,22 +2380,22 @@ class IncidentResponse:
     - Automated mitigation (isolate, rotate keys, go dark)
     - Audit log with tamper-evident chaining
     """
-    ALERT_LEVELS = {"info": 0, "warn": 1, "high": 2, "critical": 3}
+    ALERT_LEVELS: ClassVar[dict] = {"info": 0, "warn": 1, "high": 2, "critical": 3}
     _lock = threading.Lock()
-    _alerts = []
-    _audit_log = []
-    _mitigations = {}
-    _signal_baselines = {"mesh_rps": 0, "http_rps": 0, "sat_rps": 0}
-    _signal_history = {"mesh": [], "http": [], "sat": []}
-    _peer_baselines = {}
+    _alerts: ClassVar[list] = []
+    _audit_log: ClassVar[list] = []
+    _mitigations: ClassVar[dict] = {}
+    _signal_baselines: ClassVar[dict] = {"mesh_rps": 0, "http_rps": 0, "sat_rps": 0}
+    _signal_history: ClassVar[dict] = {"mesh": [], "http": [], "sat": []}
+    _peer_baselines: ClassVar[dict] = {}
     _auto_response_enabled = True
     _max_alerts = 500
     _max_audit = 5000
-    _alert_callbacks = []
+    _alert_callbacks: ClassVar[list] = []
     MAX_HISTORY_PER_CHANNEL = 120
 
     @classmethod
-    def alert(cls, level: str, category: str, message: str, details: dict = None):
+    def alert(cls, level: str, category: str, message: str, details: dict | None = None):
         entry = {
             "id": hashlib.sha3_256(f"{time.time()}{level}{message}".encode()).hexdigest()[:12],
             "severity": level,
@@ -2405,7 +2403,7 @@ class IncidentResponse:
             "message": message,
             "details": details or {},
             "timestamp": time.time(),
-            "human_time": datetime.now().isoformat(),
+            "human_time": datetime.now(tz=datetime.timezone.utc).isoformat(),
         }
         with cls._lock:
             cls._alerts.append(entry)
@@ -2415,8 +2413,8 @@ class IncidentResponse:
         for cb in cls._alert_callbacks:
             try:
                 cb(entry)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         mitigation = None
         if cls._auto_response_enabled:
             mitigation = cls._auto_respond(entry)
@@ -2502,7 +2500,7 @@ class IncidentResponse:
                       {"channel": channel, "baseline": avg_baseline})
 
     @classmethod
-    def get_alerts(cls, severity: str = None, level: str = None, limit: int = 50) -> list:
+    def get_alerts(cls, severity: str | None = None, level: str | None = None, limit: int = 50) -> list:
         with cls._lock:
             alerts = cls._alerts[:]
         filter_level = severity or level
@@ -2559,12 +2557,12 @@ class SignalAwareness:
     Provides bandwidth estimation and link quality metrics.
     """
     _lock = threading.Lock()
-    _mesh_stats = {"sent": 0, "recv": 0, "errors": 0, "last_sent": 0, "last_recv": 0}
-    _http_stats = {"requests": 0, "errors": 0, "418s": 0, "bytes_in": 0, "bytes_out": 0}
-    _sat_stats = {"sent": 0, "recv": 0, "errors": 0}
-    _mobile_stats = {"sent": 0, "recv": 0, "errors": 0}
-    _link_quality = {}
-    _interface_stats = {}
+    _mesh_stats: ClassVar[dict] = {"sent": 0, "recv": 0, "errors": 0, "last_sent": 0, "last_recv": 0}
+    _http_stats: ClassVar[dict] = {"requests": 0, "errors": 0, "418s": 0, "bytes_in": 0, "bytes_out": 0}
+    _sat_stats: ClassVar[dict] = {"sent": 0, "recv": 0, "errors": 0}
+    _mobile_stats: ClassVar[dict] = {"sent": 0, "recv": 0, "errors": 0}
+    _link_quality: ClassVar[dict] = {}
+    _interface_stats: ClassVar[dict] = {}
     _start_time = time.time()
 
     @classmethod
@@ -2637,7 +2635,7 @@ class SignalAwareness:
             }
 
     @classmethod
-    def get_link_quality(cls, peer_id: str = None) -> dict:
+    def get_link_quality(cls, peer_id: str | None = None) -> dict:
         with cls._lock:
             if peer_id:
                 return cls._link_quality.get(peer_id, {"quality": "unknown"})
@@ -2712,8 +2710,8 @@ class EmergencyMode:
                         "action": "isolate",
                         "timestamp": time.time(),
                     })
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
 
     @classmethod
     def rotate_keys(cls):
@@ -2752,7 +2750,7 @@ class NetDiagnostics:
     TCP ping, traceroute, port scan, DNS resolution, and interface info.
     """
 
-    _BLOCKED_RANGES = [
+    _BLOCKED_RANGES: ClassVar[list] = [
         ("127.0.0.0", "127.255.255.255"),   # loopback
         ("10.0.0.0", "10.255.255.255"),      # RFC 1918
         ("172.16.0.0", "172.31.255.255"),    # RFC 1918
@@ -2807,18 +2805,18 @@ class NetDiagnostics:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.settimeout(timeout)
             s.sendto(b"CPIP_PING", (host, port))
-            data, addr = s.recvfrom(1024)
+            _data, _addr = s.recvfrom(1024)
             elapsed = (time.time() - start) * 1000
             s.close()
             return {"host": host, "port": port, "alive": True, "latency_ms": round(elapsed, 1)}
-        except socket.timeout:
+        except TimeoutError:
             s.close()
             return {"host": host, "port": port, "alive": False, "error": "timeout"}
         except Exception as e:
             return {"host": host, "port": port, "alive": False, "error": str(e)}
 
     @staticmethod
-    def port_scan(host: str, ports: list = None, timeout: float = 1.0) -> dict:
+    def port_scan(host: str, ports: list | None = None, timeout: float = 1.0) -> dict:
         blocked = NetDiagnostics._is_blocked_host(host)
         if blocked:
             return {"host": host, "ports": {}, "error": blocked}
@@ -2839,14 +2837,14 @@ class NetDiagnostics:
         return {"host": host, "ports": results}
 
     @staticmethod
-    def dns_resolve(hostname: str, dns_server: str = None) -> dict:
+    def dns_resolve(hostname: str, dns_server: str | None = None) -> dict:
         blocked = NetDiagnostics._is_blocked_host(hostname)
         if blocked:
             return {"hostname": hostname, "resolved": False, "error": blocked}
         try:
             addrs = socket.getaddrinfo(hostname, None)
-            ipv4 = list(set(a[4][0] for a in addrs if a[0] == socket.AF_INET))
-            ipv6 = list(set(a[4][0] for a in addrs if a[0] == socket.AF_INET6))
+            ipv4 = list({a[4][0] for a in addrs if a[0] == socket.AF_INET})
+            ipv6 = list({a[4][0] for a in addrs if a[0] == socket.AF_INET6})
             return {"hostname": hostname, "ipv4": ipv4, "ipv6": ipv6, "resolved": True}
         except Exception as e:
             return {"hostname": hostname, "resolved": False, "error": str(e)}
@@ -2872,7 +2870,7 @@ class NetDiagnostics:
                 hops.append({"ttl": ttl, "addr": dest_addr, "latency_ms": round(elapsed, 1)})
                 s.close()
                 break
-            except socket.timeout:
+            except TimeoutError:
                 hops.append({"ttl": ttl, "addr": "*", "latency_ms": None})
             except Exception as e:
                 hop_addr = "?"
@@ -2891,8 +2889,8 @@ class NetDiagnostics:
                     addr_path = f"/sys/class/net/{name}/address"
                     with open(addr_path) as f:
                         iface["mac"] = f.read().strip()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
                 try:
                     oper_path = f"/sys/class/net/{name}/operstate"
                     with open(oper_path) as f:
@@ -2901,13 +2899,13 @@ class NetDiagnostics:
                     iface["state"] = "unknown"
                 try:
                     ip_out = subprocess.run(["ip", "addr", "show", name],
-                                            capture_output=True, text=True, timeout=3)
+                                            capture_output=True, text=True, timeout=3, check=False)
                     iface["ip_info"] = ip_out.stdout[:500]
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
                 ifaces.append(iface)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return ifaces
 class CovertChannel:
     """Encode/decode hidden messages inside HTCPCP Accept-Additions headers.
@@ -2931,14 +2929,14 @@ class CovertChannel:
     HEADER = "Accept-Additions"
     CHUNK_SIZE = 8
 
-    ADDITION_POOL = list(VALID_ADDITIONS.keys())
-    VARIETY_POOL = {}
+    ADDITION_POOL: ClassVar[list] = list(VALID_ADDITIONS.keys())
+    VARIETY_POOL: ClassVar[dict] = {}
     for addn_name, addn_def in VALID_ADDITIONS.items():
         VARIETY_POOL[addn_name] = addn_def["variety"]
 
     @classmethod
-    def encode(cls, message, dst_pot: str = None, recipe: str = "espresso",
-               dst_pubkey: bytes = None, our_seed: bytes = None) -> dict:
+    def encode(cls, message, dst_pot: str | None = None, recipe: str = "espresso",
+               dst_pubkey: bytes | None = None, our_seed: bytes | None = None) -> dict:
         """Encode a message into Accept-Additions header components.
         
         If dst_pubkey and our_seed are provided, uses ECDH shared secret
@@ -2990,7 +2988,7 @@ class CovertChannel:
         return {"additions": additions}
 
     @classmethod
-    def decode(cls, additions: list, our_seed: bytes = None) -> bytes:
+    def decode(cls, additions: list, our_seed: bytes | None = None) -> bytes:
         """Extract hidden message from parsed Accept-Additions list.
         
         If our_seed is provided, attempts ECDH decryption using embedded
@@ -3004,7 +3002,7 @@ class CovertChannel:
         recipe = "espresso"
         recipe_mode = False
         for addn in additions:
-            name = addn.get("name", "")
+            addn.get("name", "")
             variety = addn.get("variety", "")
             if not variety:
                 continue
@@ -3037,7 +3035,7 @@ class CovertChannel:
         try:
             if payload.startswith(b"ECCv2:") and our_seed:
                 _, addr_b, sig, ciphertext = payload.split(b":", 3)
-                for pid, info in MeshNode.peers.items():
+                for info in MeshNode.peers.values():
                     pk_b64 = info.get("pubkey", "")
                     if pk_b64:
                         pk = base64.b64decode(pk_b64)
@@ -3053,8 +3051,8 @@ class CovertChannel:
                 ciphertext = payload[5:]
                 plaintext = CoffeeCipher.decrypt(ciphertext, recipe=recipe)
                 return plaintext if plaintext else b""
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return b""
 
     @classmethod
@@ -3073,8 +3071,8 @@ class CovertChannel:
         return {"additions": additions}
 
     @classmethod
-    def encode_brew(cls, message: bytes, dst_pot: str = None,
-                    dst_pubkey: bytes = None, our_seed: bytes = None) -> tuple:
+    def encode_brew(cls, message: bytes, dst_pot: str | None = None,
+                    dst_pubkey: bytes | None = None, our_seed: bytes | None = None) -> tuple:
         """Create a brew request that carries a hidden message.
         
         Returns (beverage_type, additions_list, headers_dict)
@@ -3114,17 +3112,17 @@ class MeshNode:
     """
 
     # ── Class-level state ──────────────────────────────────────────────
-    peers = {}
+    peers: ClassVar[dict] = {}
     peers_lock = threading.Lock()
-    routing_table = {}
-    message_store = []
+    routing_table: ClassVar[dict] = {}
+    message_store: ClassVar[list] = []
     store_lock = threading.Lock()
-    inbox = []
+    inbox: ClassVar[list] = []
     inbox_lock = threading.Lock()
-    trust_store = {}
+    trust_store: ClassVar[dict] = {}
     trust_lock = threading.Lock()
     mesh_socket = None
-    latent_sockets = {}
+    latent_sockets: ClassVar[dict] = {}
     latent_lock = threading.Lock()
     running = False
     node_secret = None
@@ -3133,17 +3131,17 @@ class MeshNode:
     node_address = None
     node_cert = None
     current_mesh_port = MESH_PORT
-    knock_state = {}
+    knock_state: ClassVar[dict] = {}
     persist_path = None
-    address_book = {}
+    address_book: ClassVar[dict] = {}
     address_book_lock = threading.Lock()
 
     # ── Starlink / Satellite state ──────────────────────────────────────
     sat_socket = None
-    sat_peers = {}
-    sat_bootstrap = []
+    sat_peers: ClassVar[dict] = {}
+    sat_bootstrap: ClassVar[list] = []
     sat_coords = (0.0, 0.0, 0.0)
-    sat_rtt = {}
+    sat_rtt: ClassVar[dict] = {}
     sat_lock = threading.Lock()
     sat_active = False
     stealth_mode = MESH_STEALTH
@@ -3155,7 +3153,7 @@ class MeshNode:
     TRUST_TRUSTED = 3
     TRUST_ADMIN = 4
 
-    TRUST_NAMES = {0: "untrusted", 1: "challenged", 2: "known", 3: "trusted", 4: "admin"}
+    TRUST_NAMES: ClassVar[dict] = {0: "untrusted", 1: "challenged", 2: "known", 3: "trusted", 4: "admin"}
 
     # ── Bootstrap ──────────────────────────────────────────────────────
 
@@ -3280,8 +3278,8 @@ class MeshNode:
                 s.settimeout(1)
                 with cls.latent_lock:
                     cls.latent_sockets[port] = s
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         while cls.running:
             with cls.latent_lock:
@@ -3292,7 +3290,7 @@ class MeshNode:
                 try:
                     data, addr = sock.recvfrom(1024)
                     cls._handle_knock(port, data, addr, knock_seq)
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except Exception:
                     break
@@ -3308,7 +3306,7 @@ class MeshNode:
             if msg.get("type") != "knock":
                 return
             sender = msg.get("from", "")
-            knum = msg.get("seq", 0)
+            msg.get("seq", 0)
 
             key = (addr[0], sender)
             now = time.time()
@@ -3328,8 +3326,8 @@ class MeshNode:
                     cls.knock_state[key] = {"step": 0, "time": now}
             else:
                 state["step"] = 0
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _activate_latent(cls, sender: str, addr: tuple):
@@ -3347,8 +3345,8 @@ class MeshNode:
                 "ports": MESH_LATENT_PORTS,
                 "timestamp": time.time(),
             })
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def knock_port(cls, target_pot: str) -> bool:
@@ -3413,7 +3411,7 @@ class MeshNode:
             sig = base64.b64decode(sig_b64)
             payload = json.dumps(msg, sort_keys=True).encode()
             # Look up signer's public key
-            for pid, info in cls.peers.items():
+            for info in cls.peers.values():
                 pk_b64 = info.get("pubkey", "")
                 if pk_b64:
                     pk = base64.b64decode(pk_b64)
@@ -3462,8 +3460,8 @@ class MeshNode:
             if pk_b64:
                 try:
                     return base64.b64decode(pk_b64)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
         return b""
 
     # ── E2EE Message Encryption (FIPS-compliant, forward secrecy) ─────
@@ -3517,11 +3515,11 @@ class MeshNode:
             if entry and entry.get("pubkey"):
                 try:
                     sender_pk = base64.b64decode(entry["pubkey"])
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
         if not sender_pk:
             with cls.peers_lock:
-                for pid, info in cls.peers.items():
+                for info in cls.peers.values():
                     pk_b64 = info.get("pubkey", "")
                     if pk_b64:
                         try:
@@ -3529,8 +3527,8 @@ class MeshNode:
                             if ECP256.pubkey_to_address(pk) == from_addr:
                                 sender_pk = pk
                                 break
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            logger.debug("Ignored: %s", _e)
         if not sender_pk:
             return msg_data
         try:
@@ -3579,7 +3577,7 @@ class MeshNode:
                 data, addr = sock.recvfrom(8192)
                 data = cls._unpad_traffic(data)
                 threading.Thread(target=lambda d=data, a=addr: MeshNode._handle_message(d, a), daemon=True).start()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception:
                 break
@@ -3629,8 +3627,8 @@ class MeshNode:
                     except json.JSONDecodeError:
                         pass
                 return
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         try:
             msg = json.loads(data.decode())
@@ -3737,8 +3735,8 @@ class MeshNode:
             if MeshNode.mesh_socket:
                 try:
                     MeshNode.mesh_socket.sendto(ack, addr)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
 
         elif msg_type == "identity_publish":
             cert = msg.get("cert", {})
@@ -3775,7 +3773,7 @@ class MeshNode:
         elif msg_type == "sync_request":
             peer_id = msg.get("peer_id", sender)
             channel = msg.get("channel")
-            since = msg.get("since", 0)
+            msg.get("since", 0)
             pending = OfflineSync.get_pending(channel, limit=50)
             cls._send_direct(sender, {
                 "type": "sync_response",
@@ -3805,13 +3803,13 @@ class MeshNode:
                 target = msg.get("from") or msg.get("pot") or ""
                 if target and target != POT_ID:
                     cls._sat_send_direct(target, msg)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         if via != "radio" and _radio is not None:
             try:
                 _radio.send(json.dumps(msg).encode())
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         if via != "mobile" and MOBILE_ENABLED and cls.mobile_socket:
             try:
                 payload = json.dumps(msg).encode()
@@ -3821,8 +3819,8 @@ class MeshNode:
                         info = cls.mobile_peers.get(target)
                     if info:
                         cls.mobile_socket.sendto(payload, (info["addr"], info["port"]))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _handle_auth_request(cls, msg: dict, addr: tuple):
@@ -3840,8 +3838,8 @@ class MeshNode:
                     if sender in cls.peers:
                         cls.peers[sender]["pubkey"] = cert["pubkey"]
                         cls.peers[sender]["address"] = cert.get("address", "")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         # Verify their signature on the challenge
         if signature_b64 and cert.get("pubkey"):
@@ -3887,8 +3885,8 @@ class MeshNode:
                     if sender in cls.peers:
                         cls.peers[sender]["pubkey"] = cert["pubkey"]
                         cls.peers[sender]["address"] = cert.get("address", "")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         # Verify signature on response
         if signature_b64 and cert.get("pubkey"):
@@ -3978,16 +3976,16 @@ class MeshNode:
                     s.settimeout(2)
                     s.sendto(payload, (addr, port))
                     s.close()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
         else:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s.sendto(payload, ("255.255.255.255", cls.current_mesh_port))
                 s.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
     # ── Traffic Padding (Obfuscation) ──────────────────────────────────
 
@@ -4092,16 +4090,16 @@ class MeshNode:
                                 }).encode()
                                 s.sendto(notice, (info["addr"], info.get("mesh_port", old_port)))
                                 s.close()
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("Ignored: %s", _e)
 
                 time.sleep(2)  # let listeners switch
                 try:
                     old_sock.close()
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
     # ── Keep Warm (Re-encrypt + Re-broadcast Undelivered) ──────────────
 
@@ -4127,8 +4125,8 @@ class MeshNode:
                                 base_key=otk,
                             )
                             stored["msg"]["data"] = base64.b64encode(new_enc).decode()
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            logger.debug("Ignored: %s", _e)
 
     # ── Starlink / Satellite Transport ──────────────────────────────────
 
@@ -4159,7 +4157,7 @@ class MeshNode:
             if cls.sat_bootstrap:
                 print(f"   ├ Bootstrap:  {len(cls.sat_bootstrap)} satellite seed nodes", flush=True)
             if SATELLITE_RELAY:
-                print(f"   └ Relay:      Ground-station relay mode active", flush=True)
+                print("   └ Relay:      Ground-station relay mode active", flush=True)
         except Exception as e:
             print(f"   ⚠ Starlink:   {e}", flush=True)
 
@@ -4190,7 +4188,7 @@ class MeshNode:
                 data, addr = sock.recvfrom(4096)
                 _sat_hdl = cls._sat_handle.__func__
                 threading.Thread(target=lambda d=data, a=addr, h=_sat_hdl: h(cls, d, a), daemon=True).start()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception:
                 break
@@ -4250,8 +4248,8 @@ class MeshNode:
                 cls._handle_message(data, addr)
                 cls._cross_transport_forward(msg, via="satellite")
 
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _sat_heartbeat_loop(cls):
@@ -4298,8 +4296,8 @@ class MeshNode:
             }).encode()
             s.sendto(pong, addr)
             s.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _sat_broadcast(cls, payload: bytes):
@@ -4312,7 +4310,7 @@ class MeshNode:
             else:
                 targets.add((b, SATELLITE_PORT))
         with cls.sat_lock:
-            for pid, info in cls.sat_peers.items():
+            for info in cls.sat_peers.values():
                 targets.add((info["addr"], info["port"]))
         for addr, port in targets:
             try:
@@ -4320,8 +4318,8 @@ class MeshNode:
                 s.settimeout(3)
                 s.sendto(payload, (addr, port))
                 s.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _sat_send_direct(cls, dst: str, msg: dict) -> bool:
@@ -4364,9 +4362,9 @@ class MeshNode:
     # ── Mobile Broadband (4G/5G / LTE / WWAN) Transport ────────────────
 
     mobile_socket = None
-    mobile_peers = {}
+    mobile_peers: ClassVar[dict] = {}
     mobile_lock = threading.Lock()
-    mobile_bootstrap = []
+    mobile_bootstrap: ClassVar[list] = []
     mobile_active = False
 
     @classmethod
@@ -4424,7 +4422,7 @@ class MeshNode:
                 data, addr = sock.recvfrom(4096)
                 _mob_hdl = cls._mobile_handle.__func__
                 threading.Thread(target=lambda d=data, a=addr, h=_mob_hdl: h(cls, d, a), daemon=True).start()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception:
                 break
@@ -4473,8 +4471,8 @@ class MeshNode:
             elif msg.get("type") in ("message", "route_query", "deaddrop_query"):
                 cls._handle_message(data, addr)
                 cls._cross_transport_forward(msg, via="mobile")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _mobile_heartbeat_loop(cls):
@@ -4514,7 +4512,7 @@ class MeshNode:
             else:
                 targets.add((b, MOBILE_PORT))
         with cls.mobile_lock:
-            for pid, info in cls.mobile_peers.items():
+            for info in cls.mobile_peers.values():
                 targets.add((info["addr"], info["port"]))
         if not targets:
             return
@@ -4524,11 +4522,11 @@ class MeshNode:
             for addr, port in targets:
                 try:
                     s.sendto(payload, (addr, port))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
             s.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _mobile_get_signal(cls) -> dict:
@@ -4546,13 +4544,12 @@ class MeshNode:
             try:
                 with open(p) as f:
                     result[key] = int(f.read().strip())
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         try:
             out = subprocess.run(
                 ["mmcli", "-m", "any", "--output=json"],
-                capture_output=True, text=True, timeout=3
-            )
+                capture_output=True, text=True, timeout=3, check=False)
             if out.returncode == 0:
                 d = json.loads(out.stdout)
                 m = d.get("modem", {}).get("generic", {})
@@ -4561,8 +4558,8 @@ class MeshNode:
                     "mcc": d.get("modem", {}).get("3gpp", {}).get("mcc"),
                     "network": d.get("modem", {}).get("3gpp", {}).get("operator-name", ""),
                 })
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return result
 
     @classmethod
@@ -4690,8 +4687,8 @@ class MeshNode:
                             cls._pad_traffic(payload),
                             (ip, int(port)))
                         return True
-                except Exception:
-                    continue
+                except Exception as _e:
+                    logger.debug("Skipped: %s", _e); continue
 
         # Try WSS relay
         if AntiISP._wss_active:
@@ -4700,8 +4697,8 @@ class MeshNode:
                     "data": base64.b64encode(payload).decode()}).encode()
                 if AntiISP.wss_send(wss_payload):
                     return True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         # Try DNS tunnel (low-bandwidth, high-resilience)
         if AntiISP._dns_tunnel_active:
@@ -4710,8 +4707,8 @@ class MeshNode:
                 for chunk in chunks:
                     AntiISP.dns_tunnel_send(dst_pot, chunk)
                 return True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         # Try relay server
         if AntiISP._relay_pool:
@@ -4720,8 +4717,8 @@ class MeshNode:
                     "data": base64.b64encode(payload).decode()}).encode()
                 if AntiISP.relay_send(dst_pot, relay_payload):
                     return True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         # Final fallback: HTTP covert channel
         try:
@@ -4736,8 +4733,8 @@ class MeshNode:
                 )
                 urllib.request.urlopen(req, timeout=5)
                 return True
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return False
 
     # ── Direct Send ────────────────────────────────────────────────────
@@ -4788,8 +4785,8 @@ class MeshNode:
                                "target": target, "route": [route] if route else []}).encode()
             s.sendto(cls._pad_traffic(data), addr)
             s.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     # ── Public API ─────────────────────────────────────────────────────
 
@@ -4880,8 +4877,8 @@ class MeshNode:
                                     stored["_plaintext"].encode(), base_key=otk,
                                 )
                                 stored["msg"]["data"] = base64.b64encode(new_ct).decode()
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("Ignored: %s", _e)
                     # Exponential backoff
                     if stored["attempts"] > 10:
                         # Dead-drop: re-encrypt for aggregator if Thermos mode
@@ -4978,8 +4975,8 @@ class MeshNode:
                 "hmac": integrity,
             }).encode()
             cls.persist_path.write_bytes(payload)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _load_persist(cls):
@@ -5017,8 +5014,8 @@ class MeshNode:
                 for m in old_store:
                     if m.get("attempts", 0) < 10:
                         cls.message_store.append(m)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _persist_loop(cls):
@@ -5102,7 +5099,7 @@ class AntiISP:
     """
     _lock = threading.Lock()
     _active = False
-    _threads = []
+    _threads: ClassVar[list] = []
 
     # STUN state
     _external_ip = None
@@ -5115,24 +5112,24 @@ class AntiISP:
     _upnp_igd = None
 
     # Hole-punch state
-    _punch_sessions = {}
+    _punch_sessions: ClassVar[dict] = {}
 
     # Relay state
-    _relay_connections = {}
-    _relay_pool = []
+    _relay_connections: ClassVar[dict] = {}
+    _relay_pool: ClassVar[list] = []
 
     # DNS tunnel state
     _dns_tunnel_active = False
     _dns_tunnel_domain = ""
     _dns_outbound_queue = queue.Queue(maxsize=1000)
-    _dns_inbound_buffer = {}
+    _dns_inbound_buffer: ClassVar[dict] = {}
 
     # WSS state
-    _wss_connections = {}
+    _wss_connections: ClassVar[dict] = {}
     _wss_active = False
 
     # DoH state
-    _doh_cache = {}
+    _doh_cache: ClassVar[dict] = {}
     _doh_lock = threading.Lock()
 
     @classmethod
@@ -5176,8 +5173,8 @@ class AntiISP:
             try:
                 cls._upnp_igd.DeletePortMapping(cls._upnp_mapped_port, "UDP")
                 cls._upnp_igd.DeletePortMapping(cls._upnp_mapped_port, "TCP")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         for c in cls._wss_connections.values():
             try: c.close()
             except Exception: pass
@@ -5191,8 +5188,8 @@ class AntiISP:
         while cls._active:
             try:
                 cls._stun_discover()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(STUN_REFRESH)
 
     @classmethod
@@ -5211,7 +5208,7 @@ class AntiISP:
                 sock.close()
                 if len(data) < 20:
                     continue
-                rtype, rlen = struct.unpack("!HH", data[:4])
+                rtype, _rlen = struct.unpack("!HH", data[:4])
                 if rtype != 0x0101:
                     continue
                 offset = 20
@@ -5240,8 +5237,8 @@ class AntiISP:
                     offset += alen
                     if alen % 4:
                         offset += 4 - (alen % 4)
-            except Exception:
-                continue
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
 
     @classmethod
     def _stun_refresh(cls):
@@ -5254,8 +5251,8 @@ class AntiISP:
         while cls._active:
             try:
                 cls._upnp_map_port()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(UPNP_LEASE)
 
     @classmethod
@@ -5357,7 +5354,7 @@ class AntiISP:
                     "ext_port": cls._external_port}).encode()
                 punch_sock.sendto(punch_msg, (peer_ip, peer_port))
                 punch_sock.settimeout(timeout / 3)
-                data, addr = punch_sock.recvfrom(512)
+                data, _addr = punch_sock.recvfrom(512)
                 if data:
                     try:
                         resp = json.loads(data)
@@ -5368,7 +5365,7 @@ class AntiISP:
                             return True
                     except (json.JSONDecodeError, KeyError):
                         pass
-            except (socket.timeout, OSError):
+            except (TimeoutError, OSError):
                 continue
         punch_sock.close()
         return False
@@ -5383,8 +5380,8 @@ class AntiISP:
                 mesh_sock = MeshNode.mesh_socket
                 if mesh_sock:
                     mesh_sock.sendto(ack, addr)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     # ── Relay Pool: TURN-like relay servers ──────────────────────────
     @classmethod
@@ -5392,8 +5389,8 @@ class AntiISP:
         while cls._active:
             try:
                 cls._relay_heartbeat()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(30)
 
     @classmethod
@@ -5442,8 +5439,8 @@ class AntiISP:
                     if resp and b"ok" in resp:
                         return True
                     s.close()
-            except Exception:
-                continue
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
         return False
 
     # ── DNS Tunnel: Exfiltrate data as DNS queries ──────────────────
@@ -5455,8 +5452,8 @@ class AntiISP:
         while cls._active:
             try:
                 cls._dns_tunnel_flush()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(2)
 
     @classmethod
@@ -5494,8 +5491,8 @@ class AntiISP:
                 payload_b32 = parts[0]
                 padding = "=" * (8 - len(payload_b32) % 8) if len(payload_b32) % 8 else ""
                 return base64.b32decode(payload_b32 + padding)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return None
 
     # ── WSS Tunnel: WebSocket Secure relay transport ─────────────────
@@ -5508,15 +5505,16 @@ class AntiISP:
                     continue
                 try:
                     cls._wss_connect(relay)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
             time.sleep(15)
 
     @classmethod
     def _wss_connect(cls, url):
         """Connect to a WSS relay for internet-wide transport."""
         import ssl as _ssl
-        parsed = urllib.parse.urlparse(url)
+        import urllib.parse as _urlparse
+        parsed = _urlparse.urlparse(url)
         host = parsed.hostname
         port = parsed.port or 443
         ctx = _ssl.create_default_context()
@@ -5569,10 +5567,10 @@ class AntiISP:
     def _inject_wss_payload(cls, payload):
         """Inject WSS-relayed data into mesh message handler."""
         try:
-            msg = json.loads(payload)
+            json.loads(payload)
             MeshNode._handle_message(payload, ("wss-relay", 0))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def wss_send(cls, data):
@@ -5593,15 +5591,15 @@ class AntiISP:
         while cls._active:
             try:
                 cls._doh_refresh()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(60)
 
     @classmethod
     def _doh_refresh(cls):
         """Pre-cache DNS for known peers via DoH to bypass ISP DNS poisoning."""
         with cls._doh_lock:
-            for peer_id, info in MeshNode.peers.items():
+            for info in MeshNode.peers.values():
                 for dns_name in info.get("dns", []):
                     if dns_name not in cls._doh_cache:
                         cls._doh_resolve(dns_name)
@@ -5621,7 +5619,6 @@ class AntiISP:
                         return entry["data"]
             try:
                 import base64 as b64
-                import struct as _struct
                 wire = cls._encode_dns_query(qname, rtype)
                 encoded = b64.urlsafe_b64encode(wire).rstrip(b"=").decode()
                 import urllib.request
@@ -5634,8 +5631,8 @@ class AntiISP:
                 with cls._doh_lock:
                     cls._doh_cache[cache_key] = {"data": ips, "ts": time.time()}
                 return ips
-            except Exception:
-                continue
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
         return []
 
     @classmethod
@@ -5655,8 +5652,8 @@ class AntiISP:
                     headers={"Accept": "application/dns-message"})
                 urllib.request.urlopen(req, timeout=5)
                 return True
-            except Exception:
-                continue
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
         return False
 
     @classmethod
@@ -5699,14 +5696,14 @@ class AntiISP:
                     while offset < len(data) and data[offset] != 0:
                         offset += data[offset] + 1
                     offset += 1
-                rtype, rclass, ttl, rdlength = struct.unpack("!HHIH", data[offset:offset+10])
+                rtype, _rclass, _ttl, rdlength = struct.unpack("!HHIH", data[offset:offset+10])
                 offset += 10
                 if rtype == 1 and rdlength == 4:
                     ip = ".".join(str(b) for b in data[offset:offset+4])
                     ips.append(ip)
                 offset += rdlength
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return ips
 
     # ── Public API ───────────────────────────────────────────────────
@@ -5782,8 +5779,8 @@ class AntiISP:
                 try:
                     ip, port = addr.rsplit(":", 1)
                     cls.punch(ip, int(port))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
 
 # ── Anti-Stingray / IMSI Catcher Detection ─────────────────────────────
 class AntiStingray:
@@ -5804,9 +5801,9 @@ class AntiStingray:
 
     _running = False
     _thread = None
-    _alerts = []
+    _alerts: ClassVar[list] = []
     _alerts_lock = threading.Lock()
-    _baseline = {"mcc": "", "mnc": "", "lac": "", "cellid": "", "signal": 0, "rat": ""}
+    _baseline: ClassVar[dict] = {"mcc": "", "mnc": "", "lac": "", "cellid": "", "signal": 0, "rat": ""}
     _baseline_lock = threading.Lock()
     _scan_count = 0
     _threat_level = 0
@@ -5839,8 +5836,8 @@ class AntiStingray:
                     cls._scan_rf_anomalies()
                 if STINGRAY_KNOWN_SCAN:
                     cls._scan_known_signatures()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(STINGRAY_SCAN_INTERVAL)
 
     @classmethod
@@ -5848,8 +5845,7 @@ class AntiStingray:
         """Scan cellular parameters for IMSI catcher indicators."""
         try:
             result = subprocess.run(
-                ["mmcli", "-m", "0", "-S"], capture_output=True, text=True, timeout=5
-            )
+                ["mmcli", "-m", "0", "-S"], capture_output=True, text=True, timeout=5, check=False)
             if result.returncode != 0:
                 return
             output = result.stdout
@@ -5906,8 +5902,7 @@ class AntiStingray:
         """Scan for RF spectrum anomalies indicating surveillance equipment."""
         try:
             result = subprocess.run(
-                ["iw", "dev", "wlan0", "scan", "--no-ssid"], capture_output=True, text=True, timeout=10
-            )
+                ["iw", "dev", "wlan0", "scan", "--no-ssid"], capture_output=True, text=True, timeout=10, check=False)
             if result.returncode != 0:
                 return
             bss_count = 0
@@ -5934,17 +5929,14 @@ class AntiStingray:
     @classmethod
     def _scan_known_signatures(cls):
         """Check for known surveillance equipment network signatures."""
-        known_stingray_ssids = ["attwifi", "xfinitywifi", "Samsung", "FreeSpot"]
-        known_stingray_macs = set()
         try:
             with open("/proc/net/arp", "r") as f:
                 for line in f:
                     parts = line.split()
-                    if len(parts) >= 4:
-                        if parts[2] == "0x2":
-                            pass
-        except Exception:
-            pass
+                    if len(parts) >= 4 and parts[2] == "0x2":
+                        pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _alert(cls, message: str, threat: int, detail: str = ""):
@@ -6029,11 +6021,11 @@ class AntiSurveillance:
 
     _running = False
     _thread = None
-    _alerts = []
+    _alerts: ClassVar[list] = []
     _alerts_lock = threading.Lock()
-    _tls_fingerprints = {}
-    _suspicious_endpoints = set()
-    _dpi_signatures = []
+    _tls_fingerprints: ClassVar[dict] = {}
+    _suspicious_endpoints: ClassVar[set] = set()
+    _dpi_signatures: ClassVar[list] = []
     _threat_level = 0
 
     THREAT_NONE = 0
@@ -6089,15 +6081,15 @@ class AntiSurveillance:
                 cls._check_ssl_interception()
                 cls._check_process_integrity()
                 cls._check_dns_hijack()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(15)
 
     @classmethod
     def _check_connections(cls):
         """Scan active connections for known surveillance endpoints."""
         try:
-            result = subprocess.run(["ss", "-tnp"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["ss", "-tnp"], capture_output=True, text=True, timeout=5, check=False)
             if result.returncode != 0:
                 return
             for line in result.stdout.splitlines():
@@ -6127,8 +6119,8 @@ class AntiSurveillance:
                 if ki.lower() in org.lower():
                     cls._alert(f"SSL interception detected: {org}",
                                cls.THREAT_CRITICAL, f"issuer={org}")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _check_process_integrity(cls):
@@ -6145,8 +6137,8 @@ class AntiSurveillance:
             if writable_exec > 10:
                 cls._alert("Suspicious writable+executable memory regions",
                            cls.THREAT_MEDIUM, f"rwxp regions: {writable_exec}")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _check_dns_hijack(cls):
@@ -6162,10 +6154,10 @@ class AntiSurveillance:
                     if resp.status != 404:
                         known_bad.append(dns_server)
                     conn.close()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _scan_dpi(cls, data: bytes) -> list:
@@ -6259,10 +6251,10 @@ class NetNeutrality:
 
     _running = False
     _thread = None
-    _bandwidth_samples = []
+    _bandwidth_samples: ClassVar[list] = []
     _bandwidth_lock = threading.Lock()
     _throttle_detected = False
-    _masked_protocol_stats = {"packets": 0, "bytes": 0}
+    _masked_protocol_stats: ClassVar[dict] = {"packets": 0, "bytes": 0}
     _fragmented_packets = 0
     _jitter_injections = 0
 
@@ -6286,8 +6278,8 @@ class NetNeutrality:
                     cls._sample_bandwidth()
                 if NN_THROTTLE_DETECT:
                     cls._detect_throttling()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
             time.sleep(10)
 
     @classmethod
@@ -6305,8 +6297,8 @@ class NetNeutrality:
                 cls._bandwidth_samples.append((time.time(), total_bytes))
                 if len(cls._bandwidth_samples) > 60:
                     cls._bandwidth_samples = cls._bandwidth_samples[-60:]
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     @classmethod
     def _detect_throttling(cls):
@@ -6456,7 +6448,7 @@ class NetNeutrality:
 # Reassembly happens at the destination with ordering and retransmission.
 
 import struct as _struct
-import errno as _errno
+
 
 class LinkProbe:
     """Sentinel probe message for measuring link quality end-to-end."""
@@ -6490,7 +6482,7 @@ class LinkMonitor:
 
     instance = None
     _lock = threading.Lock()
-    _links: dict[str, dict] = {}
+    _links: ClassVar[dict[str, dict]] = {}
     _running = False
 
     # ── Interface Discovery ──────────────────────────────────────────────
@@ -6501,7 +6493,7 @@ class LinkMonitor:
         found = []
         try:
             import subprocess as _sp
-            r = _sp.run(["ip", "-o", "link", "show"], capture_output=True, text=True, timeout=5)
+            r = _sp.run(["ip", "-o", "link", "show"], capture_output=True, text=True, timeout=5, check=False)
             for line in r.stdout.splitlines():
                 parts = line.split()
                 if len(parts) < 2:
@@ -6512,7 +6504,7 @@ class LinkMonitor:
                 state = parts[-1] if parts[-1] in ("UP", "DOWN") else ""
                 speed = 0
                 try:
-                    s = _sp.run(["ethtool", iface], capture_output=True, text=True, timeout=3)
+                    s = _sp.run(["ethtool", iface], capture_output=True, text=True, timeout=3, check=False)
                     for sl in s.stdout.splitlines():
                         if "Speed:" in sl:
                             spd = sl.split("Speed:")[-1].strip()
@@ -6520,13 +6512,13 @@ class LinkMonitor:
                                 speed = int(spd.replace("Mb/s", "").strip()) * 1_000_000
                             elif "Gb/s" in spd:
                                 speed = int(spd.replace("Gb/s", "").strip()) * 1_000_000_000
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Ignored: %s", _e)
                 if not speed:
                     speed = 100_000_000  # assume 100 Mbps if unknown
                 found.append({"name": iface, "state": state, "speed": speed})
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return found
 
     @classmethod
@@ -6536,14 +6528,14 @@ class LinkMonitor:
         try:
             import subprocess as _sp
             r = _sp.run(["ip", "-o", "-4", "addr", "show", "dev", iface],
-                        capture_output=True, text=True, timeout=3)
+                        capture_output=True, text=True, timeout=3, check=False)
             for line in r.stdout.splitlines():
                 parts = line.split()
                 for i, p in enumerate(parts):
                     if "/" in p and "." in p:
                         addrs.append(p.split("/")[0])
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return addrs
 
     # ── Link Registration ────────────────────────────────────────────────
@@ -6720,7 +6712,7 @@ class ReassemblyBuffer:
     messages in correct order. Handles duplicates, retransmission, timeouts.
     """
 
-    _buffers: dict[int, dict] = {}
+    _buffers: ClassVar[dict[int, dict]] = {}
     _lock = threading.Lock()
     _TIMEOUT = 15.0
 
@@ -6797,7 +6789,7 @@ class BandwidthAggregator:
     _counter = 0
     _counter_lock = threading.Lock()
     _running = False
-    _ack_timeout: dict[int, float] = {}  # msg_id -> deadline
+    _ack_timeout: ClassVar[dict[int, float]] = {}  # msg_id -> deadline
     _ack_lock = threading.Lock()
     _retry_queue: queue.Queue = queue.Queue()
 
@@ -7001,7 +6993,7 @@ class BondedMeshTransport:
             }).encode()
             fns["wss"] = (lambda data, w=wrapped:
                 AntiISP.wss_send(w.replace(b"__payload__", base64.b64encode(data).decode()
-                                           if hasattr(data, 'decode') else base64.b64encode(data).decode())
+                                           if hasattr(data, 'decode') else base64.b64encode(data).decode())  # noqa: RUF034
                                  if isinstance(w, bytes) else data))
             LinkMonitor.register_link("wss", "wss", bandwidth=2_000_000)
 
@@ -7046,7 +7038,7 @@ class GpioController:
         self._pin = GPIO_PIN
         self._state = False
         if GPIO_ENABLED:
-            import RPi.GPIO as GPIO
+            from RPi import GPIO
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(self._pin, GPIO.OUT)
             GPIO.output(self._pin, GPIO.LOW)
@@ -7082,12 +7074,12 @@ class PotState:
     brewing = False
     brew_start_time = None
     current_beverage = None
-    current_additions = []
+    current_additions: ClassVar[list] = []
     brew_id = None
-    history = []
-    schedules = []
-    webhooks = []
-    sse_clients = []
+    history: ClassVar[list] = []
+    schedules: ClassVar[list] = []
+    webhooks: ClassVar[list] = []
+    sse_clients: ClassVar[list] = []
     sse_lock = threading.Lock()
     state_lock = threading.Lock()
 
@@ -7163,8 +7155,8 @@ class PotState:
                 data = json.dumps(payload).encode()
                 req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
 
 # ── HTCPCP Protocol Helpers ───────────────────────────────────────────
@@ -7217,7 +7209,7 @@ def is_coffee_uri_path(path):
     Handles both raw scheme:// and HTTP-prefixed /scheme:// forms."""
     lower = path.lower().lstrip("/")
     for scheme in COFFEE_SCHEME_NAMES:
-        if lower.startswith(scheme + "://") or lower.startswith(scheme + ":"):
+        if lower.startswith((scheme + "://", scheme + ":")):
             return True
     return False
 
@@ -7232,7 +7224,7 @@ def parse_coffee_uri(path):
     lower = path.lower().lstrip("/")
     scheme = None
     for s in COFFEE_SCHEME_NAMES:
-        if lower.startswith(s + "://") or lower.startswith(s + ":"):
+        if lower.startswith((s + "://", s + ":")):
             scheme = s
             break
     if not scheme:
@@ -7244,7 +7236,6 @@ def parse_coffee_uri(path):
     elif rest.startswith(":"):
         rest = rest[1:]
 
-    host = ""
     if rest and not rest.startswith("/") and not rest.startswith("?"):
         slash = rest.find("/")
         qmark = rest.find("?")
@@ -7253,7 +7244,7 @@ def parse_coffee_uri(path):
             end = min(end, slash)
         if qmark >= 0:
             end = min(end, qmark)
-        host = rest[:end]
+        rest[:end]
         rest = rest[end:]
 
     pot = None
@@ -7341,8 +7332,8 @@ def start_discovery():
         sock.settimeout(1)
         _discovery_socket = sock
         threading.Thread(target=_discovery_listener, daemon=True).start()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
 
 
 def _discovery_listener():
@@ -7358,7 +7349,7 @@ def _discovery_listener():
                     "addr": addr[0],
                 }).encode()
                 sock.sendto(resp, addr)
-        except socket.timeout:
+        except TimeoutError:
             continue
         except Exception:
             break
@@ -7379,17 +7370,17 @@ def discover_pots(timeout=2):
                 info["addr"] = addr[0]
                 if info.get("pot") != POT_ID:
                     results.append(info)
-            except socket.timeout:
+            except TimeoutError:
                 break
-            except Exception:
-                continue
-    except Exception:
-        pass
+            except Exception as _e:
+                logger.debug("Skipped: %s", _e); continue
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
     finally:
         try:
             sock.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
     return results
 
 
@@ -7436,8 +7427,8 @@ def start_radio():
     if not RADIO_ENABLED:
         return
     if not RADIO_IMPORT_OK:
-        print(f"   ⚠ Radio:      radio_protocol module not found — install radio_if binary", flush=True)
-        print(f"   ⚠ Radio:      cd radio/ && make", flush=True)
+        print("   ⚠ Radio:      radio_protocol module not found — install radio_if binary", flush=True)
+        print("   ⚠ Radio:      cd radio/ && make", flush=True)
         return
     try:
         ri = RadioInterface()
@@ -7447,7 +7438,7 @@ def start_radio():
             spi_dev = RADIO_DEVICE if RADIO_MODE == "lora" else ""
             if spi_dev and not os.path.exists(spi_dev):
                 print(f"   ⚠ Radio:      SPI device {spi_dev} not found", flush=True)
-                print(f"   ⚠ Radio:      Set CPIP_RADIO_DEVICE or CPIP_RADIO_MODE=sim for testing", flush=True)
+                print("   ⚠ Radio:      Set CPIP_RADIO_DEVICE or CPIP_RADIO_MODE=sim for testing", flush=True)
                 return
         ri.start(
             mode=RADIO_MODE,
@@ -7485,7 +7476,7 @@ def start_radio():
         threading.Thread(target=_radio_poll, daemon=True).start()
     except RadioError as e:
         print(f"   ⚠ Radio:      {e}", flush=True)
-        print(f"   ⚠ Radio:      Hardware may not be connected. Set CPIP_RADIO=sim for testing.", flush=True)
+        print("   ⚠ Radio:      Hardware may not be connected. Set CPIP_RADIO=sim for testing.", flush=True)
     except Exception as e:
         print(f"   ⚠ Radio:      {e}", flush=True)
 
@@ -7505,8 +7496,8 @@ def _inject_radio_packet(data: bytes):
         MeshNode._handle_message(data, ("0.0.0.0", 0))
         # Forward to satellite if enabled
         MeshNode._cross_transport_forward(msg, via="radio")
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("Ignored: %s", _e)
 
 def get_radio_status() -> dict:
     if not _radio:
@@ -7541,8 +7532,8 @@ def ntp_sync_loop():
                 ntp_time = t - NTP_EPOCH
                 local_time = time.time()
                 _ntp_offset = ntp_time - local_time
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         time.sleep(3600)
 
 
@@ -7637,7 +7628,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
 class CPIPHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now(tz=datetime.timezone.utc).strftime("%H:%M:%S")
         sys.stderr.write(f"[CPIP {ts}] {self.client_address[0]} {fmt % args}\n")
 
     def send_header(self, name, value):
@@ -7722,8 +7713,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
         try:
             SignalAwareness.record_http(self.command, self.path, code,
                                          int(self.headers.get("Content-Length", 0)), len(payload))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
     def _send_html(self, code, html_content):
         body = html_content.encode("utf-8")
@@ -7765,8 +7756,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
                 return json.loads(self.rfile.read(length))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
         return {}
 
     # ── HTCPCP Compatibility Methods ──────────────────────────────────
@@ -7801,7 +7792,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             return
 
         if is_coffee_uri_path(self.path):
-            pot, additions, beverage = parse_coffee_uri(self.path)
+            _pot, _additions, _beverage = parse_coffee_uri(self.path)
             if "text/html" in self.headers.get("Accept", ""):
                 self._serve_dashboard()
             else:
@@ -8184,8 +8175,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
                         try:
                             MeshNode.mesh_socket.sendto(probe,
                                 (body.get("target", "127.0.0.1"), MESH_PORT))
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            logger.debug("Ignored: %s", _e)
                 self._send_json(200, "OK", {"probes_sent": len(links)})
             else:
                 self._send_json(400, "Bad Request", {"error": f"Unknown bond action: {action}"})
@@ -8444,7 +8435,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def do_WHEN(self):
         if is_coffee_uri_path(self.path):
-            pot, additions, beverage = parse_coffee_uri(self.path)
+            _pot, _additions, _beverage = parse_coffee_uri(self.path)
         was = PotState.stop()
         self._send_json(200, "OK", {
             "status": "stopped",
@@ -8594,7 +8585,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "status": 418,
                 "reason": f"Device type '{DEVICE_TYPE}' cannot brew the requested beverage",
                 "device": DEVICE_TYPE,
-                "hint": f"Try /tea" if DEVICE_TYPE == "teapot" else f"Try /coffee",
+                "hint": "Try /tea" if DEVICE_TYPE == "teapot" else "Try /coffee",
             })
             return
 
@@ -8655,15 +8646,15 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     "from": "covert_channel",
                     "message_id": "covert_" + CoffeeCipher.hash(covert_msg),
                 })
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
 
         path = urlparse(self.path).path.rstrip("/")
         if is_coffee_uri_path(self.path):
-            pot, uri_additions, beverage_hint = parse_coffee_uri(self.path)
+            _pot, _uri_additions, beverage_hint = parse_coffee_uri(self.path)
             beverage = beverage_hint or "tea"
         else:
-            beverage = "coffee" if path.endswith("/coffee") else "tea" if path.endswith("/tea") else "tea"
+            beverage = "coffee" if path.endswith("/coffee") else "tea"
         brew_id = PotState.start(beverage, additions)
 
         addition_names = [
@@ -8733,7 +8724,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 self._send_json(200, "OK", {"status": "already_brewing", "message": "Already brewing."})
                 return
             path = urlparse(self.path).path.rstrip("/")
-            beverage = "coffee" if path.endswith("/coffee") else "tea" if path.endswith("/tea") else "tea"
+            beverage = "coffee" if path.endswith("/coffee") else "tea"
             brew_id = PotState.start(beverage, [])
             self._send_json(202, "Brewing", {
                 "status": "brewing",
@@ -9031,7 +9022,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
                 except queue.Empty:
-                    self.wfile.write(": keepalive\n\n".encode())
+                    self.wfile.write(b": keepalive\n\n")
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
@@ -9212,8 +9203,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 if pk_b64:
                     try:
                         dst_pubkey = base64.b64decode(pk_b64)
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored: %s", _e)
         encoded = CovertChannel.encode(
             message.encode(), dst, "espresso",
             dst_pubkey=dst_pubkey,
@@ -9435,9 +9426,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 if pk_b64:
                     try:
                         dst_pubkey = base64.b64decode(pk_b64)
-                    except Exception:
-                        pass
-            beverage, additions, headers = CovertChannel.encode_brew(
+                    except Exception as _e:
+                        logger.debug("Ignored: %s", _e)
+            beverage, _additions, headers = CovertChannel.encode_brew(
                 data.encode(), dst,
                 dst_pubkey=dst_pubkey,
                 our_seed=MeshNode.node_seed,
@@ -9478,8 +9469,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 if pk_b64:
                     try:
                         dst_pubkey = base64.b64decode(pk_b64)
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("Ignored: %s", _e)
 
         encoded = CovertChannel.encode(
             message.encode(), dst, recipe,
@@ -9687,34 +9678,34 @@ class CPIPHandler(BaseHTTPRequestHandler):
         bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
         schedule_list = json.dumps([{
             "id": s["id"],
-            "time": datetime.fromtimestamp(s["time"]).strftime("%Y-%m-%d %H:%M:%S") if isinstance(s.get("time"), (int, float)) else str(s.get("time")),
+            "time": datetime.fromtimestamp(s["time"], tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if isinstance(s.get("time"), (int, float)) else str(s.get("time")),
             "beverage": s.get("beverage", "coffee"),
             "brew_duration": s.get("brew_duration", 30),
             "human": s.get("human", ""),
         } for s in PotState.schedules])
 
-        fmt = dict(
-            device=html.escape(DEVICE_TYPE),
-            pot_id=html.escape(POT_ID),
-            hostname=html.escape(HOSTNAME),
-            version=CPIP_VERSION,
-            beverages=", ".join(bev),
-            gpio_status=f"GPIO Pin {GPIO_PIN}" if gpio.is_available else "GPIO disabled",
-            gpio_class="physical" if gpio.is_available else "disabled",
-            mesh_status=f"Mesh port {MESH_PORT}" if MESH_ENABLED else "Disabled",
-            mesh_class="enabled" if MESH_ENABLED else "disabled",
-            covert_status="Active (Coffee Cipher)" if COVERT_ENABLED else "Disabled",
-            covert_class="enabled" if COVERT_ENABLED else "disabled",
-            pot_json=json.dumps({"pot": POT_ID, "hostname": HOSTNAME, "device": DEVICE_TYPE, "port": BIND_PORT}),
-            schedules_json=schedule_list,
-        )
+        fmt = {
+            "device": html.escape(DEVICE_TYPE),
+            "pot_id": html.escape(POT_ID),
+            "hostname": html.escape(HOSTNAME),
+            "version": CPIP_VERSION,
+            "beverages": ", ".join(bev),
+            "gpio_status": f"GPIO Pin {GPIO_PIN}" if gpio.is_available else "GPIO disabled",
+            "gpio_class": "physical" if gpio.is_available else "disabled",
+            "mesh_status": f"Mesh port {MESH_PORT}" if MESH_ENABLED else "Disabled",
+            "mesh_class": "enabled" if MESH_ENABLED else "disabled",
+            "covert_status": "Active (Coffee Cipher)" if COVERT_ENABLED else "Disabled",
+            "covert_class": "enabled" if COVERT_ENABLED else "disabled",
+            "pot_json": json.dumps({"pot": POT_ID, "hostname": HOSTNAME, "device": DEVICE_TYPE, "port": BIND_PORT}),
+            "schedules_json": schedule_list,
+        }
         html_str = DASHBOARD_HTML
         index_file = WEB_DIR / "index.html"
         if index_file.is_file():
             try:
                 html_str = index_file.read_text(encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Ignored: %s", _e)
         self._send_html(200, html_str.format(**fmt))
 
 
@@ -11251,11 +11242,11 @@ def start_pitail():
                 (gadget / "UDC").write_text(udc.name)
         # Bring up the interface
         subprocess.run(["ip", "link", "set", "usb0", "up"],
-                       capture_output=True, timeout=5)
+                       capture_output=True, timeout=5, check=False)
         subprocess.run(["ip", "addr", "add",
                         f"{PITAIL_ADDR}/{PITAIL_NETMASK}",
                         "dev", "usb0"],
-                       capture_output=True, timeout=5)
+                       capture_output=True, timeout=5, check=False)
         print(f"   ├ Pi-Tail:    {PITAIL_ADDR}:{BIND_PORT} (USB gadget)", flush=True)
         return True
     except Exception as e:
@@ -11428,9 +11419,7 @@ def teapot_probe_check(headers, addr, path, method):
     tool_matches = teapot_tool_check(headers, addr, pentest_only=True)
     if tool_matches:
         probe_indicators += 2
-    if probe_indicators >= 2:
-        return True
-    return False
+    return probe_indicators >= 2
 
 
 def teapot_tool_check(headers, addr, pentest_only=False):
@@ -11467,8 +11456,9 @@ def teapot_tool_check(headers, addr, pentest_only=False):
 
 # ── Main ──────────────────────────────────────────────────────────────
 def shutdown(signum, frame):
+    global _discovery_socket
     print("\n[CPIP] Shutting down...", flush=True)
-    global _http_server, _redirect_server, _discovery_socket
+    global _http_server, _redirect_server  # noqa: PLW0602
     if _http_server:
         try: _http_server.server_close()
         except Exception: pass
@@ -11568,7 +11558,7 @@ def main():
             _redirect_server = redirect_server
         except Exception as e:
             print(f"   ⚠ HTTP redirect server on port {HTTP_REDIRECT_PORT} failed: {e}", flush=True)
-            print(f"   ⚠ Continuing without HTTP→HTTPS redirect.", flush=True)
+            print("   ⚠ Continuing without HTTP→HTTPS redirect.", flush=True)
             _redirect_server = None
             redirect_server = None
     else:
@@ -11599,29 +11589,29 @@ def main():
     print(f"   ├ Mobile:     {'Port ' + str(MOBILE_PORT) + ' (' + MOBILE_INTERFACE + ')' if MOBILE_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Thermos:    {'Aggregator mode' if THERMOS_ENABLED else 'Standard'}", flush=True)
     print(f"   └ Dashboard:  {scheme}://{host_display}:{BIND_PORT}/dashboard", flush=True)
-    print(f"", flush=True)
-    print(f"   HTCPCP (RFC 2324+7168): BREW, WHEN, PROPFIND, POST, GET", flush=True)
+    print(flush=True)
+    print("   HTCPCP (RFC 2324+7168): BREW, WHEN, PROPFIND, POST, GET", flush=True)
     print(f"   coffee: URI scheme:     {len(COFFEE_SCHEME_NAMES)} international variants", flush=True)
-    print(f"   message/coffeepot:      Content-Type for start/stop commands", flush=True)
-    print(f"   CPIP:                 /cpip/status, /cpip/brew, /cpip/schedule, /cpip/pots, /cpip/metrics, /cpip/events", flush=True)
-    print(f"   MESH:                 /cpip/mesh/status, /cpip/mesh/peers, /cpip/mesh/inbox, /cpip/mesh/send, /cpip/mesh/broadcast", flush=True)
-    print(f"   SAT-MESH:             /cpip/mesh/sat (satellite/Starlink status)", flush=True)
-    print(f"   RADIO:                /cpip/mesh/radio (LoRa / TNC / packet radio status)", flush=True)
-    print(f"   MOBILE:               /cpip/mesh/mobile (4G/5G / LTE / WWAN status)", flush=True)
-    print(f"   COVERT (ECC):         /cpip/mesh/encode, /cpip/mesh/decode", flush=True)
-    print(f"   DEADDROP:             /cpip/mesh/deaddrop?action=list|claim&id= (dead-drop query)", flush=True)
-    print(f"   DEFENSE:              /cpip/defense (418 blacklist + stealth status)", flush=True)
-    print(f"   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
+    print("   message/coffeepot:      Content-Type for start/stop commands", flush=True)
+    print("   CPIP:                 /cpip/status, /cpip/brew, /cpip/schedule, /cpip/pots, /cpip/metrics, /cpip/events", flush=True)
+    print("   MESH:                 /cpip/mesh/status, /cpip/mesh/peers, /cpip/mesh/inbox, /cpip/mesh/send, /cpip/mesh/broadcast", flush=True)
+    print("   SAT-MESH:             /cpip/mesh/sat (satellite/Starlink status)", flush=True)
+    print("   RADIO:                /cpip/mesh/radio (LoRa / TNC / packet radio status)", flush=True)
+    print("   MOBILE:               /cpip/mesh/mobile (4G/5G / LTE / WWAN status)", flush=True)
+    print("   COVERT (ECC):         /cpip/mesh/encode, /cpip/mesh/decode", flush=True)
+    print("   DEADDROP:             /cpip/mesh/deaddrop?action=list|claim&id= (dead-drop query)", flush=True)
+    print("   DEFENSE:              /cpip/defense (418 blacklist + stealth status)", flush=True)
+    print("   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
-    print(f"   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
-    print(f"   Crypto: AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS) hybrid KEM", flush=True)
-    print(f"   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
-    print(f"   Anti-Stingray: IMSI catcher detection + RF anomaly monitoring", flush=True)
-    print(f"   Anti-Surveillance: DPI detection + SSL intercept + exploit detection", flush=True)
-    print(f"   Net Neutrality: Protocol masquerading + DPI evasion + throttle detection", flush=True)
+    print("   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
+    print("   Crypto: AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS) hybrid KEM", flush=True)
+    print("   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
+    print("   Anti-Stingray: IMSI catcher detection + RF anomaly monitoring", flush=True)
+    print("   Anti-Surveillance: DPI detection + SSL intercept + exploit detection", flush=True)
+    print("   Net Neutrality: Protocol masquerading + DPI evasion + throttle detection", flush=True)
     print(f"   Incident Response: {'ACTIVE' if IncidentResponse._auto_response_enabled else 'STANDBY'}", flush=True)
-    print(f"   Signal Awareness: Jamming detection + bandwidth monitoring", flush=True)
-    print(f"   Emergency Mode: Key rotation + secure wipe available", flush=True)
+    print("   Signal Awareness: Jamming detection + bandwidth monitoring", flush=True)
+    print("   Emergency Mode: Key rotation + secure wipe available", flush=True)
 
     if PITAIL_ENABLED:
         start_pitail()

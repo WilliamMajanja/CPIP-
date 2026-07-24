@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 import unittest
-import urllib.request
 import urllib.error
+import urllib.request
 
 SERVER_CMD = [sys.executable, "server.py"]
 TEST_PORT = int(os.environ.get("CPIP_TEST_PORT", "4182"))

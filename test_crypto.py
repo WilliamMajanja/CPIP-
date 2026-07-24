@@ -22,14 +22,32 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 from server import (
-    CoffeeCipher, ECP256, HybridKEM, SecureHash,
-    IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
+    ECP256,
+    HQC128,
+    HQC192,
+    HQC256,
+    MLKEM512,
+    MLKEM768,
+    MLKEM1024,
+    PQCKEM,
+    CoffeeCipher,
     CovertChannel,
-    PQCKEM, HQC128, HQC192, HQC256,
-    McEliece348864, McEliece348864f, McEliece460896, McEliece460896f,
-    McEliece6688128, McEliece6688128f, McEliece6960119, McEliece6960119f,
-    McEliece8192128, McEliece8192128f,
-    MLKEM512, MLKEM768, MLKEM1024,
+    EmergencyMode,
+    HybridKEM,
+    IncidentResponse,
+    McEliece348864,
+    McEliece348864f,
+    McEliece460896,
+    McEliece460896f,
+    McEliece6688128,
+    McEliece6688128f,
+    McEliece6960119,
+    McEliece6960119f,
+    McEliece8192128,
+    McEliece8192128f,
+    NetDiagnostics,
+    SecureHash,
+    SignalAwareness,
 )
 
 
@@ -44,13 +62,13 @@ class TestECP256(unittest.TestCase):
         self.assertIsNotNone(pubkey)
 
     def test_encode_decode_roundtrip(self):
-        pk, seed, privkey, pubkey = ECP256.generate_keypair()
+        pk, _seed, _privkey, _pubkey = ECP256.generate_keypair()
         decoded = ECP256._decode_point(pk)
         re_encoded = ECP256._encode_point(decoded)
         self.assertEqual(pk, re_encoded, "encode/decode roundtrip failed")
 
     def test_sign_verify(self):
-        pk, seed, privkey, pubkey = ECP256.generate_keypair()
+        pk, seed, _privkey, _pubkey = ECP256.generate_keypair()
         msg = b"hello coffee protocol"
         sig = ECP256.sign(msg, seed)
         self.assertGreater(len(sig), 0)
@@ -62,8 +80,8 @@ class TestECP256(unittest.TestCase):
         self.assertFalse(ECP256.verify(b"wrong message", sig, pk))
 
     def test_sign_verify_wrong_key(self):
-        pk1, seed1, _, _ = ECP256.generate_keypair()
-        pk2, seed2, _, _ = ECP256.generate_keypair()
+        _pk1, seed1, _, _ = ECP256.generate_keypair()
+        pk2, _seed2, _, _ = ECP256.generate_keypair()
         sig = ECP256.sign(b"test", seed1)
         self.assertFalse(ECP256.verify(b"test", sig, pk2))
 
@@ -102,9 +120,9 @@ class TestECP256(unittest.TestCase):
             )
 
     def test_ecdh_different_peers_produce_different_secrets(self):
-        pk1, s1, _, _ = ECP256.generate_keypair()
-        pk2, s2, _, _ = ECP256.generate_keypair()
-        pk3, s3, _, _ = ECP256.generate_keypair()
+        _pk1, s1, _, _ = ECP256.generate_keypair()
+        pk2, _s2, _, _ = ECP256.generate_keypair()
+        pk3, _s3, _, _ = ECP256.generate_keypair()
         ss12 = ECP256.key_exchange(s1, pk2)
         ss13 = ECP256.key_exchange(s1, pk3)
         self.assertNotEqual(ss12, ss13)
@@ -119,8 +137,8 @@ class TestECP256(unittest.TestCase):
 
     def test_deterministic_keypair(self):
         seed = os.urandom(32)
-        pk1, s1, a1, A1 = ECP256.generate_keypair(seed)
-        pk2, s2, a2, A2 = ECP256.generate_keypair(seed)
+        pk1, s1, _a1, _A1 = ECP256.generate_keypair(seed)
+        pk2, s2, _a2, _A2 = ECP256.generate_keypair(seed)
         self.assertEqual(pk1, pk2)
         self.assertEqual(s1, s2)
 
@@ -150,8 +168,8 @@ class TestMLKEM(unittest.TestCase):
             self.assertEqual(ss_enc, ss_dec)
 
     def test_different_keys_different_secrets(self):
-        pk1, sk1 = MLKEM768.generate_keypair()
-        pk2, sk2 = MLKEM768.generate_keypair()
+        pk1, _sk1 = MLKEM768.generate_keypair()
+        pk2, _sk2 = MLKEM768.generate_keypair()
         _, ss1 = MLKEM768.encapsulate(pk1)
         _, ss2 = MLKEM768.encapsulate(pk2)
         self.assertNotEqual(ss1, ss2)
@@ -171,15 +189,15 @@ class TestMLKEM(unittest.TestCase):
         self.assertEqual(ss1, ss2)
 
     def test_wrong_secret_key_rejected(self):
-        pk1, sk1 = MLKEM768.generate_keypair()
+        pk1, _sk1 = MLKEM768.generate_keypair()
         _, sk2 = MLKEM768.generate_keypair()
         ct, ss_enc = MLKEM768.encapsulate(pk1)
         ss_dec = MLKEM768.decapsulate(sk2, ct)
         self.assertNotEqual(ss_enc, ss_dec)
 
     def test_encapsulation_produces_32byte_secret(self):
-        pk, sk = MLKEM768.generate_keypair()
-        ct, ss = MLKEM768.encapsulate(pk)
+        pk, _sk = MLKEM768.generate_keypair()
+        _ct, ss = MLKEM768.encapsulate(pk)
         self.assertEqual(len(ss), 32)
 
 
@@ -205,21 +223,21 @@ class TestHybridKEM(unittest.TestCase):
             self.assertEqual(ss_enc, ss_dec)
 
     def test_different_keypairs_different_secrets(self):
-        hpk1, hsk1 = HybridKEM.generate_keypair()
-        hpk2, hsk2 = HybridKEM.generate_keypair()
+        hpk1, _hsk1 = HybridKEM.generate_keypair()
+        hpk2, _hsk2 = HybridKEM.generate_keypair()
         _, ss1 = HybridKEM.encapsulate(hpk1)
         _, ss2 = HybridKEM.encapsulate(hpk2)
         self.assertNotEqual(ss1, ss2)
 
     def test_wrong_key_rejected(self):
-        hpk1, hsk1 = HybridKEM.generate_keypair()
+        hpk1, _hsk1 = HybridKEM.generate_keypair()
         _, hsk2 = HybridKEM.generate_keypair()
         ct, ss_enc = HybridKEM.encapsulate(hpk1)
         ss_dec = HybridKEM.decapsulate(hsk2, ct)
         self.assertNotEqual(ss_enc, ss_dec)
 
     def test_shared_secret_is_32bytes(self):
-        hpk, hsk = HybridKEM.generate_keypair()
+        hpk, _hsk = HybridKEM.generate_keypair()
         _, ss = HybridKEM.encapsulate(hpk)
         self.assertEqual(len(ss), 32)
 
@@ -623,13 +641,7 @@ class TestPQCKEMs(unittest.TestCase):
         # Import the new KEM classes
         import sys
         sys.path.insert(0, os.path.dirname(__file__))
-        from server import (
-            PQCKEM, HQC128, HQC192, HQC256,
-            McEliece348864, McEliece348864f, McEliece460896, McEliece460896f,
-            McEliece6688128, McEliece6688128f, McEliece6960119, McEliece6960119f,
-            McEliece8192128, McEliece8192128f,
-            MLKEM512, MLKEM768, MLKEM1024
-        )
+        from server import MLKEM768
         cls.PQCKEM = PQCKEM
         cls.HQC128 = HQC128
         cls.HQC192 = HQC192
@@ -809,8 +821,8 @@ class TestPQCKEMs(unittest.TestCase):
     def test_different_kems_different_secrets(self):
         """Test that different KEMs produce different shared secrets for same keypair."""
         # Each KEM should produce different shared secrets even with same input patterns
-        hqc128_pk, hqc128_sk = self.HQC128.generate_keypair()
-        mce_pk, mce_sk = self.McEliece348864.generate_keypair()
+        hqc128_pk, _hqc128_sk = self.HQC128.generate_keypair()
+        mce_pk, _mce_sk = self.McEliece348864.generate_keypair()
         
         _, hqc_ss = self.HQC128.encapsulate(hqc128_pk)
         _, mce_ss = self.McEliece348864.encapsulate(mce_pk)
@@ -820,7 +832,7 @@ class TestPQCKEMs(unittest.TestCase):
     def test_tampered_ciphertext_rejected(self):
         """Test that tampered ciphertexts are handled (raise or return fake key)."""
         pk, sk = self.HQC128.generate_keypair()
-        ct, ss_enc = self.HQC128.encapsulate(pk)
+        ct, _ss_enc = self.HQC128.encapsulate(pk)
         
         # Tamper with ciphertext
         tampered = bytearray(ct)

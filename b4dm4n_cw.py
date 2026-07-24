@@ -17,30 +17,22 @@ Usage:
 """
 
 import argparse
-import sys
-import os
-import time
-import secrets
 import base64
 import hashlib
-import hmac
-import struct
 import math
-import json
-import getpass
+import os
+import sys
+import time
 from collections import Counter
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
+    from rich import box
+    from rich import print as rprint
     from rich.console import Console
-    from rich.table import Table
     from rich.panel import Panel
-    from rich.syntax import Syntax
-    from rich.text import Text
-    from rich.columns import Columns
-    from rich import box, print as rprint
+    from rich.table import Table
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
@@ -201,7 +193,7 @@ def _get_kem_registry():
     }
 
     try:
-        from server import PQC_KEM_REGISTRY, HybridKEM, MLKEM768
+        from server import MLKEM768, PQC_KEM_REGISTRY, HybridKEM
         for alg_name, kem_cls in PQC_KEM_REGISTRY.items():
             try:
                 available = kem_cls.is_available()
@@ -849,7 +841,7 @@ def _bench_all_kems(h, n):
 
         try:
             cls = info.get("class")
-            hybrid = info.get("hybrid", False)
+            info.get("hybrid", False)
             is_custom = info.get("custom", False)
 
             if is_custom:
@@ -860,7 +852,7 @@ def _bench_all_kems(h, n):
 
                 start = time.perf_counter()
                 for _ in range(min(n, 10)):
-                    ct, ss = Inf1delKyber.encaps(pk, h.recipe)
+                    ct, _ss = Inf1delKyber.encaps(pk, h.recipe)
                 en = (time.perf_counter() - start) / min(n, 10) * 1000
 
                 start = time.perf_counter()
@@ -880,7 +872,7 @@ def _bench_all_kems(h, n):
 
             start = time.perf_counter()
             for _ in range(sub_n):
-                ct, ss = cls.encapsulate(pk)
+                ct, _ss = cls.encapsulate(pk)
             en = (time.perf_counter() - start) / sub_n * 1000
 
             start = time.perf_counter()
@@ -901,7 +893,7 @@ def _bench_all_kems(h, n):
 
 
 def cmd_coffee(args):
-    h = CmdHandler(args)
+    CmdHandler(args)
     _out(BANNER, style="bold yellow")
     _out(COFFEE_SNAKE, style="yellow")
 
@@ -1022,7 +1014,7 @@ def cmd_interactive(args):
             _out(f"  Public key ({len(pk)} bytes): {pk[:32].hex()}...", style="green")
             _out(f"  Secret key ({len(sk)} bytes): {sk[:32].hex()}...", style="green")
             _out(f"  Tag: {tag}", style="bold yellow")
-            _out(f"  Stored in session. Use tag to reference.")
+            _out("  Stored in session. Use tag to reference.")
 
         elif cmd == "encaps":
             if not rest:

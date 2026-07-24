@@ -28,15 +28,11 @@ Parameters (ML-KEM-768 variant with 1nf1D3L mods):
 - Extra: NTT twiddle factor perturbation
 """
 
-import os
-import secrets
 import hashlib
 import hmac
-import struct
-from typing import Tuple, List, Optional
+import secrets
 
 import numpy as np
-from numpy import int32, int64
 
 Q = 3329
 Q32 = np.int32(3329)
