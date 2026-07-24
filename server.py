@@ -9726,7 +9726,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   :root {{
     --bg: #0a0a1a; --surface: #111128; --accent: #e94560;
     --green: #0a2840; --text: #d0d0e0; --muted: #6666aa;
-    --card: #18183a; --border: #2a2a5c; --mesh: #00cc88;
+    --card: #18183a; --border: #2a2a5c; --mesh: #00cc88; --yellow: #ffcc00;
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: 'Courier New', monospace;
@@ -10613,8 +10613,8 @@ async function brewCustom() {{
 
 async function stopBrew() {{
   try {{
-    await fetch('/', {{ method: 'WHEN' }});
-    showToast('Stopped');
+    const r = await fetch('/', {{ method: 'POST', headers: {{'Content-Type': 'message/coffeepot'}}, body: 'stop' }});
+    showToast(r.ok ? 'Stopped' : 'Stop failed');
   }} catch(e) {{ showToast('Stop failed'); }}
   refresh();
 }}

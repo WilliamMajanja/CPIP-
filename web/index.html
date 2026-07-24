@@ -1,0 +1,2149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPIP v5 — {hostname}</title>
+<style>
+  :root {{
+    --bg: #080810; --surface: #0e0e1f; --surface2: #141428;
+    --accent: #e94560; --accent-hover: #ff5a74;
+    --green: #00e68a; --green-bg: #003322; --green-hover: #00cc77;
+    --blue: #4488ff; --blue-bg: #0a1840; --blue-hover: #3377ee;
+    --orange: #ff8844; --orange-bg: #331a00;
+    --text: #d0d0e8; --muted: #6666aa; --dim: #444470;
+    --card: #12122a; --border: #222248; --border-light: #2a2a58;
+    --mesh: #00cc88; --danger: #ff4444; --yellow: #ffcc00;
+    --radius: 10px; --radius-sm: 6px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.4);
+    --transition: 0.18s ease;
+  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+          background: var(--bg); color: var(--text); min-height: 100vh;
+          font-size: 13px; line-height: 1.5; }}
+
+  .header {{ background: linear-gradient(135deg, #0c0c20 0%, #141430 50%, #0c0c20 100%);
+             padding: 1.2rem 2rem; border-bottom: 2px solid var(--accent);
+             position: relative; overflow: hidden; }}
+  .header::before {{ content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: radial-gradient(ellipse at 20% 50%, rgba(233,69,96,0.08) 0%, transparent 60%);
+                    pointer-events: none; }}
+  .header h1 {{ font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; position: relative; }}
+  .header h1 .version {{ color: var(--accent); font-weight: 400; font-size: 0.7rem;
+                         margin-left: 0.5rem; vertical-align: super; letter-spacing: 0.05em; }}
+  .header .sub {{ color: var(--muted); font-size: 0.75rem; margin-top: 0.2rem; position: relative; }}
+
+  .container {{ max-width: 1440px; margin: 0 auto; padding: 1.25rem; }}
+
+  .status-bar {{ display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+                 margin-bottom: 1rem; padding: 0.6rem 0.8rem;
+                 background: var(--surface); border: 1px solid var(--border);
+                 border-radius: var(--radius); }}
+  .status-bar .spacer {{ flex: 1; }}
+
+  .badge {{ display: inline-flex; align-items: center; gap: 0.25rem;
+             padding: 0.2rem 0.55rem; border-radius: 20px;
+             font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+             letter-spacing: 0.08em; white-space: nowrap; }}
+  .badge.brewing {{ background: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }}
+  .badge.idle {{ background: var(--surface2); color: var(--dim); border: 1px solid var(--border); }}
+  .badge.enabled {{ background: var(--green-bg); color: var(--green); border: 1px solid rgba(0,230,138,0.2); }}
+  .badge.disabled {{ background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(255,136,68,0.2); }}
+  .badge.physical {{ background: #004433; color: #00ffaa; border: 1px solid rgba(0,255,170,0.15); }}
+  .badge.mesh {{ background: rgba(0,204,136,0.1); color: var(--mesh); border: 1px solid rgba(0,204,136,0.2); }}
+  .badge .dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; }}
+  @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
+
+  .btn {{ display: inline-flex; align-items: center; gap: 0.3rem;
+          background: var(--accent); color: #fff; border: none;
+          padding: 0.4rem 0.85rem; border-radius: var(--radius-sm);
+          cursor: pointer; font-size: 0.75rem; font-weight: 700;
+          font-family: inherit; transition: all var(--transition);
+          letter-spacing: 0.03em; text-transform: uppercase; }}
+  .btn:hover {{ background: var(--accent-hover); transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(233,69,96,0.3); }}
+  .btn:active {{ transform: translateY(0); }}
+  .btn.secondary {{ background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(68,136,255,0.2); }}
+  .btn.secondary:hover {{ background: var(--blue-hover); color: #fff;
+                           box-shadow: 0 2px 8px rgba(68,136,255,0.2); }}
+  .btn.outline {{ background: transparent; border: 1px solid var(--border-light); color: var(--muted); }}
+  .btn.outline:hover {{ border-color: var(--accent); color: var(--accent);
+                         box-shadow: 0 2px 8px rgba(233,69,96,0.15); }}
+  .btn.danger {{ background: #331111; color: var(--danger); border: 1px solid rgba(255,68,68,0.2); }}
+  .btn.danger:hover {{ background: #ff4444; color: #fff; box-shadow: 0 2px 8px rgba(255,68,68,0.3); }}
+  .btn.small {{ padding: 0.2rem 0.5rem; font-size: 0.65rem; }}
+  .btn.mesh-btn {{ background: rgba(0,204,136,0.12); color: var(--mesh);
+                    border: 1px solid rgba(0,204,136,0.2); }}
+  .btn.mesh-btn:hover {{ background: var(--green-hover); color: #000;
+                          box-shadow: 0 2px 8px rgba(0,230,138,0.25); }}
+  .btn.green {{ background: var(--green-bg); color: var(--green); border: 1px solid rgba(0,230,138,0.2); }}
+  .btn.green:hover {{ background: var(--green-hover); color: #000; }}
+
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; }}
+
+  .card {{ background: var(--card); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 1rem;
+           transition: border-color var(--transition); }}
+  .card:hover {{ border-color: var(--border-light); }}
+  .card h2 {{ font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+              letter-spacing: 0.12em; margin-bottom: 0.6rem; font-weight: 700; }}
+  .value {{ font-size: 1.6rem; font-weight: 800; font-family: inherit;
+            background: linear-gradient(135deg, var(--text), var(--muted));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; }}
+  .label {{ color: var(--dim); font-size: 0.7rem; margin-top: 0.15rem; }}
+
+  .tab-bar {{ display: flex; gap: 0; margin-bottom: 1rem;
+              border-bottom: 2px solid var(--border); }}
+  .tab {{ padding: 0.55rem 1rem; cursor: pointer; color: var(--dim);
+          font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em;
+          border-bottom: 2px solid transparent; margin-bottom: -2px;
+          transition: all var(--transition); text-transform: uppercase; }}
+  .tab:hover {{ color: var(--text); }}
+  .tab.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+
+  .panel {{ display: none; animation: fadeIn 0.2s ease; }}
+  .panel.active {{ display: block; }}
+  @keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.75rem; }}
+  th, td {{ padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }}
+  th {{ color: var(--dim); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }}
+  tr:hover td {{ background: rgba(255,255,255,0.02); }}
+
+  input, select {{ background: var(--surface); border: 1px solid var(--border);
+                   color: var(--text); padding: 0.35rem 0.55rem;
+                   border-radius: var(--radius-sm); font-size: 0.75rem;
+                   font-family: inherit; transition: border-color var(--transition); }}
+  input:focus, select:focus {{ outline: none; border-color: var(--accent);
+                                box-shadow: 0 0 0 2px rgba(233,69,96,0.15); }}
+  textarea {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
+              padding: 0.5rem; border-radius: var(--radius-sm); font-size: 0.75rem;
+              width: 100%; font-family: inherit; resize: vertical;
+              transition: border-color var(--transition); }}
+  textarea:focus {{ outline: none; border-color: var(--accent);
+                    box-shadow: 0 0 0 2px rgba(233,69,96,0.15); }}
+
+  .form-row {{ display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }}
+
+  .event-log {{ max-height: 180px; overflow-y: auto; font-size: 0.7rem;
+                scrollbar-width: thin; scrollbar-color: var(--border) transparent; }}
+  .event-log div {{ padding: 0.2rem 0; border-bottom: 1px solid var(--border); }}
+  .ev-start {{ color: var(--green); }}
+  .ev-stop {{ color: var(--danger); }}
+  .ev-mesh {{ color: var(--mesh); }}
+
+  .toast {{ position: fixed; bottom: 1.5rem; right: 1.5rem;
+            background: var(--surface); color: var(--green); border: 1px solid rgba(0,230,138,0.3);
+            padding: 0.7rem 1.2rem; border-radius: var(--radius); opacity: 0;
+            transform: translateY(12px); transition: all 0.3s ease; z-index: 100;
+            font-size: 0.75rem; font-weight: 600;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); }}
+  .toast.show {{ opacity: 1; transform: translateY(0); }}
+
+  .mono {{ font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; }}
+  .inline-code {{ background: var(--surface2); padding: 0.1rem 0.3rem; border-radius: 3px;
+                   font-size: 0.7rem; border: 1px solid var(--border); }}
+
+  .section-title {{ font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+                    letter-spacing: 0.12em; font-weight: 700; margin: 0.75rem 0 0.5rem 0;
+                    padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }}
+
+  .quick-actions {{ display: flex; gap: 0.4rem; flex-wrap: wrap; }}
+
+  .toggle-row {{ display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }}
+  .toggle-row:last-child {{ border-bottom: none; }}
+  .toggle-label {{ font-size: 0.75rem; }}
+  .toggle-desc {{ font-size: 0.65rem; color: var(--dim); margin-top: 0.1rem; }}
+  .switch {{ position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }}
+  .switch input {{ opacity: 0; width: 0; height: 0; }}
+  .slider {{ position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; transition: var(--transition); }}
+  .slider:before {{ position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--dim); border-radius: 50%; transition: var(--transition); }}
+  .switch input:checked + .slider {{ background: var(--green-bg); border-color: rgba(0,230,138,0.3); }}
+  .switch input:checked + .slider:before {{ transform: translateX(16px); background: var(--green); }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>CPIP <span class="version">v5</span> — {hostname} <span style="color:var(--muted);font-weight:400">| {pot_id}</span></h1>
+  <div class="sub">{version} — Coffee Pot Internet Protocol + Mesh + PQ-Crypto</div>
+</div>
+<div class="container">
+  <div class="status-bar">
+    <span id="brewBadge" class="badge idle"><span class="dot"></span> IDLE</span>
+    <span id="gpioBadge" class="badge {gpio_class}">{gpio_status}</span>
+    <span id="meshBadge" class="badge {mesh_class}"><span class="dot"></span> {mesh_status}</span>
+    <span id="covertBadge" class="badge {covert_class}">{covert_status}</span>
+    <span id="itfBadge" class="badge idle">ITF</span>
+    <span id="ntpBadge" class="badge enabled"><span class="dot"></span> NTP</span>
+    <span id="sseBadge" class="badge idle">SSE</span>
+    <span class="spacer"></span>
+    <button class="btn secondary" onclick="brew('coffee')">☕ Brew</button>
+    <button class="btn secondary" onclick="brew('tea')">🍵 Tea</button>
+    <button class="btn outline" onclick="stopBrew()">⏹ Stop</button>
+    <button class="btn outline" onclick="repeatBrew()" title="Repeat last brew">🔁 Repeat</button>
+    <button class="btn mesh-btn" onclick="scanMesh()">📡 Scan</button>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab active" data-tab="brew" onclick="switchTab('brew')">1:☕ Brew</div>
+    <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">2:📡 Mesh</div>
+    <div class="tab" data-tab="covert" onclick="switchTab('covert')">3:🔒 Covert</div>
+    <div class="tab" data-tab="itf" onclick="switchTab('itf')">4:🛡 ITF</div>
+    <div class="tab" data-tab="crypto" onclick="switchTab('crypto')">5:🔐 Crypto</div>
+    <div class="tab" data-tab="incident" onclick="switchTab('incident')">6:🚨 IR</div>
+    <div class="tab" data-tab="signal" onclick="switchTab('signal')">7:📡 Signal</div>
+    <div class="tab" data-tab="diag" onclick="switchTab('diag')">8:🔧 Diag</div>
+    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">9:⏰ Schedule</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
+    <div class="tab" data-tab="antiisp" onclick="switchTab('antiisp')">🌐 Anti-ISP</div>
+    <div class="tab" data-tab="stingray" onclick="switchTab('stingray')">📡 Anti-Stingray</div>
+    <div class="tab" data-tab="surveillance" onclick="switchTab('surveillance')">V:🛡️ Anti-Surveillance</div>
+    <div class="tab" data-tab="neutrality" onclick="switchTab('neutrality')">⚖️ Net Neutrality</div>
+
+    <div class="tab" data-tab="wot" onclick="switchTab('wot')">🔑 WoT</div>
+    <div class="tab" data-tab="dns" onclick="switchTab('dns')">🌍 DNS</div>
+    <div class="tab" data-tab="groups" onclick="switchTab('groups')">👥 Groups</div>
+    <div class="tab" data-tab="sync" onclick="switchTab('sync')">Y:🔄 Sync</div>
+    <div class="tab" data-tab="bond" onclick="switchTab('bond')">🔗 Bond</div>
+    <div class="tab" data-tab="drops" onclick="switchTab('drops')">L:📮 Drops</div>
+  </div>
+
+  <div id="panel-brew" class="panel active">
+    <div class="grid">
+      <div class="card"><h2>Device</h2><div class="value">{device}</div><div class="label">{beverages}</div></div>
+      <div class="card"><h2>State</h2><div class="value" id="stateVal">—</div><div class="label" id="stateDet">Waiting</div><div style="margin-top:0.5rem;display:none" id="brewProgressWrap"><div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div id="brewProgressBar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--green));width:0%;transition:width 1s linear"></div></div><div style="font-size:0.6rem;color:var(--dim);margin-top:0.2rem" id="brewProgressLabel"></div></div></div>
+      <div class="card"><h2>Brews</h2><div class="value" id="brewCount">0</div><div class="label">Total completed</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Quick Brew</h2>
+      <div class="form-row">
+        <select id="brewType">
+          <option value="coffee">Coffee</option><option value="tea">Tea</option>
+          <option value="espresso">Espresso</option><option value="latte">Latte</option>
+          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
+          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+          <option value="matcha">Matcha</option>
+        </select>
+        <select id="brewTemp"><option value="">Hot</option><option value="iced">Iced</option></select>
+        <select id="brewMilk"><option value="">No milk</option><option value="milk;variety=whole">Whole milk</option><option value="milk;variety=cream">Cream</option><option value="milk;variety=skim">Skim</option><option value="milk;variety=oat">Oat</option><option value="milk;variety=almond">Almond</option></select>
+        <select id="brewSugar"><option value="">No sugar</option><option value="sugar;variety=white">White</option><option value="sugar;variety=brown">Brown</option><option value="sugar;variety=honey">Honey</option></select>
+        <select id="brewSyrup"><option value="">No syrup</option><option value="syrup;variety=vanilla">Vanilla</option><option value="syrup;variety=caramel">Caramel</option><option value="syrup;variety=hazelnut">Hazelnut</option></select>
+        <select id="brewSpice"><option value="">No spice</option><option value="spice;variety=cinnamon">Cinnamon</option><option value="spice;variety=cardamom">Cardamom</option><option value="spice;variety=nutmeg">Nutmeg</option></select>
+        <select id="brewAlcohol"><option value="">No alcohol</option><option value="alcohol;variety=whiskey">Whiskey</option><option value="alcohol;variety=rum">Rum</option><option value="alcohol;variety=vodka">Vodka</option><option value="alcohol;variety=baileys">Baileys</option><option value="alcohol;variety=kahlua">Kahlua</option><option value="alcohol;variety=amaretto">Amaretto</option></select>
+        <button class="btn" onclick="brewCustom()">Brew with additions</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-mesh" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Peers</h2><div class="value" id="meshPeers">0</div><div class="label">On network</div></div>
+      <div class="card"><h2>Inbox</h2><div class="value" id="inboxCount">0</div><div class="label">Messages received</div></div>
+      <div class="card"><h2>Queued</h2><div class="value" id="queuedCount">0</div><div class="label">Store-and-forward</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Satellite <span id="satBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
+          <span id="satCoords">—</span>
+          <span id="satPort" style="display:none"></span>
+          <span id="satRelay" style="display:none"></span>
+          <span id="satPeersCount">0 sat-peers</span>
+          <span id="satBootstrap">—</span>
+        </div>
+        <div id="satPeerList" style="margin-top:0.3rem;font-size:0.7rem"></div>
+        <div style="margin-top:0.5rem">
+          <button class="btn small secondary" id="satToggleBtn" onclick="toggleSat()">Enable</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Mobile <span id="mobBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
+          <span id="mobIface">—</span>
+          <span id="mobPort" style="display:none"></span>
+          <span id="mobTelemetry" style="display:none"></span>
+          <span id="mobPeersCount">0 mobile-peers</span>
+          <span id="mobSignal">—</span>
+          <span id="mobSignalDetail" style="display:none"></span>
+          <span id="mobBootstrap" style="font-size:0.65rem">—</span>
+        </div>
+        <div id="mobPeerList" style="margin-top:0.3rem;font-size:0.7rem"></div>
+        <div style="margin-top:0.5rem">
+          <button class="btn small secondary" id="mobToggleBtn" onclick="toggleMobile()">Enable</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Radio <span id="radioBadge" class="badge idle">OFF</span></h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.7rem;color:var(--muted)">
+          <span id="radioMode">—</span>
+          <span id="radioFreq">—</span>
+          <span id="radioBw">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Send Message</h2>
+      <div class="form-row">
+        <input type="text" id="meshDst" placeholder="Destination pot ID" style="width:140px">
+        <input type="text" id="meshMsg" placeholder="Message text" style="flex:1">
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+          <input type="checkbox" id="meshCovert"> Covert
+        </label>
+        <button class="btn mesh-btn" onclick="sendMesh()">Send</button>
+        <button class="btn mesh-btn" onclick="broadcastMesh()">Broadcast</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Peers <span id="peerCount" style="color:var(--dim);font-weight:400">(0)</span></h2>
+      <div id="peerList"><div style="color:var(--dim)">Scanning…</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Inbox Messages</h2>
+      <div id="inboxList"><div style="color:var(--dim)">No messages</div></div>
+    </div>
+  </div>
+
+  <div id="panel-covert" class="panel">
+    <div class="grid">
+      <div class="card">
+        <h2>Encode Message</h2>
+        <textarea id="covertInput" rows="3" placeholder="Message to hide in coffee brew request…"></textarea>
+        <div class="form-row" style="margin-top:0.5rem">
+          <input type="text" id="covertDst" placeholder="Dest pot (optional)" style="width:140px">
+          <select id="covertRecipe">
+            <option value="espresso">Espresso</option>
+            <option value="pour-over">Pour Over</option>
+            <option value="french-press">French Press</option>
+            <option value="cold-brew">Cold Brew</option>
+            <option value="moka">Moka Pot</option>
+          </select>
+          <button class="btn" onclick="encodeCovert()">Encode</button>
+        </div>
+        <div id="covertResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
+      </div>
+      <div class="card">
+        <h2>Decode Message</h2>
+        <textarea id="covertHeader" rows="3" placeholder="Paste Accept-Additions header value…"></textarea>
+        <div class="form-row" style="margin-top:0.5rem">
+          <button class="btn" onclick="decodeCovert()">Decode</button>
+        </div>
+        <div id="decodeResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Covert Message History</h2>
+      <div id="covertHistory"><div style="color:var(--dim)">No messages sent yet</div></div>
+    </div>
+  </div>
+
+  <div id="panel-itf" class="panel">
+    <div class="grid">
+      <div class="card"><h2>418 Teapot</h2><div class="value" id="itf418">—</div><div class="label">Defense posture</div></div>
+      <div class="card"><h2>Stealth</h2><div class="value" id="itfStealth">—</div><div class="label">Stealth mode <button class="btn small outline" id="stealthToggleBtn" onclick="toggleStealth()" style="margin-left:0.3rem">Toggle</button></div></div>
+      <div class="card"><h2>Port Hop</h2><div class="value" id="itfHop">—</div><div class="label"><span id="itfHopInterval"></span></div></div>
+      <div class="card"><h2>Latent Ports</h2><div class="value" id="itfLatent">—</div><div class="label">Backup listener ports</div></div>
+      <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <h2 style="margin:0">Blacklist</h2>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn outline small" onclick="exportBlacklist()">Export</button>
+          <button class="btn danger small" onclick="clearBlacklist()">Clear All</button>
+        </div>
+      </div>
+      <div id="itfBlacklist"><div style="color:var(--dim)">No addresses blacklisted</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Blacklist Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfBlacklistAddr" placeholder="IP address" style="flex:1">
+          <select id="itfBlacklistTtl" style="width:7rem">
+            <option value="300">5 min</option>
+            <option value="3600" selected>1 hour</option>
+            <option value="86400">24 hours</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="31536000">1 year</option>
+          </select>
+          <button class="btn secondary" onclick="blacklistAddr()">Block</button>
+        </div>
+        <input type="text" id="itfBlacklistReason" placeholder="Reason (optional)" style="width:100%;margin-top:0.3rem">
+      </div>
+      <div class="card">
+        <h2>Bulk Blacklist</h2>
+        <textarea id="itfBulkAddrs" rows="3" placeholder="One IP per line (or comma-separated)"></textarea>
+        <div style="display:flex;gap:0.5rem;margin-top:0.3rem;align-items:center">
+          <select id="itfBulkTtl" style="width:7rem">
+            <option value="300">5 min</option>
+            <option value="3600" selected>1 hour</option>
+            <option value="86400">24 hours</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="31536000">1 year</option>
+          </select>
+          <button class="btn secondary" onclick="bulkBlacklist()">Block All</button>
+        </div>
+        <div id="itfBulkResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+      </div>
+      <div class="card">
+        <h2>Whitelist Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfWhitelistAddr" placeholder="IP address" style="flex:1">
+          <button class="btn secondary" onclick="whitelistAddr()">Remove</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Probe Address</h2>
+        <div class="form-row">
+          <input type="text" id="itfProbeAddr" placeholder="IP address" style="flex:1">
+          <button class="btn secondary" onclick="probeAddr()">Probe</button>
+        </div>
+        <div id="itfProbeResult" style="margin-top:0.5rem;font-size:0.7rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Import Blacklist</h2>
+      <textarea id="itfImportAddrs" rows="3" placeholder="Paste IPs (one per line, comma-separated, or CIDR notation)"></textarea>
+      <div style="display:flex;gap:0.5rem;margin-top:0.3rem;align-items:center">
+        <select id="itfImportTtl" style="width:7rem">
+          <option value="300">5 min</option>
+          <option value="3600" selected>1 hour</option>
+          <option value="86400">24 hours</option>
+          <option value="604800">7 days</option>
+          <option value="2592000">30 days</option>
+          <option value="31536000">1 year</option>
+        </select>
+        <button class="btn secondary" onclick="importBlacklist()">Import &amp; Block</button>
+      </div>
+      <div id="itfImportResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Detected Tools <span id="itfToolsCount" style="color:var(--dim);font-weight:400">(0)</span></h2>
+      <div id="itfTools"><div style="color:var(--dim)">No tools detected yet</div></div>
+    </div>
+  </div>
+
+
+  <div id="panel-schedule" class="panel">
+    <div class="card">
+      <h2>Schedule Brew</h2>
+      <div class="form-row">
+        <select id="schType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
+        <input type="number" id="schSeconds" value="30" min="5" style="width:80px">
+        <button class="btn secondary" onclick="scheduleIn()">In X seconds</button>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <input type="datetime-local" id="schDatetime">
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+          <input type="checkbox" id="schRecurring"> Daily
+        </label>
+        <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
+      </div>
+      <div id="scheduleList" style="margin-top:0.75rem"></div>
+    </div>
+  </div>
+
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <h2>Brew History</h2>
+      <div class="form-row" style="margin-bottom:0.5rem">
+        <select id="histFilter">
+          <option value="">All beverages</option>
+          <option value="coffee">Coffee</option><option value="tea">Tea</option>
+          <option value="espresso">Espresso</option><option value="latte">Latte</option>
+          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
+          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+        </select>
+        <button class="btn small danger" onclick="clearHistory()">Clear</button>
+      </div>
+      <div id="brewHistory"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  
+  <div id="panel-crypto" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Cipher</h2><div class="value" style="font-size:0.9rem" id="cryptoCipher">—</div><div class="label">Encryption engine</div></div>
+      <div class="card"><h2>ECC</h2><div class="value" style="font-size:0.9rem" id="cryptoECC">—</div><div class="label">Elliptic curve</div></div>
+      <div class="card"><h2>PQ-KEM</h2><div class="value" style="font-size:0.9rem" id="cryptoPQ">—</div><div class="label">Post-quantum</div></div>
+      <div class="card"><h2>E2EE</h2><div class="value" style="font-size:0.9rem" id="cryptoE2EE">—</div><div class="label">End-to-end</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Cryptographic Details</h2>
+      <div id="cryptoDetails" style="font-size:0.75rem;color:var(--muted)">Loading…</div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>Key Rotation</h2>
+        <div class="form-row">
+          <button class="btn" onclick="rotateKeys()">🔄 Rotate Keys</button>
+          <button class="btn outline" style="margin-left:0.5rem" onclick="showCryptoStatus()">↻ Refresh</button>
+        </div>
+        <div id="keyRotResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Emergency</h2>
+        <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.3rem">⚠ Activating emergency mode rotates keys and goes stealth</div>
+        <div class="form-row">
+          <button class="btn" style="background:#aa0000" onclick="emergencyActivate()">🚨 EMERGENCY</button>
+          <button class="btn secondary" onclick="emergencyDeactivate()">Deactivate</button>
+        </div>
+        <div id="emergencyResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-incident" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Alerts</h2><div class="value" id="irAlertCount">0</div><div class="label">Total incidents</div></div>
+      <div class="card"><h2>Critical</h2><div class="value" id="irCritical">0</div><div class="label">Critical alerts</div></div>
+      <div class="card"><h2>Auto-Response</h2><div class="value" id="irAutoResp">—</div><div class="label"><button class="btn small outline" onclick="toggleAutoResp()">Toggle</button></div></div>
+      <div class="card"><h2>Audit Chain</h2><div class="value" id="irChainValid">—</div><div class="label">Tamper evidence</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Recent Alerts <button class="btn small outline" onclick="clearAlerts()" style="margin-left:0.5rem">Clear</button></h2>
+      <div id="irAlertList" style="max-height:200px;overflow-y:auto;font-size:0.75rem">Loading…</div>
+    </div>
+  </div>
+
+  <div id="panel-signal" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Mesh Traffic</h2><div class="value" id="sigMesh">0</div><div class="label">recv/s · <span id="sigMeshErr">0</span> errors</div></div>
+      <div class="card"><h2>HTTP Traffic</h2><div class="value" id="sigHttp">0</div><div class="label">rps · <span id="sigHttp418">0</span> blocked</div></div>
+      <div class="card"><h2>Satellite</h2><div class="value" id="sigSat">0</div><div class="label">sat messages</div></div>
+      <div class="card"><h2>Uptime</h2><div class="value" id="sigUptime">0s</div><div class="label">Since start</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Link Quality</h2>
+      <div id="sigLinkQuality" style="font-size:0.75rem;color:var(--muted)">No peer data yet</div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Emergency Mode</h2>
+      <div id="sigEmergency" style="font-size:0.75rem;color:var(--muted)">Normal operations</div>
+    </div>
+  </div>
+
+  <div id="panel-diag" class="panel">
+    <div class="grid">
+      <div class="card">
+        <h2>TCP Ping</h2>
+        <div class="form-row">
+          <input type="text" id="diagPingHost" placeholder="Host" style="flex:2">
+          <input type="number" id="diagPingPort" placeholder="4180" value="4180" style="width:70px">
+          <button class="btn secondary" onclick="diagPing()">Ping</button>
+        </div>
+        <div id="diagPingResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Port Scan</h2>
+        <div class="form-row">
+          <input type="text" id="diagScanHost" placeholder="Host" style="flex:2">
+          <button class="btn secondary" onclick="diagScan()">Scan</button>
+        </div>
+        <div id="diagScanResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>DNS Resolve</h2>
+        <div class="form-row">
+          <input type="text" id="diagDnsHost" placeholder="Hostname" style="flex:1">
+          <button class="btn secondary" onclick="diagDns()">Resolve</button>
+        </div>
+        <div id="diagDnsResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Traceroute</h2>
+        <div class="form-row">
+          <input type="text" id="diagTraceHost" placeholder="Host" style="flex:1">
+          <button class="btn secondary" onclick="diagTrace()">Trace</button>
+        </div>
+        <div id="diagTraceResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Network Interfaces</h2>
+      <div id="diagIfaces" style="font-size:0.75rem">Loading…</div>
+      <button class="btn small outline" onclick="diagIfaces()">Refresh</button>
+    </div>
+  </div>
+
+  <div id="panel-antiisp" class="panel">
+    <div class="grid">
+      <div class="card"><h2>STUN</h2><div class="value" id="aispExtIp">—</div><div class="label" id="aispNatType">NAT type</div></div>
+      <div class="card"><h2>UPnP</h2><div class="value" id="aispUpnp">—</div><div class="label">Port mapping</div></div>
+      <div class="card"><h2>Relay</h2><div class="value" id="aispRelayCount">0</div><div class="label">Active relays</div></div>
+      <div class="card"><h2>WSS</h2><div class="value" id="aispWss">—</div><div class="label" id="aispWssCount">0 connections</div></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h2>DNS Tunnel</h2><div class="value" id="aispDnsTun">—</div><div class="label" id="aispDnsDomain">domain</div></div>
+      <div class="card"><h2>DoH</h2><div class="value" id="aispDoh">—</div><div class="label" id="aispDohCache">0 cached</div></div>
+      <div class="card"><h2>Hole-Punch</h2><div class="value" id="aispPunchSessions">0</div><div class="label">Active sessions</div></div>
+      <div class="card"><h2>Transport</h2><div class="value" id="aispTransports">0</div><div class="label">Active methods</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-ISP Toggles</h2>
+      <div class="toggles" id="aispToggles">
+        <label class="toggle-row"><span class="tl">STUN<small>NAT hole-punch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="stun" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">UPnP<small>Port mapping</small></span>
+          <span class="switch"><input type="checkbox" data-feat="upnp" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Relay<small>Mesh relay pool</small></span>
+          <span class="switch"><input type="checkbox" data-feat="relay" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DNS Tunnel<small>CNS exfil</small></span>
+          <span class="switch"><input type="checkbox" data-feat="dns_tunnel" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">WSS Tunnel<small>WebSocket relay</small></span>
+          <span class="switch"><input type="checkbox" data-feat="wss" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DoH<small>Encrypted DNS</small></span>
+          <span class="switch"><input type="checkbox" data-feat="doh" onchange="aispToggle(this)"><span class="slider"></span></span></label>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-ISP Actions</h2>
+      <div class="form-row">
+        <button class="btn" onclick="aispRefresh()">🔄 Refresh All</button>
+        <button class="btn outline" onclick="aispHolePunch()">🔗 Hole-Punch Test</button>
+      </div>
+      <div id="aispResult" style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem"></div>
+    </div>
+  </div>
+
+  <div id="panel-stingray" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Threat Level</h2><div class="value" id="stThreat">—</div><div class="label" id="stThreatLabel">scanning</div></div>
+      <div class="card"><h2>Cell Tower</h2><div class="value" id="stMCC">—</div><div class="label" id="stCellDetail">MCC/MNC</div></div>
+      <div class="card"><h2>Signal</h2><div class="value" id="stSignal">—</div><div class="label" id="stRAT">RAT type</div></div>
+      <div class="card"><h2>Scans</h2><div class="value" id="stScans">0</div><div class="label">cellular scans</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-Stingray Toggles</h2>
+      <div class="toggles" id="stToggles">
+        <label class="toggle-row"><span class="tl">Detection<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Cell Scan<small>MCC/MNC/LAC</small></span>
+          <span class="switch"><input type="checkbox" data-feat="cell_scan" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">RF Scan<small>Spectrum anomalies</small></span>
+          <span class="switch"><input type="checkbox" data-feat="rf_scan" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Signal Anomaly<small>Power delta</small></span>
+          <span class="switch"><input type="checkbox" data-feat="signal_anomaly" onchange="stToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Known Sig<small>IMSI catcher DB</small></span>
+          <span class="switch"><input type="checkbox" data-feat="known_signatures" onchange="stToggle(this)"><span class="slider"></span></span></label>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <button class="btn outline small" onclick="stRescan()">🔄 Rescan Now</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Stingray Alerts</h2>
+      <div id="stAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
+    </div>
+  </div>
+
+  <div id="panel-surveillance" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Threat Level</h2><div class="value" id="asThreat">—</div><div class="label" id="asThreatLabel">monitoring</div></div>
+      <div class="card"><h2>DPI Signatures</h2><div class="value" id="asDPI">0</div><div class="label">loaded</div></div>
+      <div class="card"><h2>SSL Intercept</h2><div class="value" id="asSSL">—</div><div class="label">certificate chain</div></div>
+      <div class="card"><h2>Process Integrity</h2><div class="value" id="asProc">—</div><div class="label">injection check</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Anti-Surveillance Toggles</h2>
+      <div class="toggles" id="asToggles">
+        <label class="toggle-row"><span class="tl">Detection<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">DPI Evasion<small>Traffic shaping</small></span>
+          <span class="switch"><input type="checkbox" data-feat="dpi_evasion" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Traffic Obfuscation<small>Pad/garble</small></span>
+          <span class="switch"><input type="checkbox" data-feat="traffic_obfuscation" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Metadata Strip<small>Header cleanup</small></span>
+          <span class="switch"><input type="checkbox" data-feat="metadata_strip" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">ExploitKit Detect<small>0-click kits</small></span>
+          <span class="switch"><input type="checkbox" data-feat="exploitkit_detect" onchange="asToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Proc Inject Detect<small>Hooking</small></span>
+          <span class="switch"><input type="checkbox" data-feat="process_inject_detect" onchange="asToggle(this)"><span class="slider"></span></span></label>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <button class="btn outline small" onclick="asScan()">🔄 Scan Now</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Surveillance Alerts</h2>
+      <div id="asAlerts" style="font-size:0.75rem;color:var(--muted)">No alerts</div>
+    </div>
+  </div>
+
+  <div id="panel-neutrality" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Throttle</h2><div class="value" id="nnThrottle">—</div><div class="label">bandwidth detection</div></div>
+      <div class="card"><h2>Masked</h2><div class="value" id="nnMasked">0</div><div class="label">packets disguised</div></div>
+      <div class="card"><h2>Fragmented</h2><div class="value" id="nnFrag">0</div><div class="label">DPI evasion frags</div></div>
+      <div class="card"><h2>Jitter</h2><div class="value" id="nnJitter">0</div><div class="label">timing injections</div></div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Net Neutrality Toggles</h2>
+      <div class="toggles" id="nnToggles">
+        <label class="toggle-row"><span class="tl">Defense<small>Master switch</small></span>
+          <span class="switch"><input type="checkbox" data-feat="enabled" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">BW Monitor<small>Sampling</small></span>
+          <span class="switch"><input type="checkbox" data-feat="bandwidth_monitor" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Proto Masquerade<small>Disguise as web</small></span>
+          <span class="switch"><input type="checkbox" data-feat="protocol_masquerade" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Fragmentation<small>DPI evasion</small></span>
+          <span class="switch"><input type="checkbox" data-feat="fragmentation" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Throttle Detect<small>Rate analysis</small></span>
+          <span class="switch"><input type="checkbox" data-feat="throttle_detect" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+        <label class="toggle-row"><span class="tl">Jitter Injection<small>Timing noise</small></span>
+          <span class="switch"><input type="checkbox" data-feat="jitter_injection" onchange="nnToggle(this)"><span class="slider"></span></span></label>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="panel-wot" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Identity</h2><div class="value" style="font-size:0.9rem" id="wotMyId">—</div><div class="label">Your pot identity</div></div>
+      <div class="card"><h2>Known Identities</h2><div class="value" id="wotCount">0</div><div class="label">Registered on mesh</div></div>
+      <div class="card"><h2>Trust Signatures</h2><div class="value" id="wotSigs">0</div><div class="label">Vouches received</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <h2 style="margin:0">Identities</h2>
+        <button class="btn small" onclick="wotPublish()">Publish Identity</button>
+      </div>
+      <div id="wotIdentities" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Vouch for a Peer</h2>
+      <div class="form-row">
+        <input type="text" id="wotVouchTarget" placeholder="Target pot ID (full or prefix)" style="flex:1">
+        <select id="wotVouchLevel">
+          <option value="1">Acquaintance</option>
+          <option value="2">Trusted</option>
+          <option value="3">Highly Trusted</option>
+        </select>
+        <input type="text" id="wotVouchNote" placeholder="Note (optional)" style="flex:1">
+        <button class="btn" onclick="wotVouch()">Vouch</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Trust Graph</h2>
+      <div id="wotGraph" style="font-size:0.75rem;color:var(--muted)">Loading…</div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Trust Signatures</h2>
+      <div id="wotSigList" style="font-size:0.75rem;color:var(--muted)">Loading…</div>
+    </div>
+  </div>
+
+  <div id="panel-dns" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Records</h2><div class="value" id="dnsCount">0</div><div class="label">.pot names registered</div></div>
+      <div class="card"><h2>Status</h2><div class="value" style="font-size:0.9rem" id="dnsStatus">—</div><div class="label">Distributed DNS</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.75rem">
+      <div class="card">
+        <h2>Register Name</h2>
+        <div class="form-row">
+          <input type="text" id="dnsRegName" placeholder="my-coffee.pot" style="flex:1">
+          <button class="btn" onclick="dnsRegister()">Register</button>
+        </div>
+        <div id="dnsRegResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+      </div>
+      <div class="card">
+        <h2>Resolve Name</h2>
+        <div class="form-row">
+          <input type="text" id="dnsResolveName" placeholder="my-coffee.pot" style="flex:1">
+          <button class="btn secondary" onclick="dnsResolve()">Resolve</button>
+        </div>
+        <div id="dnsResolveResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+      </div>
+      <div class="card">
+        <h2>Remove Name</h2>
+        <div class="form-row">
+          <input type="text" id="dnsRemoveName" placeholder="my-coffee.pot" style="flex:1">
+          <button class="btn danger" onclick="dnsRemove()">Remove</button>
+        </div>
+        <div id="dnsRemoveResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">All Records</h2>
+        <button class="btn small outline" onclick="dnsCleanup()">Cleanup Expired</button>
+      </div>
+      <div id="dnsRecords" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div id="panel-groups" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Groups</h2><div class="value" id="grpCount">0</div><div class="label">Active group chats</div></div>
+      <div class="card"><h2>Members</h2><div class="value" id="grpMembers">0</div><div class="label">Total across groups</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.75rem">
+      <div class="card">
+        <h2>Create Group</h2>
+        <div class="form-row">
+          <input type="text" id="grpName" placeholder="Group name" style="flex:1">
+          <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+            <input type="checkbox" id="grpE2ee" checked> E2EE
+          </label>
+          <button class="btn" onclick="grpCreate()">Create</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Join Group</h2>
+        <div class="form-row">
+          <input type="text" id="grpJoinId" placeholder="Group ID" style="flex:1">
+          <button class="btn secondary" onclick="grpJoin()">Join</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Your Groups</h2>
+      <div id="grpList" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Send to Group</h2>
+      <div class="form-row">
+        <select id="grpTarget" style="min-width:140px"><option value="">Select group…</option></select>
+        <input type="text" id="grpMsg" placeholder="Message" style="flex:1">
+        <button class="btn mesh-btn" onclick="grpSend()">Send</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Group Messages</h2>
+      <div id="grpMessages" style="max-height:200px;overflow-y:auto;font-size:0.75rem"><div style="color:var(--dim)">Select a group</div></div>
+    </div>
+  </div>
+
+  <div id="panel-sync" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Channels</h2><div class="value" id="syncChannels">0</div><div class="label">Sync channels</div></div>
+      <div class="card"><h2>Pending</h2><div class="value" id="syncPending">0</div><div class="label">Undelivered messages</div></div>
+      <div class="card"><h2>Delivered</h2><div class="value" id="syncDelivered">0</div><div class="label">Successfully synced</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.75rem">
+      <div class="card">
+        <h2>Send Offline Message</h2>
+        <div class="form-row">
+          <input type="text" id="syncChan" placeholder="Channel name" style="flex:1">
+          <input type="text" id="syncDst" placeholder="Destination pot" style="flex:1">
+          <input type="text" id="syncMsg" placeholder="Message" style="flex:1">
+          <button class="btn" onclick="syncSend()">Queue</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Request Sync</h2>
+        <div class="form-row">
+          <input type="text" id="syncReqPeer" placeholder="Peer pot ID" style="flex:1">
+          <button class="btn secondary" onclick="syncRequest()">Request</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Pending Messages</h2>
+      <div id="syncPendingList" style="font-size:0.75rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Vector Clocks</h2>
+      <div id="syncClocks" style="font-size:0.75rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div id="panel-bond" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Status</h2><div class="value" id="bondStatus">—</div><div class="label">Bandwidth bonding</div></div>
+      <div class="card"><h2>Links</h2><div class="value" id="bondLinkCount">0</div><div class="label">Active bonded links</div></div>
+      <div class="card"><h2>Aggregate BW</h2><div class="value" id="bondAggBw">—</div><div class="label">Combined throughput</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Bonding Controls</h2>
+      <div class="form-row">
+        <button class="btn" id="bondToggleBtn" onclick="bondToggle()">Enable</button>
+        <button class="btn secondary" onclick="bondProbe()">Force Probe</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Links</h2>
+      <div id="bondLinks" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div id="panel-drops" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Drops</h2><div class="value" id="dropsCount">0</div><div class="label">Active dead drops</div></div>
+      <div class="card"><h2>Claimed</h2><div class="value" id="dropsClaimed">0</div><div class="label">Successfully claimed</div></div>
+    </div>
+    <div class="grid" style="margin-top:0.75rem">
+      <div class="card">
+        <h2>Create Dead Drop</h2>
+        <textarea id="dropPayload" rows="2" placeholder="Payload (text or base64)"></textarea>
+        <div class="form-row" style="margin-top:0.3rem">
+          <input type="text" id="dropRecipient" placeholder="Recipient pot ID (optional)" style="flex:1">
+          <input type="number" id="dropTtl" placeholder="TTL (seconds)" value="3600" style="width:100px">
+          <button class="btn" onclick="dropCreate()">Create Drop</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Claim Dead Drop</h2>
+        <div class="form-row">
+          <input type="text" id="dropClaimId" placeholder="Message ID" style="flex:1">
+          <button class="btn secondary" onclick="dropClaim()">Claim</button>
+        </div>
+        <div id="dropClaimResult" style="margin-top:0.3rem;font-size:0.7rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Active Drops</h2>
+      <div id="dropList" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+<div class="card" style="margin-top:0.75rem">
+    <h2>Live Events <span style="color:var(--dim);font-weight:400;font-size:0.6rem">(brew, mesh, covert)</span></h2>
+    <div class="event-log" id="eventLog"><div style="color:var(--dim)">Waiting…</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const POT = {pot_json};
+
+function showToast(m) {{ const t = document.getElementById('toast'); t.textContent = m; t.className = 'toast show'; setTimeout(() => t.className = 'toast', 2500); }}
+
+async function api(m, p, b) {{
+  try {{
+    const o = {{ method: m, headers: {{}} }};
+    if (b) {{ o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(b); }}
+    if (m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS') {{
+      let key = sessionStorage.getItem('cpip_key') || '';
+      if (!key) {{
+        key = prompt('CPIP COVERT_KEY (required for POST/PUT/DELETE):');
+        if (key) sessionStorage.setItem('cpip_key', key);
+      }}
+      if (key) {{
+        const ts = Math.floor(Date.now() / 1000);
+        const enc = new TextEncoder();
+        const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key), {{ name: 'HMAC', hash: 'SHA-256' }}, false, ['sign']);
+        const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(ts + ':' + m + ':' + p));
+        const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+        o.headers['X-CPIP-HMAC'] = ts + ':' + hex;
+      }}
+    }}
+    const r = await fetch(p, o);
+    if (!r.ok && r.status !== 202) {{
+      const ej = await r.json().catch(() => ({{}}));
+      if (r.status === 401) {{ sessionStorage.removeItem('cpip_key'); showToast('Auth failed - re-enter key'); }}
+      showToast(ej.error || `HTTP ${{r.status}}`);
+      return ej;
+    }}
+    return await r.json();
+  }} catch(e) {{ showToast('Connection error: ' + e.message); return {{}}; }}
+}}
+
+function switchTab(name) {{
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => {{ if (t.dataset.tab === name) t.classList.add('active'); }});
+  const el = document.getElementById('panel-' + name);
+  if (el) el.classList.add('active');
+  if (name === 'mesh') {{ refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshRadio(); }}
+  if (name === 'history') {{ refreshHistory(); }}
+  if (name === 'schedule') {{ refreshSchedules(); }}
+  if (name === 'itf') {{ refreshItf(); }}
+  if (name === 'crypto') {{ showCryptoStatus(); }}
+  if (name === 'incident') {{ refreshIR(); }}
+  if (name === 'signal') {{ refreshSignal(); }}
+  if (name === 'antiisp') {{ refreshAntiISP(); }}
+  if (name === 'stingray') {{ refreshStingray(); }}
+  if (name === 'surveillance') {{ refreshSurveillance(); }}
+  if (name === 'neutrality') {{ refreshNeutrality(); }}
+  if (name === 'wot') {{ refreshWoT(); }}
+  if (name === 'dns') {{ refreshDNS(); }}
+  if (name === 'groups') {{ refreshGroups(); }}
+  if (name === 'sync') {{ refreshSync(); }}
+  if (name === 'bond') {{ refreshBond(); }}
+  if (name === 'drops') {{ refreshDrops(); }}
+}}
+
+async function refresh() {{
+  const s = await api('GET', '/cpip/status');
+  if (!s || s.error) return;
+  const badge = document.getElementById('brewBadge');
+  const sv = document.getElementById('stateVal');
+  const sd = document.getElementById('stateDet');
+  if (s.brewing) {{
+    badge.innerHTML = '<span class="dot"></span> BREWING'; badge.className = 'badge brewing';
+    sv.textContent = s.current_brew?.beverage || 'Brewing';
+    const secs = Math.floor(s.current_brew?.elapsed_seconds||0);
+    const dur = s.current_brew?.duration || s.current_brew?.brew_duration || 60;
+    const pct = Math.min(100, Math.round((secs / dur) * 100));
+    sd.textContent = `${{secs}}s / ${{dur}}s ${{s.current_brew?.id||''}}`;
+    const pw = document.getElementById('brewProgressWrap');
+    const pb = document.getElementById('brewProgressBar');
+    const pl = document.getElementById('brewProgressLabel');
+    if (pw) {{ pw.style.display = 'block'; pb.style.width = pct + '%'; pl.textContent = pct + '% complete'; }}
+  }} else {{
+    badge.innerHTML = '<span class="dot"></span> IDLE'; badge.className = 'badge idle';
+    sv.textContent = 'Idle'; sd.textContent = 'Ready';
+    const pw = document.getElementById('brewProgressWrap');
+    if (pw) pw.style.display = 'none';
+  }}
+  document.getElementById('brewCount').textContent = s.history_count || 0;
+  if (s.mesh) {{
+    document.getElementById('meshPeers').textContent = s.mesh.peers_known;
+    document.getElementById('inboxCount').textContent = s.mesh.inbox_count || 0;
+    document.getElementById('queuedCount').textContent = s.mesh.messages_queued || 0;
+  }}
+}}
+
+
+async function repeatBrew() {{
+  const h = await api('GET', '/cpip/history?limit=1');
+  if (!h || !h.history || !h.history.length) {{ showToast('No brew history'); return; }}
+  const last = h.history[0];
+  const body = {{ beverage: last.beverage }};
+  if (last.additions) body.additions = last.additions;
+  if (last.temperature) body.temperature = last.temperature;
+  const r = await api('POST', '/cpip/brew', body);
+  if (r && r.status === 'brewing') showToast('Repeating ' + last.beverage);
+  else showToast(r?.error || 'Failed');
+  refresh();
+}}
+
+function esc(s) {{ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
+
+async function refreshHistory() {{
+  const filter = document.getElementById('histFilter').value;
+  const h = await api('GET', '/cpip/history?limit=16');
+  if (!h || !h.history) return;
+  const el = document.getElementById('brewHistory');
+  if (!h.history.length) {{ el.innerHTML = '<div style="color:var(--dim)">No brews yet.</div>'; return; }}
+  let items = h.history;
+  if (filter) items = items.filter(b => b.beverage === filter);
+  if (!items.length) {{ el.innerHTML = '<div style="color:var(--dim)">No matches.</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Bev</th><th>Additions</th><th>Dur</th></tr>';
+  for (const b of items) {{
+    const t = b.started ? new Date(b.started*1000).toLocaleTimeString() : '—';
+    const add = b.additions?.map(a => esc(a.name||a)).join(',') || '—';
+    html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.65rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function clearHistory() {{
+  if (!confirm('Clear all brew history?')) return;
+  const r = await api('DELETE', '/cpip/history');
+  if (r) showToast('History cleared');
+  refreshHistory();
+}}
+
+async function refreshMesh() {{
+  const p = await api('GET', '/cpip/mesh/peers');
+  if (!p) return;
+  document.getElementById('peerCount').textContent = `(${{p.count||0}})`;
+  const el = document.getElementById('peerList');
+  if (!p.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No peers found. Tap Scan.</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Addr</th><th>Device</th><th>Seen</th><th>Hops</th></tr>';
+  for (const peer of p.peers) {{
+    const ls = peer.last_seen ? Math.floor((Date.now()/1000 - peer.last_seen)) + 's ago' : '—';
+    html += `<tr><td class="mono">${{esc(peer.pot?.slice(0,6)||'?')}}</td><td>${{esc(peer.hostname||'?')}}</td><td>${{esc(peer.addr||'?')}}</td><td>${{esc((peer.device||'?').slice(0,10))}}</td><td>${{esc(ls)}}</td><td>${{esc(peer.hops)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshInbox() {{
+  const ib = await api('GET', '/cpip/mesh/inbox');
+  if (!ib) return;
+  const el = document.getElementById('inboxList');
+  if (!ib.messages?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No messages</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>From</th><th>Message</th><th>Ch</th></tr>';
+  for (const m of ib.messages.slice().reverse()) {{
+    const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString() : '—';
+    let data = m.data || '';
+    data = data.replace(/[^\x20-\x7E\n\r\t]/g, '\uFFFD');
+    if (data.length > 50) data = data.slice(0, 50) + '\u2026';
+    const ch = m.channel || 'mesh';
+    const e2eeTag = m.e2ee ? (m.e2ee_decrypted ? ' <span style="color:var(--green)">\uD83D\uDD12</span>' : ' <span style="color:var(--orange)">\uD83D\uDD12?</span>') : '';
+    html += `<tr><td>${{esc(t)}}</td><td class="mono" style="font-size:0.65rem">${{esc(m.from?.slice(0,6)||'?')}}</td><td style="font-size:0.65rem">${{esc(data)}}${{e2eeTag}}</td><td>${{esc(ch)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshSat() {{
+  const s = await api('GET', '/cpip/mesh/sat');
+  if (!s || !s.enabled) {{
+    document.getElementById('satBadge').textContent = 'OFF';
+    document.getElementById('satBadge').className = 'badge idle';
+    document.getElementById('satCoords').textContent = 'Satellite disabled';
+    document.getElementById('satPort').style.display = 'none';
+    document.getElementById('satRelay').style.display = 'none';
+    return;
+  }}
+  document.getElementById('satBadge').innerHTML = '<span class="dot"></span> ON';
+  document.getElementById('satBadge').className = 'badge enabled';
+  document.getElementById('satCoords').textContent = `${{s.coords?.lat||'?'}}°, ${{s.coords?.lon||'?'}}°${{s.coords?.alt ? ' '+s.coords.alt+'m' : ''}}`;
+  const portEl = document.getElementById('satPort');
+  portEl.textContent = `port: ${{s.port}}`;
+  portEl.style.display = 'inline';
+  const relayEl = document.getElementById('satRelay');
+  relayEl.textContent = s.relay ? 'relay: ON' : 'relay: OFF';
+  relayEl.style.display = 'inline';
+  relayEl.style.color = s.relay ? 'var(--green)' : 'var(--dim)';
+  document.getElementById('satPeersCount').textContent = `${{s.peers_known||0}} sat-peer(s)`;
+  document.getElementById('satBootstrap').textContent = s.bootstrap?.length ? `bootstrap: ${{s.bootstrap.join(', ')}}` : 'no bootstrap';
+  const el = document.getElementById('satPeerList');
+  if (!s.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No satellite peers yet</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Coords</th><th>RTT</th><th>Seen</th></tr>';
+  for (const p of s.peers) {{
+    const t = p.last_seen ? Math.floor((Date.now()/1000 - p.last_seen)) + 's ago' : '—';
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc((p.lat||'?').toFixed?(p.lat||'?').toFixed(1):(p.lat||'?'))}},${{esc((p.lon||'?').toFixed?(p.lon||'?').toFixed(1):(p.lon||'?'))}}</td><td>${{esc(p.rtt||'?')}}ms</td><td>${{esc(t)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshMobile() {{
+  const m = await api('GET', '/cpip/mesh/mobile');
+  if (!m || !m.enabled) {{
+    document.getElementById('mobBadge').textContent = 'OFF';
+    document.getElementById('mobBadge').className = 'badge idle';
+    document.getElementById('mobIface').textContent = 'Mobile disabled';
+    document.getElementById('mobPort').style.display = 'none';
+    document.getElementById('mobTelemetry').style.display = 'none';
+    document.getElementById('mobSignalDetail').style.display = 'none';
+    return;
+  }}
+  document.getElementById('mobBadge').innerHTML = '<span class="dot"></span> ON';
+  document.getElementById('mobBadge').className = 'badge enabled';
+  document.getElementById('mobIface').textContent = m.interface || '?';
+  const portEl = document.getElementById('mobPort');
+  portEl.textContent = `port: ${{m.port}}`;
+  portEl.style.display = 'inline';
+  const telEl = document.getElementById('mobTelemetry');
+  telEl.textContent = m.telemetry ? 'telemetry: ON' : 'telemetry: OFF';
+  telEl.style.display = 'inline';
+  telEl.style.color = m.telemetry ? 'var(--green)' : 'var(--dim)';
+  document.getElementById('mobPeersCount').textContent = `${{m.peers_known||0}} mobile-peer(s)`;
+  const sig = m.signal || {{}};
+  let sigStr = '—';
+  if (sig.rssi != null) sigStr = `RSSI: ${{sig.rssi}}`;
+  else if (sig.rsrp != null) sigStr = `RSRP: ${{sig.rsrp}}`;
+  document.getElementById('mobSignal').textContent = sigStr;
+  const detEl = document.getElementById('mobSignalDetail');
+  const sinr = sig.sinr != null ? `SINR: ${{sig.sinr}}` : null;
+  const mcc = sig.mcc != null ? `MCC: ${{sig.mcc}}` : null;
+  const detParts = [sinr, mcc].filter(Boolean);
+  if (detParts.length) {{
+    detEl.textContent = detParts.join(' | ');
+    detEl.style.display = 'inline';
+  }} else {{
+    detEl.style.display = 'none';
+  }}
+  document.getElementById('mobBootstrap').textContent = m.bootstrap?.length ? `seed: ${{m.bootstrap.join(', ')}}` : 'no bootstrap';
+  const el = document.getElementById('mobPeerList');
+  if (!m.peers?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No mobile peers yet</div>'; return; }}
+  let html = '<table><tr><th>Pot</th><th>Host</th><th>Signal</th><th>Net</th><th>Hops</th></tr>';
+  for (const p of m.peers) {{
+    const sig = p.signal;
+    let sigStr = '—';
+    if (sig && typeof sig === 'object') {{ sigStr = sig.rssi != null ? sig.rssi + ' dBm' : (sig.rsrp != null ? 'RSRP ' + sig.rsrp : '—'); }}
+    else if (sig) {{ sigStr = String(sig); }}
+    html += `<tr><td class="mono">${{esc(p.pot?.slice(0,6)||'?')}}</td><td>${{esc(p.hostname||'?')}}</td><td>${{esc(sigStr)}}</td><td>${{esc(p.network||'—')}}</td><td>${{esc(p.hops||0)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshRadio() {{
+  const r = await api('GET', '/cpip/mesh/radio');
+  if (!r) return;
+  const badge = document.getElementById('radioBadge');
+  if (r.enabled) {{
+    badge.innerHTML = '<span class="dot"></span> ON'; badge.className = 'badge enabled';
+    document.getElementById('radioMode').textContent = 'mode: ' + (r.mode || '?');
+    document.getElementById('radioFreq').textContent = 'freq: ' + ((r.frequency/1e6).toFixed(1) || '?') + ' MHz';
+    document.getElementById('radioBw').textContent = 'bw: ' + ((r.bandwidth/1e3).toFixed(0) || '?') + ' kHz';
+  }} else {{
+    badge.textContent = 'OFF'; badge.className = 'badge idle';
+    document.getElementById('radioMode').textContent = 'Radio disabled';
+    document.getElementById('radioFreq').textContent = '';
+    document.getElementById('radioBw').textContent = '';
+  }}
+}}
+
+async function toggleSat() {{
+  const badge = document.getElementById('satBadge');
+  const on = badge.textContent.includes('ON');
+  const r = await api('POST', '/cpip/mesh/sat', {{ action: on ? 'disable' : 'enable' }});
+  if (r) showToast(r.status || 'Toggled');
+  await refreshSat();
+  document.getElementById('satToggleBtn').textContent = badge.textContent.includes('ON') ? 'Disable' : 'Enable';
+}}
+
+async function toggleMobile() {{
+  const badge = document.getElementById('mobBadge');
+  const on = badge.textContent.includes('ON');
+  const r = await api('POST', '/cpip/mesh/mobile', {{ action: on ? 'disable' : 'enable' }});
+  if (r) showToast(r.status || 'Toggled');
+  await refreshMobile();
+  document.getElementById('mobToggleBtn').textContent = badge.textContent.includes('ON') ? 'Disable' : 'Enable';
+}}
+
+async function toggleStealth() {{
+  const v = document.getElementById('itfStealth');
+  const on = v.textContent === 'ON';
+  const r = await api('POST', '/cpip/defense', {{ action: 'stealth', enabled: !on }});
+  if (r) showToast('Stealth: ' + (r.enabled ? 'ON' : 'OFF'));
+  refreshItf();
+}}
+
+async function scanMesh() {{
+  showToast('Scanning…');
+  try {{
+    const d = await api('GET', '/cpip/discover');
+    if (d && d.pots) showToast(`Found ${{d.count}} pot(s)`);
+    await refreshMesh();
+  }} catch(e) {{ showToast('Scan failed'); }}
+}}
+
+async function brew(type) {{
+  const r = await api('POST', '/cpip/brew', {{ beverage: type }});
+  if (r && r.status === 'brewing') showToast('Brewing ' + type);
+  else if (r && r.error) showToast(r.message || r.error);
+  refresh();
+}}
+
+async function brewCustom() {{
+  const type = document.getElementById('brewType').value;
+  const temp = document.getElementById('brewTemp').value;
+  const parts = [
+    document.getElementById('brewMilk').value,
+    document.getElementById('brewSugar').value,
+    document.getElementById('brewSyrup').value,
+    document.getElementById('brewSpice').value,
+    document.getElementById('brewAlcohol').value,
+  ].filter(p => p);
+  const additions = parts.map(p => {{ const [n,...r] = p.split(';'); const v = r.find(x => x.startsWith('variety=')); return {{ name: n, variety: v ? v.split('=')[1] : null }}; }});
+  const body = {{ beverage: type, additions }};
+  if (temp) body.temperature = temp;
+  const r = await api('POST', '/cpip/brew', body);
+  if (r && r.status === 'brewing') showToast('Brewing ' + type + ' with additions');
+  else if (r && r.error) showToast(r.message || r.error);
+  refresh();
+}}
+
+async function stopBrew() {{
+  try {{
+    const r = await fetch('/', {{ method: 'POST', headers: {{'Content-Type': 'message/coffeepot'}}, body: 'stop' }});
+    showToast(r.ok ? 'Stopped' : 'Stop failed');
+  }} catch(e) {{ showToast('Stop failed'); }}
+  refresh();
+}}
+
+async function scheduleIn() {{
+  const s = parseInt(document.getElementById('schSeconds').value) || 30;
+  const t = document.getElementById('schType').value;
+  const r = await api('POST', '/cpip/schedule', {{ in: s, beverage: t, brew_duration: 60 }});
+  if (r && r.status === 'scheduled') showToast('Scheduled ' + t + ' in ' + s + 's');
+  refreshSchedules();
+}}
+
+async function scheduleAt() {{
+  const dt = document.getElementById('schDatetime').value;
+  const t = document.getElementById('schType').value;
+  const recurring = document.getElementById('schRecurring').checked;
+  if (!dt) {{ showToast('Pick a time'); return; }}
+  const body = {{ time: new Date(dt).toISOString(), beverage: t, brew_duration: 60 }};
+  if (recurring) body.recurring = 'daily';
+  const r = await api('POST', '/cpip/schedule', body);
+  if (r && r.status === 'scheduled') showToast('Scheduled' + (recurring ? ' daily' : ''));
+  refreshSchedules();
+}}
+
+async function refreshSchedules() {{
+  const s = await api('GET', '/cpip/schedules');
+  if (!s) return;
+  const el = document.getElementById('scheduleList');
+  if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--dim);font-size:0.7rem">None</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th>Recur</th><th></th></tr>';
+  for (const sc of s.schedules) {{
+    html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
+    html += `<td>${{sc.recurring ? 'Daily' : '—'}}</td>`;
+    html += `<td><button class="btn small outline" data-sid="${{esc(sc.id)}}">✕</button></td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+  el.querySelectorAll('[data-sid]').forEach(btn => {{
+    btn.addEventListener('click', async () => {{
+      await api('DELETE', '/cpip/schedules/' + btn.dataset.sid);
+      refreshSchedules();
+    }});
+  }});
+}}
+
+async function sendMesh() {{
+  const dst = document.getElementById('meshDst').value;
+  const msg = document.getElementById('meshMsg').value;
+  const covert = document.getElementById('meshCovert').checked;
+  if (!dst || !msg) {{ showToast('Need destination + message'); return; }}
+  const r = await api('POST', '/cpip/mesh/send', {{ dst, data: msg, covert }});
+  if (r) showToast('Sent: ' + (r.status || 'ok'));
+  document.getElementById('meshMsg').value = '';
+}}
+
+async function broadcastMesh() {{
+  const msg = document.getElementById('meshMsg').value;
+  if (!msg) {{ showToast('Enter a message'); return; }}
+  const r = await api('POST', '/cpip/mesh/broadcast', {{ data: msg }});
+  if (r) showToast('Broadcast: ' + (r.peers_reached||0) + ' peers');
+  document.getElementById('meshMsg').value = '';
+}}
+
+async function encodeCovert() {{
+  const msg = document.getElementById('covertInput').value;
+  const dst = document.getElementById('covertDst').value;
+  const recipe = document.getElementById('covertRecipe').value;
+  if (!msg) {{ showToast('Enter message'); return; }}
+  const r = await api('POST', '/cpip/mesh/encode', {{ message: msg, dst, recipe }});
+  if (!r || r.status !== 'encoded') return;
+  const header = r.accept_additions_header;
+  document.getElementById('covertResult').innerHTML = `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);margin-top:0.4rem;border:1px solid var(--border)">
+    <div style="color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Accept-Additions header</div>
+    <div class="mono" style="font-size:0.65rem;word-break:break-all;color:var(--green)">${{esc(header)}}</div>
+    <div style="color:var(--dim);margin-top:0.3rem;font-size:0.6rem">Recipe: ${{esc(r.recipe)}} | ${{esc(r.encoded_length)}} bytes</div>
+    <div style="margin-top:0.4rem"><button class="btn small outline" onclick="navigator.clipboard.writeText('${{esc(header)}}');showToast('Copied')">Copy</button></div>
+  </div>`;
+  const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
+  history.unshift({{ message: msg.slice(0, 80), dst: dst || 'any', recipe, header: header.slice(0, 60) + '…', time: new Date().toLocaleString() }});
+  if (history.length > 20) history.pop();
+  localStorage.setItem('cpip_covert_history', JSON.stringify(history));
+  renderCovertHistory();
+}}
+
+function renderCovertHistory() {{
+  const el = document.getElementById('covertHistory');
+  const history = JSON.parse(localStorage.getItem('cpip_covert_history') || '[]');
+  if (!history.length) {{ el.innerHTML = '<div style="color:var(--dim)">No messages sent yet</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>To</th><th>Message</th><th>Recipe</th><th>Header</th></tr>';
+  for (const h of history) {{
+    html += `<tr><td style="font-size:0.65rem">${{esc(h.time)}}</td><td>${{esc(h.dst)}}</td><td style="font-size:0.65rem">${{esc(h.message)}}</td><td>${{esc(h.recipe)}}</td><td class="mono" style="font-size:0.6rem">${{esc(h.header)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function decodeCovert() {{
+  const header = document.getElementById('covertHeader').value;
+  if (!header) {{ showToast('Paste header value'); return; }}
+  const r = await api('POST', '/cpip/mesh/decode', {{ accept_additions: header }});
+  if (!r) return;
+  document.getElementById('decodeResult').innerHTML = r.status === 'decoded'
+    ? `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid rgba(0,230,138,0.2)"><div style="color:var(--green);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Decoded</div><div style="margin-top:0.2rem">${{esc(r.message)}}</div></div>`
+    : `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid var(--border);color:var(--dim)">${{esc(r.message)}}</div>`;
+}}
+
+async function refreshItf() {{
+  const d = await api('GET', '/cpip/defense');
+  if (!d || d.error) return;
+  const badge = document.getElementById('itfBadge');
+  if (d.stealth) {{
+    badge.innerHTML = '<span class="dot"></span> STEALTH'; badge.className = 'badge enabled';
+  }} else {{
+    badge.textContent = 'ITF'; badge.className = 'badge idle';
+  }}
+  document.getElementById('itf418').textContent = d['418_teapot'] ? 'ACTIVE' : 'INACTIVE';
+  document.getElementById('itf418').style.color = d['418_teapot'] ? 'var(--accent)' : 'var(--dim)';
+  document.getElementById('itfStealth').textContent = d.stealth ? 'ON' : 'OFF';
+  document.getElementById('itfStealth').style.color = d.stealth ? 'var(--green)' : 'var(--dim)';
+  document.getElementById('itfHop').textContent = d.port_hopping ? 'ON' : 'OFF';
+  document.getElementById('itfHop').style.color = d.port_hopping ? 'var(--green)' : 'var(--dim)';
+  document.getElementById('itfHopInterval').textContent = d.port_hopping ? d.hop_interval + 's interval' : '';
+  document.getElementById('itfLatent').textContent = d.latent_ports?.length ? d.latent_ports.join(', ') : 'None';
+  document.getElementById('itfBlackCount').textContent = d.blacklisted_addrs || 0;
+  const el = document.getElementById('itfBlacklist');
+  if (!d.blacklist_details?.length) {{ el.innerHTML = '<div style="color:var(--dim)">No addresses blacklisted</div>'; return; }}
+  let html = '<table><tr><th>IP</th><th>Reason</th><th>Expires</th><th>TTL</th><th></th></tr>';
+  for (const entry of d.blacklist_details) {{
+    const mins = Math.floor(entry.remaining / 60);
+    const hrs = Math.floor(mins / 60);
+    const dur = hrs > 0 ? hrs + 'h ' + (mins % 60) + 'm' : mins + 'm';
+    html += `<tr><td class="mono">${{esc(entry.addr)}}</td><td>${{esc(entry.reason)}}</td><td>${{dur}}</td><td>${{esc(entry.ttl)}}s</td><td><button class="btn small outline" onclick="whitelistAddr('${{esc(entry.addr)}}')">Unblock</button></td></tr>`;
+  }}
+  el.innerHTML = html;
+  const tcEl = document.getElementById('itfTools');
+  const tcCount = document.getElementById('itfToolsCount');
+  if (!d.tools_detected || !Object.keys(d.tools_detected).length) {{
+    tcCount.textContent = '(0)';
+    tcEl.innerHTML = '<div style="color:var(--dim)">No tools detected yet</div>';
+    return;
+  }}
+  tcCount.textContent = `(${{Object.keys(d.tools_detected).length}})`;
+  let thtml = '<table><tr><th>Tool</th><th>Hits</th><th>Last Seen</th><th>Sources</th></tr>';
+  const sorted = Object.entries(d.tools_detected).sort((a, b) => b[1].count - a[1].count);
+  for (const [tool, info] of sorted) {{
+    const ls = info.last_seen ? new Date(info.last_seen * 1000).toLocaleTimeString() : '—';
+    const addrs = info.addrs?.join(', ') || '—';
+    thtml += `<tr><td>${{esc(tool)}}</td><td>${{info.count}}</td><td>${{esc(ls)}}</td><td style="font-size:0.65rem" class="mono">${{esc(addrs)}}</td></tr>`;
+  }}
+  thtml += '</table>'; tcEl.innerHTML = thtml;
+}}
+
+async function whitelistAddr(addr) {{
+  addr = addr || document.getElementById('itfWhitelistAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const r = await api('POST', '/cpip/defense', {{ action: 'whitelist', addr }});
+  if (r && r.status === 'whitelisted') showToast('Whitelisted ' + addr);
+  document.getElementById('itfWhitelistAddr').value = '';
+  refreshItf();
+}}
+
+async function clearBlacklist() {{
+  if (!confirm('Clear entire blacklist?')) return;
+  const r = await api('POST', '/cpip/defense', {{ action: 'clear' }});
+  if (r && r.status === 'blacklist_cleared') showToast('Blacklist cleared');
+  refreshItf();
+}}
+
+async function probeAddr() {{
+  const addr = document.getElementById('itfProbeAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const r = await api('POST', '/cpip/defense', {{ action: 'probe', addr }});
+  const el = document.getElementById('itfProbeResult');
+  if (!r || r.status !== 'probed') {{ el.innerHTML = '<div style="color:var(--dim)">Probe failed</div>'; return; }}
+  const bl = r.blacklisted ? '<span style="color:var(--danger)">BLACKLISTED</span>' : '<span style="color:var(--green)">CLEAN</span>';
+  el.innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:var(--radius-sm);font-size:0.7rem;border:1px solid var(--border)">
+    <div>${{esc(r.addr)}} — ${{bl}}</div>
+    <div style="color:var(--dim);margin-top:0.2rem">Probes: ${{r.probe_count}} | Remaining: ${{r.remaining_seconds}}s</div>
+  </div>`;
+}}
+
+
+
+async function blacklistAddr() {{
+  const addr = document.getElementById('itfBlacklistAddr').value;
+  if (!addr) {{ showToast('Enter an IP address'); return; }}
+  const ttl = parseInt(document.getElementById('itfBlacklistTtl').value) || 3600;
+  const reason = document.getElementById('itfBlacklistReason').value || 'manual';
+  const r = await api('POST', '/cpip/defense', {{ action: 'blacklist', addr, ttl, reason }});
+  if (r && r.status === 'blacklisted') showToast('Blacklisted ' + addr + ' for ' + ttl + 's');
+  document.getElementById('itfBlacklistAddr').value = '';
+  document.getElementById('itfBlacklistReason').value = '';
+  refreshItf();
+}}
+
+async function bulkBlacklist() {{
+  const addrs = document.getElementById('itfBulkAddrs').value;
+  if (!addrs) {{ showToast('Enter IP addresses'); return; }}
+  const ttl = parseInt(document.getElementById('itfBulkTtl').value) || 3600;
+  const r = await api('POST', '/cpip/defense', {{ action: 'bulk_blacklist', addrs, ttl, reason: 'bulk_import' }});
+  const el = document.getElementById('itfBulkResult');
+  if (!r || r.status !== 'bulk_blacklisted') {{ el.innerHTML = '<div style="color:var(--danger)">Failed</div>'; return; }}
+  el.innerHTML = `<div style="color:var(--green)">Blocked ${{r.added}} | Skipped ${{r.skipped}}</div>`;
+  document.getElementById('itfBulkAddrs').value = '';
+  showToast('Bulk blacklisted ' + r.added + ' addresses');
+  refreshItf();
+}}
+
+function exportBlacklist() {{
+  const r = api('GET', '/cpip/defense');
+  r.then(d => {{
+    if (!d?.blacklist?.length) {{ showToast('Blacklist is empty'); return; }}
+    const lines = d.blacklist_details?.map(e => e.addr + ' #' + e.reason + ' ttl=' + e.ttl) || d.blacklist;
+    const text = lines.join('\n');
+    navigator.clipboard.writeText(text).then(() => showToast('Copied ' + d.blacklist.length + ' IPs to clipboard'));
+  }});
+}}
+
+async function importBlacklist() {{
+  const addrs = document.getElementById('itfImportAddrs').value;
+  if (!addrs) {{ showToast('Paste IP addresses to import'); return; }}
+  const ttl = parseInt(document.getElementById('itfImportTtl').value) || 3600;
+  const r = await api('POST', '/cpip/defense', {{ action: 'bulk_blacklist', addrs, ttl, reason: 'import' }});
+  const el = document.getElementById('itfImportResult');
+  if (!r || r.status !== 'bulk_blacklisted') {{ el.innerHTML = '<div style="color:var(--danger)">Import failed</div>'; return; }}
+  el.innerHTML = `<div style="color:var(--green)">Imported ${{r.added}} | Skipped ${{r.skipped}}</div>`;
+  document.getElementById('itfImportAddrs').value = '';
+  showToast('Imported ' + r.added + ' addresses');
+  refreshItf();
+}}
+
+
+
+async function showCryptoStatus() {{
+  const c = await api('GET', '/cpip/crypto');
+  if (!c) return;
+  document.getElementById('cryptoCipher').textContent = c.cipher || '—';
+  document.getElementById('cryptoECC').textContent = c.ecc || '—';
+  document.getElementById('cryptoPQ').textContent = c.pq_kem || '—';
+  document.getElementById('cryptoE2EE').textContent = c.e2ee || '—';
+  const det = document.getElementById('cryptoDetails');
+  det.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem">
+    <div><b>Hash:</b> ${{esc(c.hash||'—')}}</div>
+    <div><b>HMAC:</b> ${{esc(c.hmac||'—')}}</div>
+    <div><b>KDF:</b> ${{esc(c.key_derivation||'—')}}</div>
+    <div><b>Covert:</b> ${{esc(c.covert_channel_version||'—')}}</div>
+    <div><b>Timestamp Validation:</b> ${{c.timestamp_validation ? '✓' : '✗'}}</div>
+    <div><b>Mesh HMAC:</b> ${{c.mesh_hmac ? '✓' : '✗'}}</div>
+    <div><b>Encrypted Storage:</b> ${{c.persist_encrypted ? '✓' : '✗'}}</div>
+    <div><b>Emergency:</b> ${{c.emergency_mode ? '🔴 ACTIVE' : '🟢 Normal'}}</div>
+    <div><b>Address:</b> ${{esc(c.node_address||'—')}}</div>
+    <div><b>Auto-Response:</b> ${{c.incident_auto_response ? 'ON' : 'OFF'}}</div>
+  </div>`;
+}}
+
+async function rotateKeys() {{
+  const r = await api('POST', '/cpip/emergency', {{ action: 'rotate_keys' }});
+  if (r) {{ document.getElementById('keyRotResult').textContent = 'Keys rotated ✓'; showCryptoStatus(); }}
+}}
+
+async function emergencyActivate() {{
+  if (!confirm('⚠ EMERGENCY MODE: Rotate keys, go stealth, notify peers. Continue?')) return;
+  const r = await api('POST', '/cpip/emergency', {{ action: 'activate', reason: 'dashboard' }});
+  document.getElementById('emergencyResult').textContent = r ? 'Emergency activated' : 'Failed';
+  showCryptoStatus(); refreshItf();
+}}
+
+async function emergencyDeactivate() {{
+  const r = await api('POST', '/cpip/emergency', {{ action: 'deactivate' }});
+  document.getElementById('emergencyResult').textContent = r ? 'Deactivated' : 'Failed';
+  showCryptoStatus();
+}}
+
+async function refreshIR() {{
+  const s = await api('GET', '/cpip/incident');
+  if (!s) return;
+  document.getElementById('irAlertCount').textContent = s.total_alerts || 0;
+  const levels = s.alerts_by_level || {{}};
+  document.getElementById('irCritical').textContent = (levels.critical||0) + (levels.high||0);
+  document.getElementById('irAutoResp').textContent = s.auto_response ? 'ON' : 'OFF';
+  document.getElementById('irChainValid').textContent = s.audit_chain_valid ? '✓ Valid' : '✗ Broken';
+  const al = await api('GET', '/cpip/incident/alerts?limit=20');
+  const el = document.getElementById('irAlertList');
+  if (!al || !al.alerts || !al.alerts.length) {{ el.innerHTML = '<div style="color:var(--muted)">No alerts</div>'; return; }}
+  let html = '<table><tr><th>Time</th><th>Lvl</th><th>Cat</th><th>Message</th></tr>';
+  for (const a of al.alerts.slice().reverse()) {{
+    const t = a.human_time ? a.human_time.slice(11,19) : '—';
+    const clr = a.level==='critical'?'var(--accent)':a.level==='high'?'#ff8800':a.level==='warn'?'#ffcc00':'var(--muted)';
+    html += `<tr><td style="font-size:0.7rem">${{esc(t)}}</td><td style="color:${{clr}};font-weight:600">${{esc(a.level)}}</td><td>${{esc(a.category)}}</td><td style="font-size:0.7rem">${{esc(a.message)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function clearAlerts() {{
+  await api('POST', '/cpip/incident', {{ action: 'clear_alerts' }});
+  refreshIR();
+}}
+
+async function toggleAutoResp() {{
+  const s = await api('GET', '/cpip/incident');
+  const r = await api('POST', '/cpip/incident', {{ action: 'auto_response', enabled: !s.auto_response }});
+  if (r) showToast('Auto-response: ' + (r.enabled ? 'ON' : 'OFF'));
+  refreshIR();
+}}
+
+async function refreshSignal() {{
+  const s = await api('GET', '/cpip/signal');
+  if (!s) return;
+  const bw = s.bandwidth || {{}};
+  const m = bw.mesh || {{}}, h = bw.http || {{}}, sat = bw.sat || {{}}, mob = bw.mobile || {{}};
+  document.getElementById('sigMesh').textContent = (m.recv||0) + ' total';
+  document.getElementById('sigMeshErr').textContent = m.errors || 0;
+  document.getElementById('sigHttp').textContent = (h.rps||0) + ' rps';
+  document.getElementById('sigHttp418').textContent = h['418s'] || 0;
+  document.getElementById('sigSat').textContent = (sat.recv||0) + ' recv';
+  document.getElementById('sigUptime').textContent = Math.floor(bw.uptime_seconds||0) + 's';
+  const lq = s.link_quality || {{}};
+  const lqEl = document.getElementById('sigLinkQuality');
+  if (Object.keys(lq).length) {{
+    let html = '<table><tr><th>Peer</th><th>Latency</th><th>Loss</th><th>Score</th><th>Quality</th></tr>';
+    for (const [pid, info] of Object.entries(lq)) {{
+      html += `<tr><td>${{esc(pid.slice(0,8))}}</td><td>${{info.latency_ms||'—'}}ms</td><td>${{info.loss_pct||0}}%</td><td>${{info.score||'—'}}</td><td>${{esc(info.quality)}}</td></tr>`;
+    }}
+    html += '</table>'; lqEl.innerHTML = html;
+  }} else {{ lqEl.innerHTML = '<div style="color:var(--muted)">No peer link data yet</div>'; }}
+  const em = s.emergency || {{}};
+  document.getElementById('sigEmergency').innerHTML = em.active
+    ? '<span style="color:var(--accent);font-weight:700">🔴 EMERGENCY ACTIVE</span>'
+    : '<span style="color:#00ff88">🟢 Normal operations</span>';
+}}
+
+async function diagPing() {{
+  const host = document.getElementById('diagPingHost').value || 'localhost';
+  const port = document.getElementById('diagPingPort').value || '4180';
+  const r = await api('GET', `/cpip/diagnostics/ping?host=${{encodeURIComponent(host)}}&port=${{port}}`);
+  const el = document.getElementById('diagPingResult');
+  if (!r) {{ el.textContent = 'Ping failed'; return; }}
+  el.innerHTML = r.alive
+    ? `<div style="color:#00ff88">${{esc(r.host)}}:${{r.port}} — ${{r.latency_ms}}ms</div>`
+    : `<div style="color:var(--accent)">${{esc(r.host)}}:${{r.port}} — unreachable (${{esc(r.error||'timeout')}})</div>`;
+}}
+
+async function diagScan() {{
+  const host = document.getElementById('diagScanHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/ports?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagScanResult');
+  if (!r || !r.ports) {{ el.textContent = 'Scan failed'; return; }}
+  let html = '<table><tr><th>Port</th><th>Status</th></tr>';
+  for (const [p, s] of Object.entries(r.ports)) {{
+    const clr = s==='open'?'#00ff88':'var(--muted)';
+    html += `<tr><td>${{p}}</td><td style="color:${{clr}}">${{s}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function diagDns() {{
+  const host = document.getElementById('diagDnsHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/dns?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagDnsResult');
+  if (!r) {{ el.textContent = 'DNS failed'; return; }}
+  el.innerHTML = r.resolved
+    ? `<div style="color:#00ff88">✓ ${{esc(r.hostname)}} → ${{(r.ipv4||[]).join(', ')}}</div>`
+    : `<div style="color:var(--accent)">✗ ${{esc(r.hostname)}}: ${{esc(r.error||'unknown')}}</div>`;
+}}
+
+async function diagTrace() {{
+  const host = document.getElementById('diagTraceHost').value || 'localhost';
+  const r = await api('GET', `/cpip/diagnostics/traceroute?host=${{encodeURIComponent(host)}}`);
+  const el = document.getElementById('diagTraceResult');
+  if (!r || !r.hops) {{ el.textContent = 'Traceroute failed'; return; }}
+  let html = '<table><tr><th>TTL</th><th>Addr</th><th>Latency</th></tr>';
+  for (const h of r.hops) {{
+    html += `<tr><td>${{h.ttl}}</td><td>${{esc(h.addr)}}</td><td>${{h.latency_ms !== null ? h.latency_ms+'ms' : '*'}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function diagIfaces() {{
+  const r = await api('GET', '/cpip/diagnostics/interfaces');
+  const el = document.getElementById('diagIfaces');
+  if (!r || !r.interfaces) {{ el.textContent = 'Failed'; return; }}
+  let html = '<table><tr><th>Interface</th><th>MAC</th><th>State</th></tr>';
+  for (const i of r.interfaces) {{
+    html += `<tr><td>${{esc(i.name)}}</td><td style="font-size:0.7rem">${{esc(i.mac||'—')}}</td><td>${{esc(i.state||'?')}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+
+async function refreshAntiISP() {{
+  const r = await api('GET', '/cpip/anti-isp');
+  if (!r) return;
+  const s = r.stun || {{}};
+  const u = r.upnp || {{}};
+  const rel = r.relay || {{}};
+  const dns = r.dns_tunnel || {{}};
+  const wss = r.wss || {{}};
+  const doh = r.doh || {{}};
+  document.getElementById('aispExtIp').textContent = s.external_ip || '—';
+  document.getElementById('aispNatType').textContent = s.nat_type + (s.server ? ' via ' + s.server.split(':')[0] : '');
+  document.getElementById('aispUpnp').textContent = u.mapped ? '✓ Mapped' : '✗ None';
+  document.getElementById('aispRelayCount').textContent = (rel.pool || []).length;
+  document.getElementById('aispWss').textContent = wss.active ? '✓ Connected' : '✗ Disconnected';
+  document.getElementById('aispWssCount').textContent = (wss.connections || 0) + ' connections';
+  document.getElementById('aispDnsTun').textContent = dns.enabled ? '✓ Active' : '✗ Off';
+  document.getElementById('aispDnsDomain').textContent = dns.domain || 'not configured';
+  document.getElementById('aispDoh').textContent = doh.enabled ? '✓ Enabled' : '✗ Off';
+  document.getElementById('aispDohCache').textContent = (doh.cached_entries || 0) + ' cached entries';
+  document.getElementById('aispPunchSessions').textContent = r.hole_punch_sessions || 0;
+  let active = 0;
+  if (s.external_ip) active++;
+  if (u.mapped) active++;
+  if ((rel.pool || []).length > 0) active++;
+  if (dns.enabled) active++;
+  if (wss.active) active++;
+  if (doh.enabled) active++;
+  document.getElementById('aispTransports').textContent = active + '/6';
+  if (r.toggles) setToggles('aispToggles', r.toggles);
+}}
+
+function setToggles(containerId, toggles) {{
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  box.querySelectorAll('input[data-feat]').forEach(inp => {{
+    const f = inp.dataset.feat;
+    if (Object.prototype.hasOwnProperty.call(toggles, f)) inp.checked = !!toggles[f];
+  }});
+}}
+
+async function aispToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-ISP ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+async function aispRefresh() {{
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'refresh' }});
+  document.getElementById('aispResult').textContent = r ? 'All transports refreshed' : 'Refresh failed';
+  setTimeout(refreshAntiISP, 2000);
+}}
+
+async function aispHolePunch() {{
+  document.getElementById('aispResult').textContent = 'Testing hole-punch...';
+  const r = await api('POST', '/cpip/anti-isp', {{ action: 'hole_punch', ip: '0.0.0.0', port: 4191 }});
+  document.getElementById('aispResult').textContent = r ?
+    'External: ' + (r.ext_ip || '?') + ':' + (r.ext_port || '?') + ' — punched: ' + r.punched :
+    'Hole-punch failed';
+}}
+
+async function refreshStingray() {{
+  const r = await api('GET', '/cpip/anti-stingray');
+  if (!r) return;
+  const t = r.threat_level || 0;
+  const labels = ['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const colors = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--danger)', 'var(--danger)'];
+  document.getElementById('stThreat').textContent = labels[t] || '?';
+  document.getElementById('stThreat').style.color = colors[t] || 'inherit';
+  document.getElementById('stThreatLabel').textContent = r.enabled ? 'active' : 'disabled';
+  const bl = r.baseline || {{}};
+  document.getElementById('stMCC').textContent = bl.mcc || '—';
+  document.getElementById('stCellDetail').textContent = (bl.mcc || '') + '/' + (bl.mnc || '') + ' LAC:' + (bl.lac || '');
+  document.getElementById('stSignal').textContent = bl.signal ? bl.signal + '%' : '—';
+  document.getElementById('stRAT').textContent = bl.rat || '—';
+  document.getElementById('stScans').textContent = r.scan_count || 0;
+  const alerts = (r.recent_alerts || []).slice(-5).reverse();
+  if (alerts.length) {{
+    document.getElementById('stAlerts').innerHTML = alerts.map(a =>
+      `<div style="margin:2px 0;padding:2px 4px;border-left:2px solid ${{colors[a.threat]||'gray'}}">` +
+      `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
+    ).join('');
+  }}
+  if (r.toggles) setToggles('stToggles', r.toggles);
+}}
+
+async function stToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-stingray', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-Stingray ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+async function stRescan() {{
+  const r = await api('POST', '/cpip/anti-stingray', {{ action: 'rescan' }});
+  if (r) showToast('Stingray rescan triggered');
+  setTimeout(refreshStingray, 1500);
+}}
+
+async function refreshSurveillance() {{
+  const r = await api('GET', '/cpip/anti-surveillance');
+  if (!r) return;
+  const t = r.threat_level || 0;
+  const labels = ['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const colors = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--danger)', 'var(--danger)'];
+  document.getElementById('asThreat').textContent = labels[t] || '?';
+  document.getElementById('asThreat').style.color = colors[t] || 'inherit';
+  document.getElementById('asThreatLabel').textContent = r.enabled ? 'active' : 'disabled';
+  document.getElementById('asDPI').textContent = r.dpi_signatures_loaded || 0;
+  document.getElementById('asSSL').textContent = t >= 3 ? '⚠ INTERCEPT' : '✓ Clean';
+  document.getElementById('asSSL').style.color = t >= 3 ? 'var(--danger)' : 'var(--green)';
+  document.getElementById('asProc').textContent = t >= 2 ? '⚠ Anomaly' : '✓ Clean';
+  document.getElementById('asProc').style.color = t >= 2 ? 'var(--orange)' : 'var(--green)';
+  const alerts = (r.recent_alerts || []).slice(-5).reverse();
+  if (alerts.length) {{
+    document.getElementById('asAlerts').innerHTML = alerts.map(a =>
+      `<div style="margin:2px 0;padding:2px 4px;border-left:2px solid ${{colors[a.threat]||'gray'}}">` +
+      `${{new Date(a.time*1000).toLocaleTimeString()}} ${{a.message}} <span style="color:var(--muted)">${{a.detail||''}}</span></div>`
+    ).join('');
+  }}
+  if (r.toggles) setToggles('asToggles', r.toggles);
+}}
+
+async function asToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/anti-surveillance', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Anti-Surveillance ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+async function asScan() {{
+  const r = await api('POST', '/cpip/anti-surveillance', {{ action: 'scan' }});
+  if (r) showToast('Surveillance scan triggered');
+  setTimeout(refreshSurveillance, 1500);
+}}
+
+async function refreshNeutrality() {{
+  const r = await api('GET', '/cpip/net-neutrality');
+  if (!r) return;
+  document.getElementById('nnThrottle').textContent = r.throttle_detected ? '⚠ THROTTLED' : '✓ Normal';
+  document.getElementById('nnThrottle').style.color = r.throttle_detected ? 'var(--danger)' : 'var(--green)';
+  document.getElementById('nnMasked').textContent = (r.masked_protocol?.packets || 0);
+  document.getElementById('nnFrag').textContent = r.fragmented_packets || 0;
+  document.getElementById('nnJitter').textContent = r.jitter_injections || 0;
+  if (r.toggles) setToggles('nnToggles', r.toggles);
+}}
+
+async function nnToggle(el) {{
+  const feat = el.dataset.feat;
+  const r = await api('POST', '/cpip/net-neutrality', {{ action: 'toggle', feature: feat, enabled: el.checked }});
+  if (!r || r.error) {{ el.checked = !el.checked; return; }}
+  showToast(`Net Neutrality ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
+}}
+
+
+// ── Web-of-Trust ──
+async function refreshWoT() {{
+  const ids = await api('GET', '/cpip/identity');
+  if (!ids) return;
+  const list = ids.identities || [];
+  document.getElementById('wotCount').textContent = list.length;
+  document.getElementById('wotMyId').textContent = (ids.my_pot_id || '—').slice(0, 12);
+  const el = document.getElementById('wotIdentities');
+  if (!list.length) {{ el.innerHTML = '<div style="color:var(--dim)">No identities registered yet. Publish yours.</div>'; return; }}
+  let html = '<table><tr><th>Pot ID</th><th>Name</th><th>Published</th><th>Trust</th></tr>';
+  for (const id of list) {{
+    const t = id.published ? new Date(id.published*1000).toLocaleDateString() : '—';
+    html += `<tr><td class="mono" style="font-size:0.65rem">${{esc(id.pot_id||'?')}}</td><td>${{esc(id.name||'?')}}</td><td>${{esc(t)}}</td><td>${{esc(id.trust_score||0)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+  const sigs = await api('GET', '/cpip/identity/trust-sigs');
+  if (sigs) {{
+    document.getElementById('wotSigs').textContent = (sigs.signatures || []).length;
+    const sl = document.getElementById('wotSigList');
+    const sigsList = sigs.signatures || [];
+    if (!sigsList.length) {{ sl.innerHTML = '<div style="color:var(--dim)">No trust signatures yet</div>'; return; }}
+    let shtml = '<table><tr><th>From</th><th>To</th><th>Level</th><th>Note</th><th>Time</th></tr>';
+    for (const s of sigsList) {{
+      const t = s.time ? new Date(s.time*1000).toLocaleDateString() : '—';
+      const lvl = ['','Acquaintance','Trusted','Highly Trusted'][s.level||0] || '?';
+      shtml += `<tr><td class="mono" style="font-size:0.65rem">${{esc((s.from||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((s.to||'?').slice(0,8))}}</td><td>${{esc(lvl)}}</td><td>${{esc(s.note||'—')}}</td><td>${{esc(t)}}</td></tr>`;
+    }}
+    shtml += '</table>'; sl.innerHTML = shtml;
+  }}
+  const graph = await api('GET', '/cpip/identity/trust-graph');
+  if (graph) {{
+    const gel = document.getElementById('wotGraph');
+    const nodes = graph.nodes || [];
+    const edges = graph.edges || [];
+    if (!nodes.length) {{ gel.innerHTML = '<div style="color:var(--dim)">Empty graph</div>'; return; }}
+    gel.innerHTML = `<div style="color:var(--muted)">${{nodes.length}} nodes, ${{edges.length}} edges</div>`;
+  }}
+}}
+async function wotPublish() {{
+  const r = await api('POST', '/cpip/identity/publish', {{}});
+  if (r) showToast(r.status === 'published' ? 'Identity published' : (r.error || 'Failed'));
+  refreshWoT();
+}}
+async function wotVouch() {{
+  const target = document.getElementById('wotVouchTarget').value;
+  const level = parseInt(document.getElementById('wotVouchLevel').value);
+  const note = document.getElementById('wotVouchNote').value;
+  if (!target) {{ showToast('Enter target pot ID'); return; }}
+  const r = await api('POST', '/cpip/identity/trust', {{ target_pot_id: target, level, note }});
+  if (r) showToast(r.status === 'signed' ? 'Trust signed' : (r.error || 'Failed'));
+  document.getElementById('wotVouchTarget').value = '';
+  document.getElementById('wotVouchNote').value = '';
+  refreshWoT();
+}}
+
+// ── DNS ──
+async function refreshDNS() {{
+  const r = await api('GET', '/cpip/dns');
+  if (!r) return;
+  const records = r.records || [];
+  document.getElementById('dnsCount').textContent = records.length;
+  document.getElementById('dnsStatus').textContent = records.length ? 'Active' : 'Empty';
+  const el = document.getElementById('dnsRecords');
+  if (!records.length) {{ el.innerHTML = '<div style="color:var(--dim)">No DNS records registered</div>'; return; }}
+  let html = '<table><tr><th>Name</th><th>Pot ID</th><th>Registered</th><th>Expires</th></tr>';
+  for (const rec of records) {{
+    const reg = rec.registered ? new Date(rec.registered*1000).toLocaleDateString() : '—';
+    const exp = rec.expires ? new Date(rec.expires*1000).toLocaleDateString() : '—';
+    html += `<tr><td>${{esc(rec.name||'?')}}</td><td class="mono" style="font-size:0.65rem">${{esc((rec.pot_id||'?').slice(0,12))}}</td><td>${{esc(reg)}}</td><td>${{esc(exp)}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+async function dnsRegister() {{
+  const name = document.getElementById('dnsRegName').value;
+  if (!name) {{ showToast('Enter a .pot name'); return; }}
+  const r = await api('POST', '/cpip/dns/register', {{ name }});
+  const el = document.getElementById('dnsRegResult');
+  if (r && r.status === 'registered') {{ el.innerHTML = `<span style="color:var(--green)">✓ Registered ${{esc(r.name)}}</span>`; }}
+  else {{ el.innerHTML = `<span style="color:var(--danger)">${{esc(r?.error||'Failed')}}</span>`; }}
+  document.getElementById('dnsRegName').value = '';
+  refreshDNS();
+}}
+async function dnsResolve() {{
+  const name = document.getElementById('dnsResolveName').value;
+  if (!name) {{ showToast('Enter a .pot name'); return; }}
+  const r = await api('POST', '/cpip/dns/resolve', {{ name }});
+  const el = document.getElementById('dnsResolveResult');
+  if (r && r.resolved) {{ el.innerHTML = `<span style="color:var(--green)">✓ ${{esc(r.name)}} → ${{esc(r.pot_id||'?')}}</span>`; }}
+  else {{ el.innerHTML = `<span style="color:var(--danger)">✗ ${{esc(r?.error||'Not found')}}</span>`; }}
+}}
+async function dnsRemove() {{
+  const name = document.getElementById('dnsRemoveName').value;
+  if (!name) {{ showToast('Enter a .pot name'); return; }}
+  const r = await api('POST', '/cpip/dns/remove', {{ name }});
+  const el = document.getElementById('dnsRemoveResult');
+  if (r && r.status === 'removed') {{ el.innerHTML = `<span style="color:var(--green)">✓ Removed</span>`; }}
+  else {{ el.innerHTML = `<span style="color:var(--danger)">${{esc(r?.error||'Failed')}}</span>`; }}
+  document.getElementById('dnsRemoveName').value = '';
+  refreshDNS();
+}}
+async function dnsCleanup() {{
+  const r = await api('GET', '/cpip/dns/cleanup');
+  if (r) showToast('Cleaned up: ' + (r.remaining || 0) + ' records remaining');
+  refreshDNS();
+}}
+
+// ── Groups ──
+async function refreshGroups() {{
+  const r = await api('GET', '/cpip/groups');
+  if (!r) return;
+  const groups = r.groups || [];
+  document.getElementById('grpCount').textContent = groups.length;
+  let totalMembers = 0;
+  groups.forEach(g => {{ totalMembers += (g.members || []).length; }});
+  document.getElementById('grpMembers').textContent = totalMembers;
+  const el = document.getElementById('grpList');
+  const sel = document.getElementById('grpTarget');
+  sel.innerHTML = '<option value="">Select group…</option>';
+  if (!groups.length) {{ el.innerHTML = '<div style="color:var(--dim)">No groups yet. Create one.</div>'; return; }}
+  let html = '<table><tr><th>Name</th><th>ID</th><th>Members</th><th>E2EE</th><th></th></tr>';
+  for (const g of groups) {{
+    sel.innerHTML += `<option value="${{esc(g.id)}}">${{esc(g.name)}}</option>`;
+    const e2ee = g.e2ee ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--dim)">✗</span>';
+    html += `<tr><td>${{esc(g.name)}}</td><td class="mono" style="font-size:0.65rem">${{esc((g.id||'?').slice(0,8))}}</td><td>${{(g.members||[]).length}}</td><td>${{e2ee}}</td><td><button class="btn small outline" onclick="grpLeave('${{esc(g.id)}}')">Leave</button></td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+async function grpCreate() {{
+  const name = document.getElementById('grpName').value;
+  const e2ee = document.getElementById('grpE2ee').checked;
+  if (!name) {{ showToast('Enter group name'); return; }}
+  const r = await api('POST', '/cpip/groups/create', {{ name, e2ee }});
+  if (r && r.group_id) showToast('Group created');
+  else showToast(r?.error || 'Failed');
+  document.getElementById('grpName').value = '';
+  refreshGroups();
+}}
+async function grpJoin() {{
+  const gid = document.getElementById('grpJoinId').value;
+  if (!gid) {{ showToast('Enter group ID'); return; }}
+  const r = await api('POST', '/cpip/groups/join', {{ group_id: gid }});
+  if (r && r.status === 'joined') showToast('Joined group');
+  else showToast(r?.error || 'Failed');
+  document.getElementById('grpJoinId').value = '';
+  refreshGroups();
+}}
+async function grpLeave(gid) {{
+  const r = await api('POST', '/cpip/groups/leave', {{ group_id: gid }});
+  if (r) showToast('Left group');
+  refreshGroups();
+}}
+async function grpSend() {{
+  const gid = document.getElementById('grpTarget').value;
+  const msg = document.getElementById('grpMsg').value;
+  if (!gid || !msg) {{ showToast('Select group and enter message'); return; }}
+  const r = await api('POST', '/cpip/groups/send', {{ group_id: gid, message: msg }});
+  if (r && r.status === 'sent') showToast('Sent');
+  else showToast(r?.error || 'Failed');
+  document.getElementById('grpMsg').value = '';
+}}
+async function grpMessages() {{
+  const gid = document.getElementById('grpTarget').value;
+  if (!gid) return;
+  const r = await api('POST', '/cpip/groups/' + encodeURIComponent(gid) + '/messages', {{ since: 0 }});
+  const el = document.getElementById('grpMessages');
+  if (!r || !r.messages || !r.messages.length) {{ el.innerHTML = '<div style="color:var(--dim)">No messages</div>'; return; }}
+  let html = '';
+  for (const m of r.messages.slice(-20)) {{
+    const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString() : '—';
+    html += `<div style="padding:0.2rem 0;border-bottom:1px solid var(--border)"><span style="color:var(--dim)">${{esc(t)}}</span> <span class="mono" style="font-size:0.65rem">${{esc((m.from||'?').slice(0,6))}}</span> ${{esc(m.message||'')}}</div>`;
+  }}
+  el.innerHTML = html;
+}}
+
+// ── Sync ──
+async function refreshSync() {{
+  const ch = await api('GET', '/cpip/sync/channels');
+  if (ch) {{
+    const channels = ch.channels || [];
+    document.getElementById('syncChannels').textContent = channels.length;
+  }}
+  const pend = await api('GET', '/cpip/sync/pending');
+  if (pend) {{
+    const msgs = pend.messages || [];
+    document.getElementById('syncPending').textContent = msgs.length;
+    const el = document.getElementById('syncPendingList');
+    if (!msgs.length) {{ el.innerHTML = '<div style="color:var(--dim)">No pending messages</div>'; return; }}
+    let html = '<table><tr><th>Channel</th><th>From</th><th>To</th><th>Time</th><th>Action</th></tr>';
+    for (const m of msgs) {{
+      const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleString() : '—';
+      html += `<tr><td>${{esc(m.channel||'?')}}</td><td class="mono" style="font-size:0.65rem">${{esc((m.from||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((m.to||'?').slice(0,8))}}</td><td style="font-size:0.65rem">${{esc(t)}}</td><td><button class="btn small outline" onclick="syncDeliver('${{esc(m.id||m.message_id||'')}}')">Deliver</button></td></tr>`;
+    }}
+    html += '</table>'; el.innerHTML = html;
+  }}
+  const clocks = await api('GET', '/cpip/sync/clocks');
+  if (clocks) {{
+    const cel = document.getElementById('syncClocks');
+    const c = clocks.clocks || clocks;
+    if (typeof c === 'object' && Object.keys(c).length) {{
+      cel.innerHTML = '<pre style="font-size:0.7rem;color:var(--muted)">' + esc(JSON.stringify(c, null, 2)) + '</pre>';
+    }} else {{ cel.innerHTML = '<div style="color:var(--dim)">No clock data</div>'; }}
+  }}
+}}
+async function syncSend() {{
+  const chan = document.getElementById('syncChan').value;
+  const dst = document.getElementById('syncDst').value;
+  const msg = document.getElementById('syncMsg').value;
+  if (!chan || !msg) {{ showToast('Enter channel and message'); return; }}
+  const r = await api('POST', '/cpip/sync/send', {{ channel: chan, to: dst, message: msg }});
+  if (r && r.status === 'queued') showToast('Queued for sync');
+  else showToast(r?.error || 'Failed');
+  document.getElementById('syncMsg').value = '';
+  refreshSync();
+}}
+async function syncDeliver(id) {{
+  if (!id) return;
+  const r = await api('POST', '/cpip/sync/deliver', {{ message_id: id }});
+  if (r) showToast('Marked delivered');
+  refreshSync();
+}}
+async function syncRequest() {{
+  const peer = document.getElementById('syncReqPeer').value;
+  if (!peer) {{ showToast('Enter peer pot ID'); return; }}
+  const r = await api('POST', '/cpip/sync/request', {{ peer_pot_id: peer }});
+  if (r) showToast('Sync requested');
+  refreshSync();
+}}
+
+// ── Bonding ──
+async function refreshBond() {{
+  const s = await api('GET', '/cpip/bond/status');
+  if (!s) return;
+  document.getElementById('bondStatus').textContent = s.enabled ? 'Active' : 'Disabled';
+  document.getElementById('bondStatus').style.color = s.enabled ? 'var(--green)' : 'var(--dim)';
+  document.getElementById('bondAggBw').textContent = s.aggregate_bandwidth ? (s.aggregate_bandwidth + ' Mbps') : '—';
+  const links = await api('GET', '/cpip/bond/links');
+  if (links) {{
+    const linkList = links.links || [];
+    document.getElementById('bondLinkCount').textContent = linkList.length;
+    const el = document.getElementById('bondLinks');
+    if (!linkList.length) {{ el.innerHTML = '<div style="color:var(--dim)">No bonded links</div>'; return; }}
+    let html = '<table><tr><th>Interface</th><th>Type</th><th>BW</th><th>Weight</th><th>Latency</th><th>Loss</th><th>Status</th></tr>';
+    for (const l of linkList) {{
+      const st = l.active ? '<span style="color:var(--green)">Active</span>' : '<span style="color:var(--dim)">Down</span>';
+      html += `<tr><td>${{esc(l.interface||'?')}}</td><td>${{esc(l.type||'?')}}</td><td>${{esc(l.bandwidth||'?')}} Mbps</td><td>${{esc(l.weight||'?')}}</td><td>${{esc(l.latency_ms||'?')}}ms</td><td>${{esc(l.loss_pct||0)}}%</td><td>${{st}}</td></tr>`;
+    }}
+    html += '</table>'; el.innerHTML = html;
+  }}
+  document.getElementById('bondToggleBtn').textContent = s.enabled ? 'Disable' : 'Enable';
+}}
+async function bondToggle() {{
+  const badge = document.getElementById('bondStatus');
+  const on = badge.textContent === 'Active';
+  const r = await api('POST', '/cpip/bond/config', {{ action: 'toggle', enabled: !on }});
+  if (r) showToast('Bonding: ' + (r.enabled ? 'ON' : 'OFF'));
+  refreshBond();
+}}
+async function bondProbe() {{
+  const r = await api('POST', '/cpip/bond/config', {{ action: 'force_probe' }});
+  if (r) showToast('Probe sent');
+  setTimeout(refreshBond, 2000);
+}}
+
+// ── Dead-Drops ──
+async function refreshDrops() {{
+  const r = await api('GET', '/cpip/mesh/deaddrop');
+  if (!r) return;
+  const drops = r.drops || r.messages || [];
+  document.getElementById('dropsCount').textContent = drops.length;
+  let claimed = 0;
+  drops.forEach(d => {{ if (d.claimed) claimed++; }});
+  document.getElementById('dropsClaimed').textContent = claimed;
+  const el = document.getElementById('dropList');
+  if (!drops.length) {{ el.innerHTML = '<div style="color:var(--dim)">No active dead drops</div>'; return; }}
+  let html = '<table><tr><th>ID</th><th>From</th><th>To</th><th>Created</th><th>TTL</th><th>Claimed</th></tr>';
+  for (const d of drops) {{
+    const t = d.created ? new Date(d.created*1000).toLocaleString() : '—';
+    const cl = d.claimed ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--dim)">—</span>';
+    html += `<tr><td class="mono" style="font-size:0.65rem">${{esc((d.message_id||d.id||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.from||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.to||'any').slice(0,8))}}</td><td style="font-size:0.65rem">${{esc(t)}}</td><td>${{esc(d.ttl||'?')}}s</td><td>${{cl}}</td></tr>`;
+  }}
+  html += '</table>'; el.innerHTML = html;
+}}
+async function dropCreate() {{
+  const payload = document.getElementById('dropPayload').value;
+  const recipient = document.getElementById('dropRecipient').value;
+  const ttl = parseInt(document.getElementById('dropTtl').value) || 3600;
+  if (!payload) {{ showToast('Enter payload'); return; }}
+  const body = {{ payload, ttl }};
+  if (recipient) body.recipient = recipient;
+  const r = await api('POST', '/cpip/mesh/deaddrop', body);
+  if (r && (r.status === 'created' || r.message_id)) {{ showToast('Drop created: ' + (r.message_id||'?').slice(0,8)); }}
+  else {{ showToast(r?.error || 'Failed'); }}
+  document.getElementById('dropPayload').value = '';
+  refreshDrops();
+}}
+async function dropClaim() {{
+  const mid = document.getElementById('dropClaimId').value;
+  if (!mid) {{ showToast('Enter message ID'); return; }}
+  const r = await api('POST', '/cpip/mesh/deaddrop/claim', {{ message_id: mid }});
+  const el = document.getElementById('dropClaimResult');
+  if (r && r.status === 'claimed') {{
+    el.innerHTML = `<div style="background:var(--surface);padding:0.5rem;border-radius:var(--radius-sm);border:1px solid rgba(0,230,138,0.2)"><div style="color:var(--green);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em">Claimed</div><div style="margin-top:0.3rem;word-break:break-all">${{esc(r.payload||'')}}</div></div>`;
+  }} else {{
+    el.innerHTML = `<span style="color:var(--danger)">${{esc(r?.error||'Not found or already claimed')}}</span>`;
+  }}
+  document.getElementById('dropClaimId').value = '';
+  refreshDrops();
+}}
+
+function connectSSE() {{
+  const badge = document.getElementById('sseBadge');
+  const log = document.getElementById('eventLog');
+  const evt = new EventSource('/cpip/events');
+  evt.onopen = () => {{ badge.innerHTML = '<span class="dot"></span> OK'; badge.className = 'badge enabled'; }};
+  evt.onerror = () => {{ badge.textContent = 'ERR'; badge.className = 'badge disabled'; }};
+  evt.onmessage = (e) => {{
+    try {{
+      const d = JSON.parse(e.data);
+      const entry = document.createElement('div');
+      const ts = new Date().toLocaleTimeString();
+      if (d.event === 'brew_start') {{ entry.className = 'ev-start'; entry.textContent = '['+ts+'] Brew '+d.beverage; refresh(); }}
+      else if (d.event === 'brew_stop') {{ entry.className = 'ev-stop'; entry.textContent = '['+ts+'] Stop'; refresh(); refreshHistory(); }}
+      else if (d.event === 'mesh_message') {{ entry.className = 'ev-mesh'; entry.textContent = '['+ts+'] Msg from '+(d.from||'?'); refreshInbox(); }}
+      else {{ entry.textContent = '['+ts+'] '+e.data; }}
+      log.insertBefore(entry, log.firstChild);
+      while (log.children.length > 50) log.removeChild(log.lastChild);
+    }} catch(ex) {{}}
+  }};
+}}
+
+
+
+refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory(); showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces(); refreshAntiISP(); refreshStingray(); refreshSurveillance(); refreshNeutrality();
+document.getElementById('histFilter').addEventListener('change', refreshHistory);
+setInterval(refresh, 5000);
+setInterval(refreshHistory, 15000);
+setInterval(refreshSchedules, 15000);
+setInterval(refreshMesh, 30000);
+setInterval(refreshInbox, 10000);
+setInterval(refreshSat, 30000);
+setInterval(refreshMobile, 30000);
+setInterval(refreshRadio, 30000);
+setInterval(refreshItf, 15000);
+setInterval(refreshIR, 10000);
+setInterval(refreshSignal, 5000);
+setInterval(refreshAntiISP, 30000);
+setInterval(refreshStingray, 30000);
+setInterval(refreshSurveillance, 30000);
+setInterval(refreshNeutrality, 15000);
+
+let _tabHidden = false;
+document.addEventListener('visibilitychange', () => {{ _tabHidden = document.hidden; }});
+
+
+document.addEventListener('keydown', (e) => {{
+  if (e.ctrlKey && e.key >= '1' && e.key <= '9') {{
+    const tabs = document.querySelectorAll('.tab');
+    const idx = parseInt(e.key) - 1;
+    if (tabs[idx]) {{ e.preventDefault(); switchTab(tabs[idx].dataset.tab); }}
+  }}
+}});
+
+connectSSE();
+</script>
+</body>
+</html>
