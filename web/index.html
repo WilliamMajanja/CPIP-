@@ -95,11 +95,18 @@
   .label {{ color: var(--dim); font-size: 0.7rem; margin-top: 0.15rem; }}
 
   .tab-bar {{ display: flex; gap: 0; margin-bottom: 1rem;
-              border-bottom: 2px solid var(--border); }}
-  .tab {{ padding: 0.55rem 1rem; cursor: pointer; color: var(--dim);
-          font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em;
+              border-bottom: 2px solid var(--border);
+              overflow-x: auto; scrollbar-width: thin;
+              scrollbar-color: var(--border) transparent;
+              -webkit-overflow-scrolling: touch; }}
+  .tab-bar::-webkit-scrollbar {{ height: 4px; }}
+  .tab-bar::-webkit-scrollbar-track {{ background: transparent; }}
+  .tab-bar::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 2px; }}
+  .tab {{ padding: 0.5rem 0.75rem; cursor: pointer; color: var(--dim);
+          font-size: 0.7rem; font-weight: 600; letter-spacing: 0.03em;
           border-bottom: 2px solid transparent; margin-bottom: -2px;
-          transition: all var(--transition); text-transform: uppercase; }}
+          transition: all var(--transition); text-transform: uppercase;
+          white-space: nowrap; flex-shrink: 0; }}
   .tab:hover {{ color: var(--text); }}
   .tab.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
 
@@ -187,27 +194,26 @@
   </div>
 
   <div class="tab-bar">
-    <div class="tab active" data-tab="brew" onclick="switchTab('brew')">1:☕ Brew</div>
-    <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">2:📡 Mesh</div>
-    <div class="tab" data-tab="covert" onclick="switchTab('covert')">3:🔒 Covert</div>
-    <div class="tab" data-tab="itf" onclick="switchTab('itf')">4:🛡 ITF</div>
-    <div class="tab" data-tab="crypto" onclick="switchTab('crypto')">5:🔐 Crypto</div>
-    <div class="tab" data-tab="incident" onclick="switchTab('incident')">6:🚨 IR</div>
-    <div class="tab" data-tab="signal" onclick="switchTab('signal')">7:📡 Signal</div>
-    <div class="tab" data-tab="diag" onclick="switchTab('diag')">8:🔧 Diag</div>
-    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">9:⏰ Schedule</div>
-    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
+    <div class="tab active" data-tab="brew" onclick="switchTab('brew')">☕ Brew</div>
+    <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">📡 Mesh</div>
+    <div class="tab" data-tab="covert" onclick="switchTab('covert')">🔒 Covert</div>
+    <div class="tab" data-tab="itf" onclick="switchTab('itf')">🛡 ITF</div>
+    <div class="tab" data-tab="crypto" onclick="switchTab('crypto')">🔐 Crypto</div>
+    <div class="tab" data-tab="incident" onclick="switchTab('incident')">🚨 IR</div>
     <div class="tab" data-tab="antiisp" onclick="switchTab('antiisp')">🌐 Anti-ISP</div>
-    <div class="tab" data-tab="stingray" onclick="switchTab('stingray')">📡 Anti-Stingray</div>
-    <div class="tab" data-tab="surveillance" onclick="switchTab('surveillance')">V:🛡️ Anti-Surveillance</div>
-    <div class="tab" data-tab="neutrality" onclick="switchTab('neutrality')">⚖️ Net Neutrality</div>
-
+    <div class="tab" data-tab="stingray" onclick="switchTab('stingray')">📶 Stingray</div>
+    <div class="tab" data-tab="surveillance" onclick="switchTab('surveillance')">👁 Surveil</div>
+    <div class="tab" data-tab="neutrality" onclick="switchTab('neutrality')">⚖ Neutrality</div>
+    <div class="tab" data-tab="signal" onclick="switchTab('signal')">📊 Signal</div>
+    <div class="tab" data-tab="diag" onclick="switchTab('diag')">🔧 Diag</div>
     <div class="tab" data-tab="wot" onclick="switchTab('wot')">🔑 WoT</div>
     <div class="tab" data-tab="dns" onclick="switchTab('dns')">🌍 DNS</div>
     <div class="tab" data-tab="groups" onclick="switchTab('groups')">👥 Groups</div>
-    <div class="tab" data-tab="sync" onclick="switchTab('sync')">Y:🔄 Sync</div>
+    <div class="tab" data-tab="sync" onclick="switchTab('sync')">🔄 Sync</div>
+    <div class="tab" data-tab="drops" onclick="switchTab('drops')">📮 Drops</div>
     <div class="tab" data-tab="bond" onclick="switchTab('bond')">🔗 Bond</div>
-    <div class="tab" data-tab="drops" onclick="switchTab('drops')">L:📮 Drops</div>
+    <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
   </div>
 
   <div id="panel-brew" class="panel active">
@@ -427,44 +433,6 @@
     </div>
   </div>
 
-
-  <div id="panel-schedule" class="panel">
-    <div class="card">
-      <h2>Schedule Brew</h2>
-      <div class="form-row">
-        <select id="schType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
-        <input type="number" id="schSeconds" value="30" min="5" style="width:80px">
-        <button class="btn secondary" onclick="scheduleIn()">In X seconds</button>
-      </div>
-      <div class="form-row" style="margin-top:0.5rem">
-        <input type="datetime-local" id="schDatetime">
-        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
-          <input type="checkbox" id="schRecurring"> Daily
-        </label>
-        <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
-      </div>
-      <div id="scheduleList" style="margin-top:0.75rem"></div>
-    </div>
-  </div>
-
-  <div id="panel-history" class="panel">
-    <div class="card">
-      <h2>Brew History</h2>
-      <div class="form-row" style="margin-bottom:0.5rem">
-        <select id="histFilter">
-          <option value="">All beverages</option>
-          <option value="coffee">Coffee</option><option value="tea">Tea</option>
-          <option value="espresso">Espresso</option><option value="latte">Latte</option>
-          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
-          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
-        </select>
-        <button class="btn small danger" onclick="clearHistory()">Clear</button>
-      </div>
-      <div id="brewHistory"><div style="color:var(--dim)">Loading…</div></div>
-    </div>
-  </div>
-
-  
   <div id="panel-crypto" class="panel">
     <div class="grid">
       <div class="card"><h2>Cipher</h2><div class="value" style="font-size:0.9rem" id="cryptoCipher">—</div><div class="label">Encryption engine</div></div>
@@ -507,68 +475,6 @@
     <div class="card" style="margin-top:1rem">
       <h2>Recent Alerts <button class="btn small outline" onclick="clearAlerts()" style="margin-left:0.5rem">Clear</button></h2>
       <div id="irAlertList" style="max-height:200px;overflow-y:auto;font-size:0.75rem">Loading…</div>
-    </div>
-  </div>
-
-  <div id="panel-signal" class="panel">
-    <div class="grid">
-      <div class="card"><h2>Mesh Traffic</h2><div class="value" id="sigMesh">0</div><div class="label">recv/s · <span id="sigMeshErr">0</span> errors</div></div>
-      <div class="card"><h2>HTTP Traffic</h2><div class="value" id="sigHttp">0</div><div class="label">rps · <span id="sigHttp418">0</span> blocked</div></div>
-      <div class="card"><h2>Satellite</h2><div class="value" id="sigSat">0</div><div class="label">sat messages</div></div>
-      <div class="card"><h2>Uptime</h2><div class="value" id="sigUptime">0s</div><div class="label">Since start</div></div>
-    </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Link Quality</h2>
-      <div id="sigLinkQuality" style="font-size:0.75rem;color:var(--muted)">No peer data yet</div>
-    </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Emergency Mode</h2>
-      <div id="sigEmergency" style="font-size:0.75rem;color:var(--muted)">Normal operations</div>
-    </div>
-  </div>
-
-  <div id="panel-diag" class="panel">
-    <div class="grid">
-      <div class="card">
-        <h2>TCP Ping</h2>
-        <div class="form-row">
-          <input type="text" id="diagPingHost" placeholder="Host" style="flex:2">
-          <input type="number" id="diagPingPort" placeholder="4180" value="4180" style="width:70px">
-          <button class="btn secondary" onclick="diagPing()">Ping</button>
-        </div>
-        <div id="diagPingResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
-      </div>
-      <div class="card">
-        <h2>Port Scan</h2>
-        <div class="form-row">
-          <input type="text" id="diagScanHost" placeholder="Host" style="flex:2">
-          <button class="btn secondary" onclick="diagScan()">Scan</button>
-        </div>
-        <div id="diagScanResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
-      </div>
-    </div>
-    <div class="grid" style="margin-top:0.5rem">
-      <div class="card">
-        <h2>DNS Resolve</h2>
-        <div class="form-row">
-          <input type="text" id="diagDnsHost" placeholder="Hostname" style="flex:1">
-          <button class="btn secondary" onclick="diagDns()">Resolve</button>
-        </div>
-        <div id="diagDnsResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
-      </div>
-      <div class="card">
-        <h2>Traceroute</h2>
-        <div class="form-row">
-          <input type="text" id="diagTraceHost" placeholder="Host" style="flex:1">
-          <button class="btn secondary" onclick="diagTrace()">Trace</button>
-        </div>
-        <div id="diagTraceResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:0.5rem">
-      <h2>Network Interfaces</h2>
-      <div id="diagIfaces" style="font-size:0.75rem">Loading…</div>
-      <button class="btn small outline" onclick="diagIfaces()">Refresh</button>
     </div>
   </div>
 
@@ -702,6 +608,67 @@
     </div>
   </div>
 
+  <div id="panel-signal" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Mesh Traffic</h2><div class="value" id="sigMesh">0</div><div class="label">recv/s · <span id="sigMeshErr">0</span> errors</div></div>
+      <div class="card"><h2>HTTP Traffic</h2><div class="value" id="sigHttp">0</div><div class="label">rps · <span id="sigHttp418">0</span> blocked</div></div>
+      <div class="card"><h2>Satellite</h2><div class="value" id="sigSat">0</div><div class="label">sat messages</div></div>
+      <div class="card"><h2>Uptime</h2><div class="value" id="sigUptime">0s</div><div class="label">Since start</div></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Link Quality</h2>
+      <div id="sigLinkQuality" style="font-size:0.75rem;color:var(--muted)">No peer data yet</div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Emergency Mode</h2>
+      <div id="sigEmergency" style="font-size:0.75rem;color:var(--muted)">Normal operations</div>
+    </div>
+  </div>
+
+  <div id="panel-diag" class="panel">
+    <div class="grid">
+      <div class="card">
+        <h2>TCP Ping</h2>
+        <div class="form-row">
+          <input type="text" id="diagPingHost" placeholder="Host" style="flex:2">
+          <input type="number" id="diagPingPort" placeholder="4180" value="4180" style="width:70px">
+          <button class="btn secondary" onclick="diagPing()">Ping</button>
+        </div>
+        <div id="diagPingResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Port Scan</h2>
+        <div class="form-row">
+          <input type="text" id="diagScanHost" placeholder="Host" style="flex:2">
+          <button class="btn secondary" onclick="diagScan()">Scan</button>
+        </div>
+        <div id="diagScanResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:0.5rem">
+      <div class="card">
+        <h2>DNS Resolve</h2>
+        <div class="form-row">
+          <input type="text" id="diagDnsHost" placeholder="Hostname" style="flex:1">
+          <button class="btn secondary" onclick="diagDns()">Resolve</button>
+        </div>
+        <div id="diagDnsResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+      <div class="card">
+        <h2>Traceroute</h2>
+        <div class="form-row">
+          <input type="text" id="diagTraceHost" placeholder="Host" style="flex:1">
+          <button class="btn secondary" onclick="diagTrace()">Trace</button>
+        </div>
+        <div id="diagTraceResult" style="margin-top:0.5rem;font-size:0.75rem"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.5rem">
+      <h2>Network Interfaces</h2>
+      <div id="diagIfaces" style="font-size:0.75rem">Loading…</div>
+      <button class="btn small outline" onclick="diagIfaces()">Refresh</button>
+    </div>
+  </div>
 
   <div id="panel-wot" class="panel">
     <div class="grid">
@@ -855,25 +822,6 @@
     </div>
   </div>
 
-  <div id="panel-bond" class="panel">
-    <div class="grid">
-      <div class="card"><h2>Status</h2><div class="value" id="bondStatus">—</div><div class="label">Bandwidth bonding</div></div>
-      <div class="card"><h2>Links</h2><div class="value" id="bondLinkCount">0</div><div class="label">Active bonded links</div></div>
-      <div class="card"><h2>Aggregate BW</h2><div class="value" id="bondAggBw">—</div><div class="label">Combined throughput</div></div>
-    </div>
-    <div class="card" style="margin-top:0.75rem">
-      <h2>Bonding Controls</h2>
-      <div class="form-row">
-        <button class="btn" id="bondToggleBtn" onclick="bondToggle()">Enable</button>
-        <button class="btn secondary" onclick="bondProbe()">Force Probe</button>
-      </div>
-    </div>
-    <div class="card" style="margin-top:0.75rem">
-      <h2>Links</h2>
-      <div id="bondLinks" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
-    </div>
-  </div>
-
   <div id="panel-drops" class="panel">
     <div class="grid">
       <div class="card"><h2>Drops</h2><div class="value" id="dropsCount">0</div><div class="label">Active dead drops</div></div>
@@ -903,6 +851,63 @@
       <div id="dropList" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
     </div>
   </div>
+
+  <div id="panel-bond" class="panel">
+    <div class="grid">
+      <div class="card"><h2>Status</h2><div class="value" id="bondStatus">—</div><div class="label">Bandwidth bonding</div></div>
+      <div class="card"><h2>Links</h2><div class="value" id="bondLinkCount">0</div><div class="label">Active bonded links</div></div>
+      <div class="card"><h2>Aggregate BW</h2><div class="value" id="bondAggBw">—</div><div class="label">Combined throughput</div></div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Bonding Controls</h2>
+      <div class="form-row">
+        <button class="btn" id="bondToggleBtn" onclick="bondToggle()">Enable</button>
+        <button class="btn secondary" onclick="bondProbe()">Force Probe</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Links</h2>
+      <div id="bondLinks" style="margin-top:0.5rem"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  <div id="panel-schedule" class="panel">
+    <div class="card">
+      <h2>Schedule Brew</h2>
+      <div class="form-row">
+        <select id="schType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
+        <input type="number" id="schSeconds" value="30" min="5" style="width:80px">
+        <button class="btn secondary" onclick="scheduleIn()">In X seconds</button>
+      </div>
+      <div class="form-row" style="margin-top:0.5rem">
+        <input type="datetime-local" id="schDatetime">
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem">
+          <input type="checkbox" id="schRecurring"> Daily
+        </label>
+        <button class="btn secondary" onclick="scheduleAt()">Schedule</button>
+      </div>
+      <div id="scheduleList" style="margin-top:0.75rem"></div>
+    </div>
+  </div>
+
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <h2>Brew History</h2>
+      <div class="form-row" style="margin-bottom:0.5rem">
+        <select id="histFilter">
+          <option value="">All beverages</option>
+          <option value="coffee">Coffee</option><option value="tea">Tea</option>
+          <option value="espresso">Espresso</option><option value="latte">Latte</option>
+          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
+          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+        </select>
+        <button class="btn small danger" onclick="clearHistory()">Clear</button>
+      </div>
+      <div id="brewHistory"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
+  </div>
+
+  
 
 <div class="card" style="margin-top:0.75rem">
     <h2>Live Events <span style="color:var(--dim);font-weight:400;font-size:0.6rem">(brew, mesh, covert)</span></h2>
@@ -1001,7 +1006,6 @@ async function refresh() {{
     document.getElementById('queuedCount').textContent = s.mesh.messages_queued || 0;
   }}
 }}
-
 
 async function repeatBrew() {{
   const h = await api('GET', '/cpip/history?limit=1');
@@ -1419,8 +1423,6 @@ async function probeAddr() {{
   </div>`;
 }}
 
-
-
 async function blacklistAddr() {{
   const addr = document.getElementById('itfBlacklistAddr').value;
   if (!addr) {{ showToast('Enter an IP address'); return; }}
@@ -1468,8 +1470,6 @@ async function importBlacklist() {{
   showToast('Imported ' + r.added + ' addresses');
   refreshItf();
 }}
-
-
 
 async function showCryptoStatus() {{
   const c = await api('GET', '/cpip/crypto');
@@ -1779,7 +1779,6 @@ async function nnToggle(el) {{
   if (!r || r.error) {{ el.checked = !el.checked; return; }}
   showToast(`Net Neutrality ${{feat}}: ${{el.checked ? 'ON' : 'OFF'}}`);
 }}
-
 
 // ── Web-of-Trust ──
 async function refreshWoT() {{
@@ -2111,8 +2110,6 @@ function connectSSE() {{
   }};
 }}
 
-
-
 refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory(); showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces(); refreshAntiISP(); refreshStingray(); refreshSurveillance(); refreshNeutrality();
 document.getElementById('histFilter').addEventListener('change', refreshHistory);
 setInterval(refresh, 5000);
@@ -2133,7 +2130,6 @@ setInterval(refreshNeutrality, 15000);
 
 let _tabHidden = false;
 document.addEventListener('visibilitychange', () => {{ _tabHidden = document.hidden; }});
-
 
 document.addEventListener('keydown', (e) => {{
   if (e.ctrlKey && e.key >= '1' && e.key <= '9') {{

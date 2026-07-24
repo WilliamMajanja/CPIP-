@@ -1,7 +1,7 @@
 # Blackpaper: The Coffee Protocol (CPIP)
 ### A Multi-Transport Mesh with Hybrid Post-Quantum Cryptography and Active Network Defense
 
-**Version 5.0.5** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
+**Version 5.1.0** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
 
 ---
 
@@ -373,7 +373,7 @@ Three modes: auto self-signed (OpenSSL, falling back to `cryptography`, then a s
 
 ## 13. Minima / PiNet-OS Integration
 
-CPIP v5.0.5 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
+CPIP v5.1.0 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
 
 | Integration surface | CPIP capability |
 |---------------------|-----------------|
@@ -419,7 +419,7 @@ All configuration is via environment variables; no config files are required. No
 - **Software key storage**: Without an HSM (`CPIP_HSM_MODULE`), keys live in process memory. Emergency `wipe` zeroes what it can but cannot guarantee erasure from swap or core dumps.
 - **Probe scoring is heuristic**: Threshold tuning (`CPIP_DEFENSE_RATE_LIMIT`, `CPIP_DEFENSE_BLACKLIST_TTL`) trades false-positive rate against coverage. Localhost is always exempt to avoid lockout.
 - **Side-channel scope**: Classical primitives are constant-time via `cryptography`. The PQ Kyber variant adds per-session NTT twiddle perturbation as a partial side-channel countermeasure; full side-channel hardening is out of scope.
-- **CLKF hardening (v5.0.5+)**: Diagnostic endpoints block SSRF to RFC 1918/loopback/link-local/metadata ranges. Port scans capped at 20 ports. All mutating `/cpip/*` endpoints require HMAC auth by default (`CPIP_RPC_AUTH=1`). `deploy.sh` configures iptables with INPUT DROP policy and explicit allowlists. The default `CHANGE_ME_COFFEE_BLEND_2024` COVERT_KEY is rejected and auto-generated.
+- **CLKF hardening (v5.1.0+)**: Diagnostic endpoints block SSRF to RFC 1918/loopback/link-local/metadata ranges. Port scans capped at 20 ports. All mutating `/cpip/*` endpoints require HMAC auth by default (`CPIP_RPC_AUTH=1`). `deploy.sh` configures iptables with INPUT DROP policy and explicit allowlists. The default `CHANGE_ME_COFFEE_BLEND_2024` COVERT_KEY is rejected and auto-generated.
 
 ---
 
@@ -460,7 +460,7 @@ cpip.1                 CLI man page (roff)
 cpip_tui.py            Terminal UI (OpenTUI, 12 pages)
 b4dm4n_cw.py           Cipher Workbench CLI v2.0
 inf1del_kyber.py       1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-pyproject.toml         Package metadata (name: cpip, v5.0.5)
+pyproject.toml         Package metadata (name: cpip, v5.1.0)
 Dockerfile / docker-compose.yml
 deploy.sh / deploy-pi.sh / cluster.sh
 test_crypto.py / test_cpip.py

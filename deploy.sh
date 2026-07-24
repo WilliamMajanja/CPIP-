@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP — Coffee Pot Internet Protocol v5.0.5
+#  CPIP — Coffee Pot Internet Protocol v5.1.0
 #  RFC 2324 + RFC 7168 + ECDSA/ECDH P-256 + ML-KEM-768 + Mesh + 418 Defense
 #  Anti-ISP + Anti-Stingray + Anti-Palantir/Pegasus + Anti-DPI + Net Neutrality
 #  Full hardware install for Raspberry Pi Zero WH
@@ -141,7 +141,7 @@ fi
 info "Creating systemd service..."
 cat << SVCEOF > /etc/systemd/system/cpip.service
 [Unit]
-Description=CPIP v5.0.5 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
+Description=CPIP v5.1.0 — Coffee Pot Internet Protocol (Anti-ISP + Anti-Stingray + Anti-Surveillance + Net Neutrality)
 Documentation=https://github.com/WilliamMajanja/CPIP-.git
 After=network.target
 
@@ -268,7 +268,7 @@ except Exception:
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  CPIP v5.0.5 Deployed — Counter-Surveillance Active${NC}"
+echo -e "${GREEN}  CPIP v5.1.0 Deployed — Counter-Surveillance Active${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "  Device     : hyper-text (coffee + tea)"

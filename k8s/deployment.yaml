@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP v5.0.5 — Kubernetes Self-Hosting Manifests
+#  CPIP v5.1.0 — Kubernetes Self-Hosting Manifests
 #  Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto)
 #
 #  Deploy:
@@ -23,7 +23,7 @@ metadata:
   name: cpip
   labels:
     app.kubernetes.io/name: cpip
-    app.kubernetes.io/version: "5.0.5"
+    app.kubernetes.io/version: "5.1.0"
 
 ---
 # ── ConfigMap ─────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ metadata:
   namespace: cpip
   labels:
     app.kubernetes.io/name: cpip
-    app.kubernetes.io/version: "5.0.5"
+    app.kubernetes.io/version: "5.1.0"
 spec:
   replicas: 1
   strategy:
@@ -124,7 +124,7 @@ spec:
       labels:
         app: cpip
         app.kubernetes.io/name: cpip
-        app.kubernetes.io/version: "5.0.5"
+        app.kubernetes.io/version: "5.1.0"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4180"
@@ -137,7 +137,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: cpip
-          image: cpip:5.0.5
+          image: cpip:5.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

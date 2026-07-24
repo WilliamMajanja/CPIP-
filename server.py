@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server v5.0.5 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v5.1.0 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
@@ -282,7 +282,7 @@ BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
 BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
-CPIP_VERSION = "5.0.5"
+CPIP_VERSION = "5.1.0"
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding)"
 _START_TIME = time.time()
 
@@ -8011,6 +8011,9 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_cpip_schedule_delete(sid)
         elif path == "/cpip/webhooks":
             self._handle_cpip_webhooks_clear()
+        elif path == "/cpip/history":
+            PotState.history.clear()
+            self._send_json(200, "OK", {"status": "History cleared"})
         else:
             self._send_json(404, "Not Found", {"error": "Unknown endpoint"})
 
