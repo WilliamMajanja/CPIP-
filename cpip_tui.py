@@ -18,19 +18,36 @@ from opentui.hooks import use_keyboard, use_terminal_dimensions
 CPIP_HOST = os.environ.get("CPIP_HOST", "localhost")
 CPIP_PORT = int(os.environ.get("CPIP_PORT", "4180"))
 BASE_URL = f"http://{CPIP_HOST}:{CPIP_PORT}"
+COVERT_KEY = os.environ.get("CPIP_COVERT_KEY", "")
+
+
+def _cpip_hmac(method: str, path: str) -> str:
+    if not COVERT_KEY:
+        return ""
+    import hmac as _hmac
+    import hashlib
+    ts = int(__import__('time').time())
+    sig = _hmac.new(
+        COVERT_KEY.encode(), f"{ts}:{method}:{path}".encode(), hashlib.sha256
+    ).hexdigest()
+    return f"{ts}:{sig}"
 
 
 def api(method: str, path: str, data: dict = None) -> Optional[dict]:
     url = f"{BASE_URL}{path}"
     try:
+        headers = {"Content-Type": "application/json"} if data else {}
+        token = _cpip_hmac(method, path)
+        if token:
+            headers["X-CPIP-HMAC"] = token
         if data:
             req = urllib.request.Request(
                 url, data=json.dumps(data).encode(),
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 method=method,
             )
         else:
-            req = urllib.request.Request(url, method=method)
+            req = urllib.request.Request(url, headers=headers, method=method)
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read().decode())
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:

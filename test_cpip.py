@@ -32,6 +32,7 @@ class TestCPIPServer(unittest.TestCase):
             "CPIP_THERMOS": "1",
             "CPIP_SSL": "0",
             "CPIP_HTTP_REDIRECT": "0",
+            "CPIP_RPC_AUTH": "0",
         })
         cls.proc = subprocess.Popen(SERVER_CMD, env=env,
                                     stdout=subprocess.DEVNULL,

@@ -202,6 +202,7 @@ Environment=CPIP_MESH=1
 Environment=CPIP_MESH_PORT=${mesh_port}
 Environment=CPIP_COVERT=1
 Environment=CPIP_COVER_TRAFFIC=1
+Environment=CPIP_RPC_AUTH=1
 Environment=CPIP_SSL=1
 Environment=CPIP_SSL_AUTO=1
 Environment=CPIP_HTTP_REDIRECT=0
@@ -438,6 +439,7 @@ Environment=CPIP_PORT=${http_port}
 Environment=CPIP_MESH=1
 Environment=CPIP_MESH_PORT=${mesh_port}
 Environment=CPIP_COVERT=1
+Environment=CPIP_RPC_AUTH=1
 Environment=CPIP_SSL=1
 Environment=CPIP_SSL_AUTO=1
 ExecStart=/usr/bin/python3 /opt/cpip/server.py

@@ -188,16 +188,35 @@ HELP
 
 base_url() { echo "http://${CPIP_HOST}:${CPIP_PORT}"; }
 
+cpip_hmac() {
+    local method="$1" path="$2"
+    local key="${CPIP_COVERT_KEY:-}"
+    if [ -z "$key" ]; then return; fi
+    local ts=$(date +%s)
+    local sig=$(printf '%s:%s:%s' "$ts" "$method" "$path" | \
+        openssl dgst -sha256 -hmac "$key" 2>/dev/null | awk '{print $NF}')
+    printf '%s:%s' "$ts" "$sig"
+}
+
 api() {
     local method="$1"; shift
     local path="$1"; shift
     local data="${1:-}"
+    local hmac_header=""
+    local token
+    token=$(cpip_hmac "$method" "$path")
+    if [ -n "$token" ]; then
+        hmac_header="-H X-CPIP-HMAC:${token}"
+    fi
     if [ -n "$data" ]; then
         curl -sS -X "$method" -H "Content-Type: application/json" \
+            $hmac_header \
             -d "$data" "$(base_url)${path}" 2>/dev/null || \
             die "Cannot connect to $(base_url)"
     else
-        curl -sS -X "$method" "$(base_url)${path}" 2>/dev/null || \
+        curl -sS -X "$method" \
+            $hmac_header \
+            "$(base_url)${path}" 2>/dev/null || \
             die "Cannot connect to $(base_url)"
     fi
 }
