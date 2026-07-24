@@ -213,24 +213,32 @@ The `cpip` command-line client communicates with a running CPIP server.
 
 ## Web Dashboard
 
-CPIP includes a single-page application dashboard served at `/dashboard` with fourteen tabs providing real-time control and monitoring:
+CPIP includes a single-page application dashboard served at `/dashboard` with twenty tabs providing real-time control and monitoring:
 
 | Tab | Features |
 |-----|----------|
-| **Brew** | Device info, brew state, total count, quick brew of coffee/tea, hot/iced toggle, milk (6 kinds), syrup (5 kinds), sugar (5 kinds), spice (4 kinds), alcohol (5 kinds) |
-| **Mesh** | Peer count, inbox, store-and-forward queue, satellite status (coordinates, port, relay, peers), mobile status (interface, signal, telemetry), radio status (mode, frequency, bandwidth), send/broadcast messages, peer table, inbox table |
-| **Covert** | Encode messages into Accept-Additions headers, decode headers to plaintext, copy-to-clipboard, persistent message history (localStorage) |
-| **ITF** | 418 teapot status, stealth mode toggle, port hopping, latent ports, blacklist count, blacklisted IPs with whitelist buttons, probe address, clear blacklist, detected pentest tools table |
-| **Crypto** | Crypto engine status, key material, KEM/encryption info, rotation controls |
-| **IR** | Incident response: severity alerts, audit chain, auto-mitigation state |
-| **Signal** | Signal awareness: bandwidth estimate, link quality, jamming detection |
-| **Diag** | Network diagnostics: ping, port scan, DNS, traceroute, interfaces |
-| **Anti-ISP** | Live toggle cards for STUN, UPnP, relay, DNS tunnel, WSS, DoH transports with per-vector switches |
-| **Anti-Stingray** | Live toggle cards for master, cell/RG/signal/known-signature scans with rescan button |
-| **Anti-Surveillance** | Live toggle cards for DPI evasion, traffic obfuscation, metadata strip, exploit-kit and process-injection detection with scan button |
-| **Net Neutrality** | Live toggle cards for bandwidth monitor, protocol masquerade, fragmentation, throttle detect, jitter injection |
-| **Schedule** | Schedule brews in X seconds or at datetime, daily recurring option, list/delete schedules |
-| **History** | Brew history table with time/beverage/additions/duration, beverage filter dropdown, clear button |
+| **☕ Brew** | Device info, brew state, progress bar, total count, quick brew of 9 beverages, hot/iced toggle, milk (6), syrup (5), sugar (5), spice (4), alcohol (6), repeat last brew |
+| **📡 Mesh** | Peer count, inbox, store-and-forward queue, satellite/mobile/radio status, send/broadcast, peer table, inbox table, routing table |
+| **🔒 Covert** | Encode/decode Accept-Additions headers, copy-to-clipboard, persistent history (localStorage), clear history |
+| **🛡 ITF** | 418 teapot, stealth toggle, port hopping, latent ports, blacklist management (add/bulk/import/export/clear), probe, detected pentest tools |
+| **🔐 Crypto** | Cipher/ECC/PQ-KEM/E2EE status, key rotation, emergency mode |
+| **🚨 IR** | Incident alerts, severity counts, audit chain, auto-response toggle |
+| **🌐 Anti-ISP** | STUN/UPnP/relay/DNS-tunnel/WSS/DoH status + per-vector toggles, hole-punch test |
+| **📶 Anti-Stingray** | Threat level, cell tower, signal, scans + per-vector toggles, rescan |
+| **👁 Anti-Surveillance** | Threat level, DPI signatures, SSL intercept, process integrity + per-vector toggles, scan |
+| **⚖ Net Neutrality** | Throttle detection, masked/fragmented/jitter stats + per-vector toggles |
+| **📊 Signal** | Mesh/HTTP/satellite traffic, human-readable uptime, link quality table, emergency status |
+| **🔧 Diag** | TCP ping, port scan, DNS resolve, traceroute, network interfaces |
+| **🔑 WoT** | Identity, known identities, trust signatures, publish, vouch (3 levels), trust graph edges |
+| **🌍 DNS** | .pot name register/resolve/remove, TTL display, cleanup expired |
+| **👥 Groups** | E2EE group create/join/leave/send, auto-load messages on select, member count |
+| **🔄 Sync** | Offline-sync channels, pending messages, vector clocks, send/deliver/request |
+| **📮 Drops** | Dead drops with live TTL countdown, create/claim, color-coded expiry |
+| **🔗 Bond** | Bandwidth bonding status, aggregate BW, link table with color-coded latency/loss, toggle/probe |
+| **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring, beverage icons, list/delete |
+| **📜 History** | Brew history with beverage icons, time/additions/duration, filter (9 beverages), clear |
+
+The 20 tabs are organized into 7 logical groups: Core (Brew, Mesh, Covert), Security (ITF, Crypto, IR), Defense (Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality), Network (Signal, Diag), Identity (WoT, DNS), Comms (Groups, Sync, Drops), Infra (Bond, Schedule, History). The tab bar is scrollable and supports keyboard shortcuts (Ctrl+1–9).
 
 The defense groups (Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality) each have dedicated tabs with per-vector toggles reachable via API or dashboard.
 
@@ -468,7 +476,7 @@ Produces `radio_if` — a standalone binary with zero external dependencies.
 ## Kubernetes
 
 CPIP includes Kubernetes manifests for self-hosting. The bundled `k8s/deployment.yaml`
-targets v5.1.1 labels and `image: cpip:5.0.0`.
+targets v5.1.1 labels and `image: cpip:5.1.1`.
 
 ### Quick Deploy
 
@@ -506,10 +514,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:5.0.0 .
+docker build -t cpip:5.1.1 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:5.0.0
+  cpip:5.1.1
 ```
 
 ### Access
@@ -994,7 +1002,7 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ```
 
 > **Web dashboard note:** `web/` ships empty (just `.gitkeep`). The dashboard is an
-> inline `DASHBOARD_HTML` string embedded in `server.py` (~1380 lines). Drop a
+> inline `DASHBOARD_HTML` string embedded in `server.py` (~2100 lines). Drop a
 > `web/index.html` to override the embedded UI at runtime (`CPIP_WEB_DIR=./web`).
 
 ## Minima / PiNet-OS Integration
@@ -1011,7 +1019,7 @@ CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blo
 | API defense | ITF Defense (probe blocking, pentest detection, IP blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
 
-**Deployment:** CPIP runs as a sidecar container (`cpip:5.0.0`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+**Deployment:** CPIP runs as a sidecar container (`cpip:5.1.1`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
 
 **Configuration:** `CPIP_ENABLED=1`, `CPIP_RECIPE=minima`, `CPIP_RPC_AUTH=1`, `CPIP_DEFENSE_ENABLED=1`. See [SECURITY.md](SECURITY.md) § Minima Integration for full details.
 

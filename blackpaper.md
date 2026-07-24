@@ -337,9 +337,35 @@ A self-sovereign naming layer maps human-readable `<name>.pot` to pot IDs, regis
 
 E2EE group chats (create/join/leave/send/history) and offline-sync channels (channels/pending/clocks/send/deliver/request) provide multi-party and delay-tolerant messaging on top of the same mesh.
 
+### 11.4 Dead Drops
+
+Anonymous mailbox messages (create/claim) with TTL-based expiry. The dashboard shows live TTL countdowns with color-coded urgency (red <5 min, orange <15 min).
+
+### 11.5 Bandwidth Bonding
+
+Multi-link transport aggregation with per-link quality monitoring (latency, loss, weight). The dashboard color-codes link health: green (good), orange (degraded), red (poor).
+
 ---
 
-## 12. Deployment
+## 12. Dashboard
+
+The web dashboard (`/dashboard`) is a single-page application with 20 tabs organized into 7 logical groups:
+
+| Group | Tabs |
+|-------|------|
+| Core | Brew, Mesh, Covert |
+| Security | ITF, Crypto, IR |
+| Defense | Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality |
+| Network | Signal, Diag |
+| Identity | WoT, DNS |
+| Comms | Groups, Sync, Drops |
+| Infra | Bond, Schedule, History |
+
+Features: visibility-aware refresh (pauses when browser tab hidden), beverage icons, keyboard shortcuts (Ctrl+1–9), SSE live events, HMAC auth via Web Crypto API, scrollable tab bar. The dashboard's 90 API calls match all server routes 1:1.
+
+---
+
+## 13. Deployment
 
 ### 12.1 Standalone
 
@@ -354,15 +380,15 @@ CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py   # all transports
 
 ### 12.3 Kubernetes
 
-Bundled manifests (`k8s/deployment.yaml`) provide Namespace, ConfigMap, Secret, Deployment with health/readiness/startup probes, ClusterIP Service (HTTP 4180, mesh UDP 4191/4195/4196), nginx Ingress with TLS passthrough, NetworkPolicy, and a 1 Gi PVC. Image tag: `cpip:5.0.0`.
+Bundled manifests (`k8s/deployment.yaml`) provide Namespace, ConfigMap, Secret, Deployment with health/readiness/startup probes, ClusterIP Service (HTTP 4180, mesh UDP 4191/4195/4196), nginx Ingress with TLS passthrough, NetworkPolicy, and a 1 Gi PVC. Image tag: `cpip:5.1.1`.
 
 ### 12.4 Docker
 
 ```bash
-docker build -t cpip:5.0.0 .
+docker build -t cpip:5.1.1 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:5.0.0
+  cpip:5.1.1
 ```
 
 ### 12.5 TLS/SSL
@@ -371,7 +397,7 @@ Three modes: auto self-signed (OpenSSL, falling back to `cryptography`, then a s
 
 ---
 
-## 13. Minima / PiNet-OS Integration
+## 14. Minima / PiNet-OS Integration
 
 CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
 
@@ -385,13 +411,13 @@ CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blo
 | API defense | ITF Defense (probe blocking, pentest detection, blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
 
-Deployment: CPIP runs as a sidecar container (`cpip:5.0.0`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+Deployment: CPIP runs as a sidecar container (`cpip:5.1.1`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
 
 PQ complementarity: Minima uses WOTS+ (FIPS 205, 128-bit PQ) for consensus signatures; CPIP adds Kyber (non-FIPS ML-KEM-768) for transport encryption. The two approaches are complementary — WOTS+ for consensus, Kyber for key exchange.
 
 ---
 
-## 14. Configuration Summary
+## 15. Configuration Summary
 
 All configuration is via environment variables; no config files are required. Notable knobs (full table in README §Configuration):
 
@@ -412,7 +438,7 @@ All configuration is via environment variables; no config files are required. No
 
 ---
 
-## 15. Security Considerations
+## 16. Security Considerations
 
 - **Non-FIPS PQ component**: 1nf1D3L Kyber is not FIPS 203 validated. It is a research variant (η=3) and must not be relied upon as a certified primitive. The hybrid construction limits the blast radius of any weakness in this component, provided the classical ECDH half holds.
 - **Cover traffic is heuristic, not cryptographic**: DPI evasion depends on adversary behaviour; a determined classifier with traffic models may still distinguish covert-carrying brews. CPIP raises the cost, it does not make detection impossible.
@@ -423,7 +449,7 @@ All configuration is via environment variables; no config files are required. No
 
 ---
 
-## 16. Future Work
+## 17. Future Work
 
 - **PQ signature integration** — complement Kyber KEM with a PQ signature (e.g., a WOTS+ or Dilithium variant) for node identity, enabling a fully PQ-secure identity layer alongside Minima's WOTS+ consensus.
 - **Hybrid certificate chains** — X.509 with classical + PQ signatures.
@@ -433,7 +459,7 @@ All configuration is via environment variables; no config files are required. No
 
 ---
 
-## 17. Conclusion
+## 18. Conclusion
 
 CPIP takes an April Fools' RFC and returns it as a serious, deployable, multi-transport mesh with hybrid post-quantum security and active defense. The joke is the cover; the cover is the protocol. By staying syntactically faithful to HTCPCP, CPIP gains a cover-traffic advantage that more obviously-military protocols cannot claim, while its hybrid ECDH + Kyber KEM, FIPS-aligned classical surface, and runtime-togglable defense posture make it suitable for edge, wilderness, and contested-environment deployment. The system is public-domain, single-file, and operable from a Raspberry Pi to a Kubernetes cluster.
 

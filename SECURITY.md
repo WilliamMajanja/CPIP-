@@ -1,6 +1,6 @@
 # Security Policy
 
-> **Cryptographic Primitives**: CPIP v4 uses FIPS-compliant cryptographic primitives
+> **Cryptographic Primitives**: CPIP v5 uses FIPS-compliant cryptographic primitives
 > for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
 > HKDF-SHA256, and HMAC-SHA256. All constant-time operations use the `cryptography`
 > library. The `secrets` module replaces `random` for all security-relevant
@@ -18,7 +18,7 @@
 
 ## Cryptographic Architecture
 
-CPIP v4.0+ uses a layered cryptographic architecture built on FIPS-compliant
+CPIP v5.1.1 uses a layered cryptographic architecture built on FIPS-compliant
 primitives, with optional post-quantum KEM layer, designed for hostile signal environments:
 
 ### Encryption (CoffeeCipher v5 / AES-256-GCM)
@@ -197,7 +197,7 @@ CPIP is designed for operation in hostile signal environments:
 
 ## Minima / PiNet-OS Integration
 
-CPIP v4.0.2 serves as the primary cryptographic security provider for Minima nodes in the PiNet-OS edge computing stack:
+CPIP v5.1.1 serves as the primary cryptographic security provider for Minima nodes in the PiNet-OS edge computing stack:
 
 | Integration Surface | CPIP Capability | Implementation |
 |---------------------|-----------------|----------------|
