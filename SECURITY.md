@@ -111,8 +111,12 @@ CPIP can delegate cryptographic operations to a Hardware Security Module via PKC
 
 - **TLS/SSL**: Built-in HTTPS support with auto-generated self-signed certificates or custom certs. HTTP→HTTPS redirect available.
 - **HSTS**: `Strict-Transport-Security: max-age=31536000; includeSubDomains` header when SSL is active
-- **HTTP rate limiting**: 100 requests per 60 seconds per IP address
+- **HTTP rate limiting**: 500 requests per 120 seconds per IP address
 - **Request size limit**: 64 KB maximum request body
+- **SSRF protection**: Diagnostic endpoints block RFC 1918, loopback, link-local, multicast, and cloud metadata addresses
+- **Firewall (iptables)**: `deploy.sh` configures INPUT DROP policy with explicit allowlists for CPIP ports (4180, 4181, 4191-4194) and ICMP rate-limiting (2/s)
+- **Port scan limits**: Maximum 20 ports per scan request to prevent abuse
+- **Diagnostic endpoint auth**: `/cpip/diagnostics/{ping,ports,dns,traceroute}` require HMAC auth when `CPIP_RPC_AUTH=1`
 - **Security headers**:
   - `Content-Security-Policy` (CSP)
   - `X-Frame-Options: DENY`
@@ -163,8 +167,8 @@ background scan/reaction loop.
   master off stops background loops and halts associated processing.
 - Runtime changes are **not** persisted across restarts — set the corresponding
   `CPIP_*` environment variable (see README "Environment Variables") for a
-  permanent policy. Authorize `/cpip/config` and the `*/toggle` endpoints behind
-  your own network controls; they are unauthenticated by default.
+  permanent policy.   Authorize `/cpip/config` and the `*/toggle` endpoints behind
+  your own network controls; they require HMAC auth by default (`CPIP_RPC_AUTH=1`).
 
 ## Threat Model
 
@@ -178,7 +182,7 @@ CPIP is designed for operation in hostile signal environments:
 | Traffic analysis | Random padding + cover traffic |
 | Identity spoofing | ECDSA P-256 signatures + HMAC mesh auth |
 | Key compromise | Emergency key rotation + secure wipe |
-| Network scanning | 418 I'm a Teapot defense + port knocking |
+| Network scanning | 418 I'm a Teapot defense + port knocking + SSRF protection + firewall (iptables DROP) |
 | Jamming detection | Signal awareness + incident response |
 | Insider threat | Encrypted persistence + audit chain |
 
@@ -250,11 +254,13 @@ Emergency mode provides instant response to active threats:
 
 CPIP includes built-in network diagnostic tools:
 
-- **TCP/UDP ping**: Connectivity testing to arbitrary hosts/ports
-- **Port scanning**: Remote port enumeration for network assessment
-- **DNS resolution**: Forward and reverse DNS lookups
-- **Traceroute**: Network path discovery
+- **TCP/UDP ping**: Connectivity testing to arbitrary hosts/ports (SSRF-protected)
+- **Port scanning**: Remote port enumeration for network assessment (max 20 ports, SSRF-protected)
+- **DNS resolution**: Forward and reverse DNS lookups (SSRF-protected)
+- **Traceroute**: Network path discovery (SSRF-protected)
 - **Interface listing**: Local network interface enumeration
+
+> **Auth requirement**: All diagnostic endpoints (except interfaces) require an `X-CPIP-HMAC` token when `CPIP_RPC_AUTH=1` (default). See [Network Security](#network-security) for details.
 
 ## Reporting a Vulnerability
 
@@ -264,8 +270,9 @@ CPIP includes built-in network diagnostic tools:
 
 ## Responsible Use
 
-- The covert channel key **default is now empty** (no insecure default); it must be
-  explicitly set via the `CPIP_COVERT_KEY` environment variable before use
+- The covert channel key **auto-generates 32 random bytes** if `CPIP_COVERT_KEY` is
+  unset or left as the placeholder `CHANGE_ME_COFFEE_BLEND_2024` (which is rejected).
+  Set a fixed key via the environment variable for production deployments.
 - Radio transport defaults to `lora` — simulation mode requires the explicit `--sim` flag
 - Use emergency key rotation if a key may have been compromised
 - Monitor incident response alerts for signs of hostile activity

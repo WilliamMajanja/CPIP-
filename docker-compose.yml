@@ -39,6 +39,7 @@ services:
       CPIP_NTP: "1"
       CPIP_GPIO: "0"
       CPIP_COVERT_KEY: ""
+      CPIP_RPC_AUTH: "1"
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4180/health')"]
       interval: 30s

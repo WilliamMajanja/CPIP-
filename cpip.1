@@ -189,6 +189,18 @@ Server hostname (default: localhost).
 .TP
 .B CPIP_PORT
 Server port (default: 4180).
+.TP
+.B CPIP_RPC_AUTH
+Require HMAC-SHA256 tokens on mutating endpoints (default: 1). Set to 0 to disable.
+.TP
+.B CPIP_COVERT_KEY
+Encryption passphrase for covert channel. Auto-generates 32 random bytes if unset or set to the default placeholder.
+.TP
+.B CPIP_SSL
+Enable HTTPS (default: 1).
+.TP
+.B CPIP_DEFENSE_ENABLED
+Master gate for ITF probe blocking and blacklisting (default: 1).
 .SH EXAMPLES
 .TP
 Brew tea with milk

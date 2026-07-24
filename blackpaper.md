@@ -405,7 +405,7 @@ All configuration is via environment variables; no config files are required. No
 | `CPIP_MOBILE` | 0 | Enable mobile transport |
 | `CPIP_COVERT_KEY` | (auto) | Encryption passphrase; auto-generated if unset |
 | `CPIP_RECIPE` | `espresso` | Default KDF recipe (Minima uses `minima`) |
-| `CPIP_RPC_AUTH` | 0 | Require HMAC-SHA256 tokens on mutating endpoints |
+| `CPIP_RPC_AUTH` | 1 | Require HMAC-SHA256 tokens on mutating endpoints |
 | `CPIP_DEFENSE_ENABLED` | 1 | Master gate for ITF defense |
 | `CPIP_FIPS` | 0 | Require power-on self-tests to pass |
 | `CPIP_SSL` / `CPIP_SSL_AUTO` / `CPIP_HTTP_REDIRECT` | 1 | TLS + redirect defaults on |
@@ -419,6 +419,7 @@ All configuration is via environment variables; no config files are required. No
 - **Software key storage**: Without an HSM (`CPIP_HSM_MODULE`), keys live in process memory. Emergency `wipe` zeroes what it can but cannot guarantee erasure from swap or core dumps.
 - **Probe scoring is heuristic**: Threshold tuning (`CPIP_DEFENSE_RATE_LIMIT`, `CPIP_DEFENSE_BLACKLIST_TTL`) trades false-positive rate against coverage. Localhost is always exempt to avoid lockout.
 - **Side-channel scope**: Classical primitives are constant-time via `cryptography`. The PQ Kyber variant adds per-session NTT twiddle perturbation as a partial side-channel countermeasure; full side-channel hardening is out of scope.
+- **CLKF hardening (v5.0.5+)**: Diagnostic endpoints block SSRF to RFC 1918/loopback/link-local/metadata ranges. Port scans capped at 20 ports. All mutating `/cpip/*` endpoints require HMAC auth by default (`CPIP_RPC_AUTH=1`). `deploy.sh` configures iptables with INPUT DROP policy and explicit allowlists. The default `CHANGE_ME_COFFEE_BLEND_2024` COVERT_KEY is rejected and auto-generated.
 
 ---
 

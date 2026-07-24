@@ -446,7 +446,7 @@ Type=simple
 Environment=CPIP_DEVICE=hyper-text
 Environment=CPIP_MESH=1
 Environment=CPIP_COVERT=1
-Environment=CPIP_COVERT_KEY=your_secret_key_here
+Environment=CPIP_COVERT_KEY=
 Environment=CPIP_MESH_STEALTH=0
 ExecStart=/usr/bin/python3 /opt/cpip/server.py
 Restart=on-failure
@@ -716,7 +716,7 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `CPIP_DOH_SERVERS` | (built-in) | Comma-separated DoH servers |
 | `CPIP_ENABLED` | `1` | Master gate for the CPIP service (Minima sidecar). Set `0` to advertise disabled in `/cpip/status` |
 | `CPIP_RECIPE` | `espresso` | Default coffee recipe for CoffeeCipher KDF domain separation (Minima uses `minima`) |
-| `CPIP_RPC_AUTH` | `0` | Require HMAC-SHA256 time-bounded tokens (header `X-CPIP-HMAC`) on mutating `/cpip/*` endpoints |
+| `CPIP_RPC_AUTH` | `1` | Require HMAC-SHA256 time-bounded tokens (header `X-CPIP-HMAC`) on mutating `/cpip/*` endpoints |
 | `CPIP_RPC_AUTH_SKEW` | `300` | Max clock skew (seconds) for RPC auth tokens |
 | `CPIP_DEFENSE_ENABLED` | `1` | Master gate for ITF probe blocking / blacklisting. Set `0` to disable defense |
 
@@ -724,8 +724,8 @@ All countermeasures default to **on** and are individually togglable at runtime 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CPIP_HTTP_RATE_LIMIT` | `100` | Requests per window per IP |
-| `CPIP_HTTP_RATE_WINDOW` | `60` | Rate-limit window (seconds) |
+| `CPIP_HTTP_RATE_LIMIT` | `500` | Requests per window per IP |
+| `CPIP_HTTP_RATE_WINDOW` | `120` | Rate-limit window (seconds) |
 | `CPIP_MAX_REQUEST_SIZE` | `65536` | Max request body size (bytes) |
 | `CPIP_CORS_ORIGINS` | `""` | Comma-separated allowed CORS origins (empty = no CORS) |
 
