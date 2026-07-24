@@ -1,7 +1,7 @@
 FROM python:3.13-alpine
 
-LABEL description="CPIP v5.1.0 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
-LABEL version="5.1.0"
+LABEL description="CPIP v5.1.1 — Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality)"
+LABEL version="5.1.1"
 
 RUN apk add --no-cache gcc make musl-dev openssl
 

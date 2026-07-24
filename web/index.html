@@ -309,6 +309,10 @@
       <h2>Inbox Messages</h2>
       <div id="inboxList"><div style="color:var(--dim)">No messages</div></div>
     </div>
+    <div class="card" style="margin-top:0.75rem">
+      <h2>Routing Table</h2>
+      <div id="meshRoutes"><div style="color:var(--dim)">Loading…</div></div>
+    </div>
   </div>
 
   <div id="panel-covert" class="panel">
@@ -339,7 +343,10 @@
       </div>
     </div>
     <div class="card" style="margin-top:0.75rem">
-      <h2>Covert Message History</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Covert Message History</h2>
+        <button class="btn small danger" onclick="localStorage.removeItem('cpip_covert_history');renderCovertHistory();showToast('History cleared')">Clear</button>
+      </div>
       <div id="covertHistory"><div style="color:var(--dim)">No messages sent yet</div></div>
     </div>
   </div>
@@ -792,7 +799,7 @@
     <div class="grid">
       <div class="card"><h2>Channels</h2><div class="value" id="syncChannels">0</div><div class="label">Sync channels</div></div>
       <div class="card"><h2>Pending</h2><div class="value" id="syncPending">0</div><div class="label">Undelivered messages</div></div>
-      <div class="card"><h2>Delivered</h2><div class="value" id="syncDelivered">0</div><div class="label">Successfully synced</div></div>
+      <div class="card"><h2>Clocks</h2><div class="value" id="syncClockCount">0</div><div class="label">Vector clock entries</div></div>
     </div>
     <div class="grid" style="margin-top:0.75rem">
       <div class="card">
@@ -875,7 +882,7 @@
     <div class="card">
       <h2>Schedule Brew</h2>
       <div class="form-row">
-        <select id="schType"><option value="coffee">Coffee</option><option value="tea">Tea</option></select>
+        <select id="schType"><option value="coffee">☕ Coffee</option><option value="tea">🍵 Tea</option><option value="espresso">⚡ Espresso</option><option value="latte">🥛 Latte</option><option value="cappuccino">☕ Cappuccino</option><option value="americano">☕ Americano</option><option value="cold-brew">🧊 Cold Brew</option><option value="mocha">🍫 Mocha</option><option value="matcha">🍵 Matcha</option></select>
         <input type="number" id="schSeconds" value="30" min="5" style="width:80px">
         <button class="btn secondary" onclick="scheduleIn()">In X seconds</button>
       </div>
@@ -896,10 +903,11 @@
       <div class="form-row" style="margin-bottom:0.5rem">
         <select id="histFilter">
           <option value="">All beverages</option>
-          <option value="coffee">Coffee</option><option value="tea">Tea</option>
-          <option value="espresso">Espresso</option><option value="latte">Latte</option>
-          <option value="cappuccino">Cappuccino</option><option value="americano">Americano</option>
-          <option value="cold-brew">Cold Brew</option><option value="mocha">Mocha</option>
+          <option value="coffee">☕ Coffee</option><option value="tea">🍵 Tea</option>
+          <option value="espresso">⚡ Espresso</option><option value="latte">🥛 Latte</option>
+          <option value="cappuccino">☕ Cappuccino</option><option value="americano">☕ Americano</option>
+          <option value="cold-brew">🧊 Cold Brew</option><option value="mocha">🍫 Mocha</option>
+          <option value="matcha">🍵 Matcha</option>
         </select>
         <button class="btn small danger" onclick="clearHistory()">Clear</button>
       </div>
@@ -1031,11 +1039,13 @@ async function refreshHistory() {{
   let items = h.history;
   if (filter) items = items.filter(b => b.beverage === filter);
   if (!items.length) {{ el.innerHTML = '<div style="color:var(--dim)">No matches.</div>'; return; }}
+  const bevIcons = {{ coffee:'☕', tea:'🍵', espresso:'⚡', latte:'🥛', cappuccino:'☕', americano:'☕', 'cold-brew':'🧊', mocha:'🍫', matcha:'🍵' }};
   let html = '<table><tr><th>Time</th><th>Bev</th><th>Additions</th><th>Dur</th></tr>';
   for (const b of items) {{
     const t = b.started ? new Date(b.started*1000).toLocaleTimeString() : '—';
     const add = b.additions?.map(a => esc(a.name||a)).join(',') || '—';
-    html += `<tr><td>${{esc(t)}}</td><td>${{esc(b.beverage)}}</td><td style="font-size:0.65rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
+    const icon = bevIcons[b.beverage] || '☕';
+    html += `<tr><td>${{esc(t)}}</td><td>${{icon}} ${{esc(b.beverage)}}</td><td style="font-size:0.65rem">${{esc(add)}}</td><td>${{esc(b.duration)}}s</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -1059,6 +1069,18 @@ async function refreshMesh() {{
     html += `<tr><td class="mono">${{esc(peer.pot?.slice(0,6)||'?')}}</td><td>${{esc(peer.hostname||'?')}}</td><td>${{esc(peer.addr||'?')}}</td><td>${{esc((peer.device||'?').slice(0,10))}}</td><td>${{esc(ls)}}</td><td>${{esc(peer.hops)}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
+  const routes = await api('GET', '/cpip/mesh/routes');
+  if (routes) {{
+    const rel = document.getElementById('meshRoutes');
+    const r = routes.routes || [];
+    if (!r.length) {{ rel.innerHTML = '<div style="color:var(--dim)">No routes</div>'; return; }}
+    let rhtml = '<table><tr><th>Destination</th><th>Next Hop</th><th>Hops</th><th>Seen</th></tr>';
+    for (const rt of r) {{
+      const ls = rt.last_seen ? Math.floor((Date.now()/1000 - rt.last_seen)) + 's ago' : '—';
+      rhtml += `<tr><td class="mono" style="font-size:0.65rem">${{esc((rt.dest||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((rt.next_hop||'?').slice(0,8))}}</td><td>${{esc(rt.hops||'?')}}</td><td>${{esc(ls)}}</td></tr>`;
+    }}
+    rhtml += '</table>'; rel.innerHTML = rhtml;
+  }}
 }}
 
 async function refreshInbox() {{
@@ -1274,9 +1296,11 @@ async function refreshSchedules() {{
   const el = document.getElementById('scheduleList');
   if (!s.schedules?.length) {{ el.innerHTML = '<div style="color:var(--dim);font-size:0.7rem">None</div>'; return; }}
   let html = '<table><tr><th>Time</th><th>Bev</th><th>Dur</th><th>Recur</th><th></th></tr>';
+  const bevIcons = {{ coffee:'☕', tea:'🍵', espresso:'⚡', latte:'🥛', cappuccino:'☕', americano:'☕', 'cold-brew':'🧊', mocha:'🍫', matcha:'🍵' }};
   for (const sc of s.schedules) {{
-    html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
-    html += `<td>${{sc.recurring ? 'Daily' : '—'}}</td>`;
+    const icon = bevIcons[sc.beverage] || '☕';
+    html += `<tr><td>${{esc(sc.human||sc.time)}}</td><td>${{icon}} ${{esc(sc.beverage)}}</td><td>${{esc(sc.brew_duration)}}s</td>`;
+    html += `<td>${{sc.recurring ? '🔄 Daily' : '—'}}</td>`;
     html += `<td><button class="btn small outline" data-sid="${{esc(sc.id)}}">✕</button></td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
@@ -1344,7 +1368,7 @@ async function decodeCovert() {{
   const r = await api('POST', '/cpip/mesh/decode', {{ accept_additions: header }});
   if (!r) return;
   document.getElementById('decodeResult').innerHTML = r.status === 'decoded'
-    ? `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid rgba(0,230,138,0.2)"><div style="color:var(--green);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Decoded</div><div style="margin-top:0.2rem">${{esc(r.message)}}</div></div>`
+    ? `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid rgba(0,230,138,0.2)"><div style="color:var(--green);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem">Decoded</div><div style="margin-top:0.2rem">${{esc(r.message)}}</div><div style="margin-top:0.4rem"><button class="btn small outline" onclick="navigator.clipboard.writeText('${{esc(r.message).replace(/'/g,"\\'")}}');showToast('Copied')">Copy</button></div></div>`
     : `<div style="background:var(--surface);padding:0.6rem;border-radius:var(--radius-sm);border:1px solid var(--border);color:var(--dim)">${{esc(r.message)}}</div>`;
 }}
 
@@ -1398,7 +1422,7 @@ async function whitelistAddr(addr) {{
   addr = addr || document.getElementById('itfWhitelistAddr').value;
   if (!addr) {{ showToast('Enter an IP address'); return; }}
   const r = await api('POST', '/cpip/defense', {{ action: 'whitelist', addr }});
-  if (r && r.status === 'whitelisted') showToast('Whitelisted ' + addr);
+  if (r && r.status === 'whitelisted') showToast('Unblocked ' + addr);
   document.getElementById('itfWhitelistAddr').value = '';
   refreshItf();
 }}
@@ -1553,7 +1577,9 @@ async function refreshSignal() {{
   document.getElementById('sigHttp').textContent = (h.rps||0) + ' rps';
   document.getElementById('sigHttp418').textContent = h['418s'] || 0;
   document.getElementById('sigSat').textContent = (sat.recv||0) + ' recv';
-  document.getElementById('sigUptime').textContent = Math.floor(bw.uptime_seconds||0) + 's';
+  const upSecs = Math.floor(bw.uptime_seconds||0);
+  const upH = Math.floor(upSecs/3600), upM = Math.floor((upSecs%3600)/60), upS = upSecs%60;
+  document.getElementById('sigUptime').textContent = upH > 0 ? upH+'h '+upM+'m' : upM > 0 ? upM+'m '+upS+'s' : upS+'s';
   const lq = s.link_quality || {{}};
   const lqEl = document.getElementById('sigLinkQuality');
   if (Object.keys(lq).length) {{
@@ -1814,8 +1840,17 @@ async function refreshWoT() {{
     const gel = document.getElementById('wotGraph');
     const nodes = graph.nodes || [];
     const edges = graph.edges || [];
-    if (!nodes.length) {{ gel.innerHTML = '<div style="color:var(--dim)">Empty graph</div>'; return; }}
-    gel.innerHTML = `<div style="color:var(--muted)">${{nodes.length}} nodes, ${{edges.length}} edges</div>`;
+    if (!nodes.length) {{ gel.innerHTML = '<div style="color:var(--dim)">Empty graph — publish identities and vouch to build trust</div>'; return; }}
+    let ghtml = `<div style="margin-bottom:0.4rem;color:var(--muted)">${{nodes.length}} nodes, ${{edges.length}} edges</div>`;
+    if (edges.length) {{
+      ghtml += '<table><tr><th>From</th><th>→</th><th>To</th><th>Level</th></tr>';
+      for (const e of edges) {{
+        const lvl = ['','Acquaintance','Trusted','Highly Trusted'][e.level||0] || '?';
+        ghtml += `<tr><td class="mono" style="font-size:0.65rem">${{esc((e.from||'?').slice(0,8))}}</td><td style="color:var(--accent)">→</td><td class="mono" style="font-size:0.65rem">${{esc((e.to||'?').slice(0,8))}}</td><td>${{esc(lvl)}}</td></tr>`;
+      }}
+      ghtml += '</table>';
+    }}
+    gel.innerHTML = ghtml;
   }}
 }}
 async function wotPublish() {{
@@ -1844,11 +1879,15 @@ async function refreshDNS() {{
   document.getElementById('dnsStatus').textContent = records.length ? 'Active' : 'Empty';
   const el = document.getElementById('dnsRecords');
   if (!records.length) {{ el.innerHTML = '<div style="color:var(--dim)">No DNS records registered</div>'; return; }}
-  let html = '<table><tr><th>Name</th><th>Pot ID</th><th>Registered</th><th>Expires</th></tr>';
+  let html = '<table><tr><th>Name</th><th>Pot ID</th><th>Registered</th><th>Expires</th><th>TTL</th></tr>';
+  const now = Math.floor(Date.now()/1000);
   for (const rec of records) {{
     const reg = rec.registered ? new Date(rec.registered*1000).toLocaleDateString() : '—';
     const exp = rec.expires ? new Date(rec.expires*1000).toLocaleDateString() : '—';
-    html += `<tr><td>${{esc(rec.name||'?')}}</td><td class="mono" style="font-size:0.65rem">${{esc((rec.pot_id||'?').slice(0,12))}}</td><td>${{esc(reg)}}</td><td>${{esc(exp)}}</td></tr>`;
+    const ttlSecs = rec.expires ? rec.expires - now : null;
+    const ttlStr = ttlSecs !== null ? (ttlSecs > 86400 ? Math.floor(ttlSecs/86400)+'d' : Math.floor(ttlSecs/3600)+'h') : '—';
+    const ttlColor = ttlSecs !== null && ttlSecs < 3600 ? 'var(--danger)' : ttlSecs !== null && ttlSecs < 86400 ? 'var(--orange)' : 'var(--muted)';
+    html += `<tr><td>${{esc(rec.name||'?')}}</td><td class="mono" style="font-size:0.65rem">${{esc((rec.pot_id||'?').slice(0,12))}}</td><td>${{esc(reg)}}</td><td>${{esc(exp)}}</td><td style="color:${{ttlColor}};font-size:0.65rem">${{ttlStr}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -1939,6 +1978,7 @@ async function grpSend() {{
   if (r && r.status === 'sent') showToast('Sent');
   else showToast(r?.error || 'Failed');
   document.getElementById('grpMsg').value = '';
+  grpMessages();
 }}
 async function grpMessages() {{
   const gid = document.getElementById('grpTarget').value;
@@ -1977,10 +2017,12 @@ async function refreshSync() {{
   const clocks = await api('GET', '/cpip/sync/clocks');
   if (clocks) {{
     const cel = document.getElementById('syncClocks');
+    const clkCount = document.getElementById('syncClockCount');
     const c = clocks.clocks || clocks;
     if (typeof c === 'object' && Object.keys(c).length) {{
+      clkCount.textContent = Object.keys(c).length;
       cel.innerHTML = '<pre style="font-size:0.7rem;color:var(--muted)">' + esc(JSON.stringify(c, null, 2)) + '</pre>';
-    }} else {{ cel.innerHTML = '<div style="color:var(--dim)">No clock data</div>'; }}
+    }} else {{ clkCount.textContent = '0'; cel.innerHTML = '<div style="color:var(--dim)">No clock data</div>'; }}
   }}
 }}
 async function syncSend() {{
@@ -2023,8 +2065,10 @@ async function refreshBond() {{
     if (!linkList.length) {{ el.innerHTML = '<div style="color:var(--dim)">No bonded links</div>'; return; }}
     let html = '<table><tr><th>Interface</th><th>Type</th><th>BW</th><th>Weight</th><th>Latency</th><th>Loss</th><th>Status</th></tr>';
     for (const l of linkList) {{
-      const st = l.active ? '<span style="color:var(--green)">Active</span>' : '<span style="color:var(--dim)">Down</span>';
-      html += `<tr><td>${{esc(l.interface||'?')}}</td><td>${{esc(l.type||'?')}}</td><td>${{esc(l.bandwidth||'?')}} Mbps</td><td>${{esc(l.weight||'?')}}</td><td>${{esc(l.latency_ms||'?')}}ms</td><td>${{esc(l.loss_pct||0)}}%</td><td>${{st}}</td></tr>`;
+      const st = l.active ? '<span style="color:var(--green)">● Active</span>' : '<span style="color:var(--dim)">○ Down</span>';
+      const lossColor = (l.loss_pct||0) > 10 ? 'var(--danger)' : (l.loss_pct||0) > 5 ? 'var(--orange)' : 'var(--green)';
+      const latColor = (l.latency_ms||0) > 200 ? 'var(--danger)' : (l.latency_ms||0) > 100 ? 'var(--orange)' : 'var(--green)';
+      html += `<tr><td>${{esc(l.interface||'?')}}</td><td>${{esc(l.type||'?')}}</td><td>${{esc(l.bandwidth||'?')}} Mbps</td><td>${{esc(l.weight||'?')}}</td><td style="color:${{latColor}}">${{esc(l.latency_ms||'?')}}ms</td><td style="color:${{lossColor}}">${{esc(l.loss_pct||0)}}%</td><td>${{st}}</td></tr>`;
     }}
     html += '</table>'; el.innerHTML = html;
   }}
@@ -2055,10 +2099,17 @@ async function refreshDrops() {{
   const el = document.getElementById('dropList');
   if (!drops.length) {{ el.innerHTML = '<div style="color:var(--dim)">No active dead drops</div>'; return; }}
   let html = '<table><tr><th>ID</th><th>From</th><th>To</th><th>Created</th><th>TTL</th><th>Claimed</th></tr>';
+  const now = Math.floor(Date.now()/1000);
   for (const d of drops) {{
     const t = d.created ? new Date(d.created*1000).toLocaleString() : '—';
-    const cl = d.claimed ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--dim)">—</span>';
-    html += `<tr><td class="mono" style="font-size:0.65rem">${{esc((d.message_id||d.id||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.from||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.to||'any').slice(0,8))}}</td><td style="font-size:0.65rem">${{esc(t)}}</td><td>${{esc(d.ttl||'?')}}s</td><td>${{cl}}</td></tr>`;
+    const cl = d.claimed ? '<span style="color:var(--green)">✓ Claimed</span>' : '<span style="color:var(--dim)">—</span>';
+    const elapsed = d.created ? now - d.created : 0;
+    const ttl = d.ttl || 3600;
+    const remaining = Math.max(0, ttl - elapsed);
+    const remH = Math.floor(remaining/3600), remM = Math.floor((remaining%3600)/60);
+    const remStr = remaining > 0 ? (remH > 0 ? remH+'h '+remM+'m' : remM+'m '+remaining%60+'s') : 'expired';
+    const remColor = remaining < 300 ? 'var(--danger)' : remaining < 900 ? 'var(--orange)' : 'var(--muted)';
+    html += `<tr><td class="mono" style="font-size:0.65rem">${{esc((d.message_id||d.id||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.from||'?').slice(0,8))}}</td><td class="mono" style="font-size:0.65rem">${{esc((d.to||'any').slice(0,8))}}</td><td style="font-size:0.65rem">${{esc(t)}}</td><td style="color:${{remColor}};font-size:0.65rem">${{remStr}}</td><td>${{cl}}</td></tr>`;
   }}
   html += '</table>'; el.innerHTML = html;
 }}
@@ -2110,26 +2161,35 @@ function connectSSE() {{
   }};
 }}
 
-refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory(); showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces(); refreshAntiISP(); refreshStingray(); refreshSurveillance(); refreshNeutrality();
+refresh(); refreshHistory(); refreshSchedules(); refreshMesh(); refreshInbox(); refreshSat(); refreshMobile(); refreshItf(); refreshRadio(); renderCovertHistory(); showCryptoStatus(); refreshIR(); refreshSignal(); diagIfaces(); refreshAntiISP(); refreshStingray(); refreshSurveillance(); refreshNeutrality(); refreshWoT(); refreshDNS(); refreshGroups(); refreshSync(); refreshBond(); refreshDrops();
 document.getElementById('histFilter').addEventListener('change', refreshHistory);
-setInterval(refresh, 5000);
-setInterval(refreshHistory, 15000);
-setInterval(refreshSchedules, 15000);
-setInterval(refreshMesh, 30000);
-setInterval(refreshInbox, 10000);
-setInterval(refreshSat, 30000);
-setInterval(refreshMobile, 30000);
-setInterval(refreshRadio, 30000);
-setInterval(refreshItf, 15000);
-setInterval(refreshIR, 10000);
-setInterval(refreshSignal, 5000);
-setInterval(refreshAntiISP, 30000);
-setInterval(refreshStingray, 30000);
-setInterval(refreshSurveillance, 30000);
-setInterval(refreshNeutrality, 15000);
+document.getElementById('grpTarget').addEventListener('change', grpMessages);
 
 let _tabHidden = false;
 document.addEventListener('visibilitychange', () => {{ _tabHidden = document.hidden; }});
+
+function sched(fn, ms) {{ setInterval(() => {{ if (!_tabHidden) fn(); }}, ms); }}
+sched(refresh, 5000);
+sched(refreshHistory, 15000);
+sched(refreshSchedules, 15000);
+sched(refreshMesh, 30000);
+sched(refreshInbox, 10000);
+sched(refreshSat, 30000);
+sched(refreshMobile, 30000);
+sched(refreshRadio, 30000);
+sched(refreshItf, 15000);
+sched(refreshIR, 10000);
+sched(refreshSignal, 5000);
+sched(refreshAntiISP, 30000);
+sched(refreshStingray, 30000);
+sched(refreshSurveillance, 30000);
+sched(refreshNeutrality, 15000);
+sched(refreshWoT, 30000);
+sched(refreshDNS, 30000);
+sched(refreshGroups, 15000);
+sched(refreshSync, 15000);
+sched(refreshBond, 30000);
+sched(refreshDrops, 15000);
 
 document.addEventListener('keydown', (e) => {{
   if (e.ctrlKey && e.key >= '1' && e.key <= '9') {{

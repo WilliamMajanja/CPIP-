@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v5.1.0"""
+"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v5.1.1"""
 
 import json
 import os
@@ -130,7 +130,7 @@ def Sidebar():
 
     return Box(
         Box(
-            Text(" CPIP v5.1.0 ", bold=True, fg="#0366d6"),
+            Text(" CPIP v5.1.1 ", bold=True, fg="#0366d6"),
             Text(" Coffee Protocol", fg="#888"),
             Spacer(height=1),
             *items,
@@ -487,7 +487,7 @@ def HistoryPanel():
 def AboutPanel():
     return ScrollBox(
         Box(
-            Text("CPIP v5.1.0 — Coffee Pot Internet Protocol", bold=True),
+            Text("CPIP v5.1.1 — Coffee Pot Internet Protocol", bold=True),
             Spacer(height=1),
             Markdown(
                 "## Protocol Support\n"
