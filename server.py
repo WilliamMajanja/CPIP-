@@ -132,15 +132,14 @@ HTTP_REDIRECT_PORT = int(os.environ.get("CPIP_HTTP_REDIRECT_PORT", "4181"))
 
 _raw_key = os.environ.get("CPIP_COVERT_KEY", "")
 if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
-    if not _raw_key:
-        _raw_key = base64.b64encode(os.urandom(32)).decode()
-        COVERT_KEY = _raw_key.encode()
-        print(f"   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
-        print(f"   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
+    _was_default = _raw_key == "CHANGE_ME_COFFEE_BLEND_2024"
+    _raw_key = base64.b64encode(os.urandom(32)).decode()
+    COVERT_KEY = _raw_key.encode()
+    if _was_default:
+        print(f"   ⚠ REJECTED default COVERT_KEY — auto-generated (32 bytes, not logged)", flush=True)
     else:
-        COVERT_KEY = _raw_key.encode()
-        print(f"   ⚠ WARNING: Using default COVERT_KEY (CHANGE_ME_COFFEE_BLEND_2024)", flush=True)
-        print(f"   ⚠ Set CPIP_COVERT_KEY to a custom value for production.", flush=True)
+        print(f"   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
+    print(f"   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
 else:
     COVERT_KEY = _raw_key.encode()
 if len(COVERT_KEY) < 16:
@@ -2752,8 +2751,41 @@ class NetDiagnostics:
     """Network diagnostic tools for sysadmins in hostile signal spaces.
     TCP ping, traceroute, port scan, DNS resolution, and interface info.
     """
+
+    _BLOCKED_RANGES = [
+        ("127.0.0.0", "127.255.255.255"),   # loopback
+        ("10.0.0.0", "10.255.255.255"),      # RFC 1918
+        ("172.16.0.0", "172.31.255.255"),    # RFC 1918
+        ("192.168.0.0", "192.168.255.255"),  # RFC 1918
+        ("169.254.0.0", "169.254.255.255"),  # link-local / cloud metadata
+        ("0.0.0.0", "0.255.255.255"),        # current network
+        ("224.0.0.0", "239.255.255.255"),    # multicast
+    ]
+
+    @staticmethod
+    def _is_blocked_host(host: str) -> str:
+        """Return error string if host is blocked (SSRF protection), else empty."""
+        try:
+            resolved = socket.gethostbyname(host)
+        except socket.gaierror:
+            return f"Cannot resolve {host}"
+        parts = resolved.split(".")
+        if len(parts) != 4:
+            return f"Invalid IP format: {resolved}"
+        ip_int = (int(parts[0]) << 24) | (int(parts[1]) << 16) | (int(parts[2]) << 8) | int(parts[3])
+        for lo_str, hi_str in NetDiagnostics._BLOCKED_RANGES:
+            lo_parts = [int(x) for x in lo_str.split(".")]
+            hi_parts = [int(x) for x in hi_str.split(".")]
+            lo_int = (lo_parts[0] << 24) | (lo_parts[1] << 16) | (lo_parts[2] << 8) | lo_parts[3]
+            hi_int = (hi_parts[0] << 24) | (hi_parts[1] << 16) | (hi_parts[2] << 8) | hi_parts[3]
+            if lo_int <= ip_int <= hi_int:
+                return f"Blocked: {host} ({resolved}) is in restricted range"
+        return ""
     @staticmethod
     def tcp_ping(host: str, port: int = 4180, timeout: float = 3.0) -> dict:
+        blocked = NetDiagnostics._is_blocked_host(host)
+        if blocked:
+            return {"host": host, "port": port, "alive": False, "error": blocked}
         start = time.time()
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2767,6 +2799,9 @@ class NetDiagnostics:
 
     @staticmethod
     def udp_ping(host: str, port: int = 4191, timeout: float = 3.0) -> dict:
+        blocked = NetDiagnostics._is_blocked_host(host)
+        if blocked:
+            return {"host": host, "port": port, "alive": False, "error": blocked}
         start = time.time()
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2784,8 +2819,13 @@ class NetDiagnostics:
 
     @staticmethod
     def port_scan(host: str, ports: list = None, timeout: float = 1.0) -> dict:
+        blocked = NetDiagnostics._is_blocked_host(host)
+        if blocked:
+            return {"host": host, "ports": {}, "error": blocked}
         if ports is None:
             ports = [22, 53, 80, 443, 4180, 4190, 4191, 4192, 4193, 4194, 4195, 4196, 8080]
+        if len(ports) > 20:
+            return {"host": host, "ports": {}, "error": "Maximum 20 ports per scan"}
         results = {}
         for port in ports:
             try:
@@ -2800,6 +2840,9 @@ class NetDiagnostics:
 
     @staticmethod
     def dns_resolve(hostname: str, dns_server: str = None) -> dict:
+        blocked = NetDiagnostics._is_blocked_host(hostname)
+        if blocked:
+            return {"hostname": hostname, "resolved": False, "error": blocked}
         try:
             addrs = socket.getaddrinfo(hostname, None)
             ipv4 = list(set(a[4][0] for a in addrs if a[0] == socket.AF_INET))
@@ -2810,6 +2853,9 @@ class NetDiagnostics:
 
     @staticmethod
     def traceroute(host: str, max_hops: int = 15, port: int = 4180, timeout: float = 2.0) -> dict:
+        blocked = NetDiagnostics._is_blocked_host(host)
+        if blocked:
+            return {"host": host, "hops": [], "error": blocked}
         hops = []
         try:
             dest_addr = socket.gethostbyname(host)
@@ -7844,12 +7890,16 @@ class CPIPHandler(BaseHTTPRequestHandler):
         elif path == "/cpip/emergency":
             self._handle_emergency()
         elif path == "/cpip/diagnostics/ping":
+            if not self._rpc_auth_check(path): return
             self._handle_diag_ping()
         elif path == "/cpip/diagnostics/ports":
+            if not self._rpc_auth_check(path): return
             self._handle_diag_ports()
         elif path == "/cpip/diagnostics/dns":
+            if not self._rpc_auth_check(path): return
             self._handle_diag_dns()
         elif path == "/cpip/diagnostics/traceroute":
+            if not self._rpc_auth_check(path): return
             self._handle_diag_traceroute()
         elif path == "/cpip/diagnostics/interfaces":
             self._handle_diag_interfaces()
@@ -11233,7 +11283,7 @@ HTTP_RATE_WINDOW = int(os.environ.get("CPIP_HTTP_RATE_WINDOW", "120"))
 # where hmac = HMAC-SHA256(COVERT_KEY, timestamp||method||path). Timestamps
 # must be within ±300s of the server clock. Read-only (GET/BREW/WHEN/
 # PROPFIND/OPTIONS) and the dashboard are exempt so the UI keeps working.
-RPC_AUTH_ENABLED = os.environ.get("CPIP_RPC_AUTH", "0") == "1"
+RPC_AUTH_ENABLED = os.environ.get("CPIP_RPC_AUTH", "1") == "1"
 RPC_AUTH_SKEW = int(os.environ.get("CPIP_RPC_AUTH_SKEW", "300"))
 
 

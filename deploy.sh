@@ -166,6 +166,12 @@ Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=
+ReadWritePaths=/opt/cpip /tmp/cpip
 
 [Install]
 WantedBy=multi-user.target
@@ -183,6 +189,56 @@ if systemctl is-active --quiet cpip.service; then
     ok "Service is running"
 else
     warn "Service may not have started — check: journalctl -u cpip -n 50 --no-pager"
+fi
+
+# ── Firewall (iptables) ────────────────────────────────────────────
+info "Configuring firewall rules..."
+if command -v iptables &>/dev/null; then
+    # Allow loopback
+    iptables -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -A INPUT -i lo -j ACCEPT
+    # Allow established/related connections
+    iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    # Allow CPIP HTTPS
+    iptables -C INPUT -p tcp --dport 4180 -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -p tcp --dport 4180 -j ACCEPT
+    # Allow HTTP redirect
+    iptables -C INPUT -p tcp --dport 4181 -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -p tcp --dport 4181 -j ACCEPT
+    # Allow mesh UDP
+    iptables -C INPUT -p udp --dport 4191 -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -p udp --dport 4191 -j ACCEPT
+    # Allow mesh TCP (latent ports)
+    iptables -C INPUT -p tcp --dport 4192:4194 -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -p tcp --dport 4192:4194 -j ACCEPT
+    # Rate-limit ICMP (anti-ping-flood)
+    iptables -C INPUT -p icmp --icmp-type echo-request -m limit --limit 2/s --limit-burst 4 -j ACCEPT 2>/dev/null || \
+        iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 2/s --limit-burst 4 -j ACCEPT
+    iptables -C INPUT -p icmp --icmp-type echo-request -j DROP 2>/dev/null || \
+        iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+    # Drop invalid packets
+    iptables -C INPUT -m conntrack --ctstate INVALID -j DROP 2>/dev/null || \
+        iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+    # Default policy: drop all other INPUT
+    iptables -P INPUT DROP 2>/dev/null || true
+    # IPv6: same rules
+    ip6tables -C INPUT -i lo -j ACCEPT 2>/dev/null || ip6tables -A INPUT -i lo -j ACCEPT
+    ip6tables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -C INPUT -p tcp --dport 4180 -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -p tcp --dport 4180 -j ACCEPT
+    ip6tables -C INPUT -p tcp --dport 4181 -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -p tcp --dport 4181 -j ACCEPT
+    ip6tables -C INPUT -p udp --dport 4191 -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -p udp --dport 4191 -j ACCEPT
+    ip6tables -C INPUT -p tcp --dport 4192:4194 -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -p tcp --dport 4192:4194 -j ACCEPT
+    ip6tables -C INPUT -p icmpv6 -j ACCEPT 2>/dev/null || \
+        ip6tables -A INPUT -p icmpv6 -j ACCEPT
+    ip6tables -P INPUT DROP 2>/dev/null || true
+    ok "Firewall: INPUT policy DROP (CPIP ports allowed, ICMP rate-limited)"
+else
+    warn "iptables not found — no firewall rules applied"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
