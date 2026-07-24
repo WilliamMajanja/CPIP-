@@ -131,6 +131,12 @@ else
     SSL_KEY=""
 fi
 
+# ── Generate COVERT_KEY if not set ─────────────────────────────────
+if [ -z "$CPIP_COVERT_KEY" ]; then
+    CPIP_COVERT_KEY=$(openssl rand -hex 32)
+    info "Auto-generated COVERT_KEY (32 bytes)"
+fi
+
 # ── Systemd service ──────────────────────────────────────────────────
 info "Creating systemd service..."
 cat << SVCEOF > /etc/systemd/system/cpip.service
@@ -147,7 +153,7 @@ Environment=CPIP_PORT=4180
 Environment=CPIP_MESH=1
 Environment=CPIP_MESH_PORT=4191
 Environment=CPIP_COVERT=1
-Environment=CPIP_COVERT_KEY=
+Environment=CPIP_COVERT_KEY=${CPIP_COVERT_KEY}
 Environment=CPIP_COVER_TRAFFIC=1
 Environment=CPIP_AVAHI=1
 Environment=CPIP_GPIO=1
