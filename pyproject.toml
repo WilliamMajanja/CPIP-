@@ -26,11 +26,12 @@ tui = ["opentui >= 0.1.0"]
 
 [project.scripts]
 cpip-server = "server:main"
+cpip-gui = "cpip_gui:main"
 
 [project.urls]
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
 RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
-RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc7168"
+RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc2168"
 
 [tool.setuptools]
-py-modules = ["server"]
+py-modules = ["server", "cpip_gui"]
