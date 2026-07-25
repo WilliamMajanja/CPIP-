@@ -19,6 +19,11 @@ class TestCPIPServer(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        try:
+            subprocess.run(["pkill", "-f", "python3.*server.py"],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
         env = os.environ.copy()
         env.update({
             "CPIP_PORT": str(TEST_PORT),
@@ -37,14 +42,19 @@ class TestCPIPServer(unittest.TestCase):
         cls.proc = subprocess.Popen(SERVER_CMD, env=env,
                                     stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL)
-        for _ in range(20):
-            try:
-                d = json.loads(urllib.request.urlopen(f"{BASE}/").read())
-                cls.POT_ID = d.get("pot_id", "test-pot")
-                return
-            except Exception:
-                time.sleep(0.3)
-        raise RuntimeError("Server did not start")
+        try:
+            for _ in range(20):
+                try:
+                    d = json.loads(urllib.request.urlopen(f"{BASE}/").read())
+                    cls.POT_ID = d.get("pot_id", "test-pot")
+                    return
+                except Exception:
+                    time.sleep(0.3)
+            raise RuntimeError("Server did not start")
+        except BaseException:
+            cls.proc.terminate()
+            cls.proc.wait(5)
+            raise
 
     @classmethod
     def tearDownClass(cls):

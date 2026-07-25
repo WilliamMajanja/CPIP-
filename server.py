@@ -61,7 +61,7 @@ import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -367,8 +367,8 @@ def _generate_self_signed_cert(cert_dir: str) -> tuple:
                  .subject_name(subject).issuer_name(issuer)
                  .public_key(key.public_key())
                  .serial_number(x509.random_serial_number())
-                 .not_valid_before(dt.datetime.now(tz=datetime.timezone.utc))
-                 .not_valid_after(dt.datetime.now(tz=datetime.timezone.utc) + dt.timedelta(days=365))
+                .not_valid_before(dt.datetime.now(tz=dt.timezone.utc))
+                .not_valid_after(dt.datetime.now(tz=dt.timezone.utc) + dt.timedelta(days=365))
                  .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
                  .add_extension(x509.SubjectAlternativeName([
                      x509.DNSName("localhost"),
@@ -2403,7 +2403,7 @@ class IncidentResponse:
             "message": message,
             "details": details or {},
             "timestamp": time.time(),
-            "human_time": datetime.now(tz=datetime.timezone.utc).isoformat(),
+            "human_time": datetime.now(tz=timezone.utc).isoformat(),
         }
         with cls._lock:
             cls._alerts.append(entry)
@@ -7628,7 +7628,7 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
 class CPIPHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        ts = datetime.now(tz=datetime.timezone.utc).strftime("%H:%M:%S")
+        ts = datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
         sys.stderr.write(f"[CPIP {ts}] {self.client_address[0]} {fmt % args}\n")
 
     def send_header(self, name, value):
@@ -9678,7 +9678,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
         bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
         schedule_list = json.dumps([{
             "id": s["id"],
-            "time": datetime.fromtimestamp(s["time"], tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if isinstance(s.get("time"), (int, float)) else str(s.get("time")),
+            "time": datetime.fromtimestamp(s["time"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if isinstance(s.get("time"), (int, float)) else str(s.get("time")),
             "beverage": s.get("beverage", "coffee"),
             "brew_duration": s.get("brew_duration", 30),
             "human": s.get("human", ""),
