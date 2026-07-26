@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
-from typing import ClassVar
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 import providers as cpip_providers
