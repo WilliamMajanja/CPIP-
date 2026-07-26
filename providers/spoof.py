@@ -215,13 +215,14 @@ class IPRotator:
 
     def get_source_ip(self):
         if not self._source_ips:
-            return "0.0.0.0"
-        return random.choice(self._source_ips)
+            return None
+        ip = random.choice(self._source_ips)
+        return None if ip == "0.0.0.0" else ip
 
     def bind_udp_socket(self, family=socket.AF_INET, target_port=0):
         s = socket.socket(family, socket.SOCK_DGRAM)
         src_ip = self.get_source_ip()
-        if src_ip != "0.0.0.0":
+        if src_ip:
             try:
                 with self._port_lock:
                     port = self._current_udp_ports.get(src_ip, 0)
@@ -236,7 +237,7 @@ class IPRotator:
     def bind_tcp_socket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         src_ip = self.get_source_ip()
-        if src_ip != "0.0.0.0":
+        if src_ip:
             try:
                 s.bind((src_ip, 0))
             except OSError:
@@ -259,7 +260,7 @@ class IPRotator:
         s = socket.socket(family, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         src_ip = self.get_source_ip()
-        if src_ip != "0.0.0.0":
+        if src_ip:
             try:
                 s.bind((src_ip, 0))
             except OSError:
@@ -279,7 +280,7 @@ def get_spoofed_socket(family=socket.AF_INET, sock_type=socket.SOCK_DGRAM):
     if sock_type == socket.SOCK_DGRAM:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     src_ip = rotator.get_source_ip()
-    if src_ip != "0.0.0.0":
+    if src_ip:
         try:
             s.bind((src_ip, 0))
         except OSError:
