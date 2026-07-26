@@ -3,7 +3,7 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-5.1.1-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.2.3-blue.svg)]()
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()

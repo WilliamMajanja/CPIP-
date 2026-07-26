@@ -193,27 +193,43 @@ def _get_kem_registry():
     }
 
     try:
-        from server import MLKEM768, PQC_KEM_REGISTRY, HybridKEM
-        for alg_name, kem_cls in PQC_KEM_REGISTRY.items():
+        from providers.kem import PQC_KEM_REGISTRY, get_pqc_kem, list_pqc_kems
+        for alg_name in PQC_KEM_REGISTRY:
             try:
-                available = kem_cls.is_available()
+                kem_provider = get_pqc_kem(alg_name)
+                available = kem_provider.is_available()
+                info = kem_provider.get_info()
             except Exception:
                 available = False
             display = alg_name.replace("_", "-").replace("ml-kem", "ML-KEM").replace("hqc", "HQC").replace("mceliece", "McEliece")
             _KEM_REGISTRY[alg_name] = {
-                "class": kem_cls, "name": display, "available": available,
+                "class": kem_provider if available else None,
+                "name": display, "available": available,
                 "pq": True, "custom": False,
             }
-        _KEM_REGISTRY["hybrid-ecdh-kyber"] = {
-            "class": HybridKEM, "name": "Hybrid ECDH-P256 + ML-KEM-768",
-            "pq": True, "custom": False, "hybrid": True,
-        }
-        _KEM_REGISTRY["mlkem768-pure"] = {
-            "class": MLKEM768, "name": "ML-KEM-768 (Pure Python)",
-            "pq": True, "custom": False,
-        }
     except ImportError:
-        pass
+        try:
+            from server import MLKEM768, PQC_KEM_REGISTRY, HybridKEM
+            for alg_name, kem_cls in PQC_KEM_REGISTRY.items():
+                try:
+                    available = kem_cls.is_available()
+                except Exception:
+                    available = False
+                display = alg_name.replace("_", "-").replace("ml-kem", "ML-KEM").replace("hqc", "HQC").replace("mceliece", "McEliece")
+                _KEM_REGISTRY[alg_name] = {
+                    "class": kem_cls, "name": display, "available": available,
+                    "pq": True, "custom": False,
+                }
+            _KEM_REGISTRY["hybrid-ecdh-kyber"] = {
+                "class": HybridKEM, "name": "Hybrid ECDH-P256 + ML-KEM-768",
+                "pq": True, "custom": False, "hybrid": True,
+            }
+            _KEM_REGISTRY["mlkem768-pure"] = {
+                "class": MLKEM768, "name": "ML-KEM-768 (Pure Python)",
+                "pq": True, "custom": False,
+            }
+        except ImportError:
+            pass
 
     return _KEM_REGISTRY
 

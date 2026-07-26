@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPIP/HTCPCP Server v5.1.1 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v5.2.3 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
@@ -68,15 +68,21 @@ from socketserver import ThreadingMixIn
 from typing import ClassVar
 from urllib.parse import parse_qs, urlparse
 
+import providers as cpip_providers
+from providers.base import BaseProvider, ProviderType
+from providers.registry import ProviderRegistry
+from providers.kem import KEMProvider, PQC_KEM_REGISTRY, get_pqc_kem, list_pqc_kems, register_kem_provider
+from providers.spoof import SPOOF_ENABLED, SPOOF_MODE, IPRotator, ProxyManager, get_spoofed_socket, wrap_urllib_for_spoof
+from providers.palantir import PalantirHardening, PALANTIR_ENABLED, PALANTIR_CHAFF, PALANTIR_MIX_DELAY, PALANTIR_FIXED_SIZE, PALANTIR_BROADCAST
+
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Radio interface (C binary for LoRa / packet radio)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "radio"))
 try:
-    from radio_protocol import RadioError, RadioInterface
+    from radio import RadioError, RadioInterface
     RADIO_IMPORT_OK = True
 except ImportError:
     RadioInterface = None
@@ -113,6 +119,11 @@ AVAHI_ENABLED = os.environ.get("CPIP_AVAHI", "1") == "1"
 DISCOVERY_PORT = int(os.environ.get("CPIP_DISCOVERY_PORT", "4190"))
 HISTORY_MAX = 100
 SCHEDULE_CHECK_INTERVAL = 15
+
+# ── Provider System Configuration ──────────────────────────────────────
+CPIP_PROVIDERS = os.environ.get("CPIP_PROVIDERS", "all")
+CPIP_PROVIDER_DNS_ENABLED = os.environ.get("CPIP_PROVIDER_DNS", "1") == "1"
+CPIP_PROVIDER_MESH_ENABLED = os.environ.get("CPIP_PROVIDER_MESH", "1") == "1"
 
 # ── FIPS 140-2/3 Compliance Mode ───────────────────────────────────────
 FIPS_MODE = os.environ.get("CPIP_FIPS", "0") == "1"
@@ -231,12 +242,18 @@ DNS_OBLIVIOUS_SERVERS = os.environ.get("CPIP_DOH_SERVERS",
     "https://cloudflare-dns.com/dns-query,https://dns.google/dns-query,"
     "https://dns.quad9.net/dns-query").split(",")
 
+# ── IP Spoofing / Proxy Rotation ─────────────────────────────────────────
+
 PITAIL_ENABLED = os.environ.get("CPIP_PITAIL", "0") == "1"
 PITAIL_ADDR = os.environ.get("CPIP_PITAIL_ADDR", "10.0.0.1")
 PITAIL_NETMASK = os.environ.get("CPIP_PITAIL_NETMASK", "255.255.255.0")
 PITAIL_GADGET_DIR = os.environ.get("CPIP_PITAIL_GADGET_DIR", "/sys/kernel/config/usb_gadget")
 THERMOS_ENABLED = os.environ.get("CPIP_THERMOS", "0") == "1"
 THERMOS_MAX_STORAGE = int(os.environ.get("CPIP_THERMOS_MAX", "1000000"))
+
+# ── Palantir-Grade Counter-Surveillance Hardening ─────────────────────
+PALANTIR_ENABLED = os.environ.get("CPIP_PALANTIR", "0") == "1"
+PALANTIR_MODE = os.environ.get("CPIP_PALANTIR_MODE", "auto")
 
 # ── Anti-Stingray / IMSI Catcher Detection ─────────────────────────────
 ANTI_STINGRAY_ENABLED = _env_bool("CPIP_ANTI_STINGRAY", True)
@@ -283,8 +300,8 @@ BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
 BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
-CPIP_VERSION = "5.1.1"
-CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding)"
+CPIP_VERSION = "5.2.3"
+CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + RFC 6969 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding + Palantir + IP Spoofing)"
 _START_TIME = time.time()
 
 
@@ -1461,6 +1478,39 @@ PQC_KEM_REGISTRY = {
     "ml_kem_768": MLKEM768,
     "ml_kem_1024": MLKEM1024,
 }
+
+
+# ── Register PQC KEMs with the provider system ───────────────────────
+def _register_kem_providers():
+    """Wrap each PQCKEM subclass as a KEMProvider and register it.
+    Skips ml_kem_768 — Kyber provider in providers/kem.py already covers it
+    with both 1nf1D3L and pqcrypto backends."""
+    for name, cls in PQC_KEM_REGISTRY.items():
+        if name == "ml_kem_768":
+            continue
+        def _make_provider(n, c):
+            return type(
+                f"KEM_{n}",
+                (KEMProvider,),
+                {
+                    "NAME": n,
+                    "ALGORITHM": c.ALGORITHM,
+                    "PUBLIC_KEY_SIZE": c.PUBLIC_KEY_SIZE,
+                    "SECRET_KEY_SIZE": c.SECRET_KEY_SIZE,
+                    "CIPHERTEXT_SIZE": c.CIPHERTEXT_SIZE,
+                    "SHARED_KEY_SIZE": c.SHARED_KEY_SIZE,
+                    "_pqc_cls": c,
+                    "_implementation_available": classmethod(lambda cls: cls._pqc_cls.is_available()),
+                    "generate_keypair": classmethod(lambda cls: cls._pqc_cls.generate_keypair()),
+                    "encapsulate": classmethod(lambda cls, pk: cls._pqc_cls.encapsulate(pk)),
+                    "decapsulate": classmethod(lambda cls, sk, ct: cls._pqc_cls.decapsulate(sk, ct)),
+                },
+            )
+        provider_cls = _make_provider(name, cls)
+        register_kem_provider(name, provider_cls)
+
+
+_register_kem_providers()
 
 
 
@@ -4657,7 +4707,23 @@ class MeshNode:
             ttl -= 1
             msg["ttl"] = ttl
             msg["route"] = msg.get("route", []) + [POT_ID]
-            cls._send_direct(dst, msg)
+            ph = PalantirHardening() if PALANTIR_ENABLED else None
+            if PALANTIR_ENABLED and ph and ph.enabled and ph.mix_queue_size < 100:
+                def _do_send(d, m):
+                    m["ttl"] = m.get("ttl", MESH_TTL) - 1
+                    cls._send_direct(d, m)
+                if not ph.enqueue_for_mix(dst, dict(msg), _do_send):
+                    cls._send_direct(dst, msg)
+            else:
+                cls._send_direct(dst, msg)
+            if PALANTIR_ENABLED and ph and ph.enabled and ph.should_broadcast():
+                with cls.peers_lock:
+                    for pid in list(cls.peers.keys()):
+                        if pid != dst and pid != POT_ID:
+                            bcast_msg = dict(msg)
+                            bcast_msg["dst"] = pid
+                            bcast_msg["_cover"] = True
+                            cls._send_direct(pid, bcast_msg)
         else:
             with cls.store_lock:
                 cls.message_store.append({
@@ -4742,13 +4808,20 @@ class MeshNode:
     @classmethod
     def _send_direct(cls, dst_pot: str, msg: dict):
         try:
+            ph = PalantirHardening() if PALANTIR_ENABLED else None
+
             with cls.peers_lock:
                 info = cls.peers.get(dst_pot)
             if not info:
                 return False
 
             data = json.dumps(msg).encode()
-            data = cls._pad_traffic(data)
+
+            if PALANTIR_ENABLED and ph and ph.enabled:
+                ph.wait_for_timing_slot()
+                data = ph.pad_message(data)
+            else:
+                data = cls._pad_traffic(data)
 
             # Use bonded multi-link transport if multiple paths are available
             if BONDING_ENABLED:
@@ -7860,6 +7933,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_radio()
         elif path == "/cpip/mesh/mobile":
             self._handle_mesh_mobile()
+        elif path == "/cpip/palantir":
+            self._handle_palantir_get()
+        elif path == "/cpip/spoof":
+            self._handle_spoof_get()
         elif path == "/cpip/defense":
             self._handle_defense_get()
         elif path == "/cpip/mesh/deaddrop":
@@ -7896,6 +7973,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_diag_interfaces()
         elif path == "/cpip/crypto":
             self._handle_crypto_status()
+        elif path == "/cpip/providers":
+            self._handle_providers()
         elif path == "/cpip/anti-isp":
             self._send_json(200, "OK", AntiISP.get_status())
         elif path == "/cpip/anti-stingray":
@@ -8105,6 +8184,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_mesh_sat_post()
         elif path == "/cpip/mesh/mobile":
             self._handle_mesh_mobile_post()
+        elif path == "/cpip/palantir":
+            self._handle_palantir_post()
+        elif path == "/cpip/spoof":
+            self._handle_spoof_post()
         elif path == "/cpip/defense":
             self._handle_defense_post()
         elif path == "/cpip/crypto":
@@ -9349,6 +9432,73 @@ class CPIPHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
+    def _handle_spoof_get(self):
+        pm = ProxyManager()
+        rotator = IPRotator()
+        self._send_json(200, "OK", {
+            "spoof_enabled": SPOOF_ENABLED,
+            "mode": SPOOF_MODE,
+            "tor_available": pm.tor_available,
+            "proxy_count": pm.proxy_count,
+            "source_ips": rotator.source_ips,
+            "source_ip_count": rotator.source_ip_count,
+            "proxies": [p.split(":")[0] + ":****" if "://" in p and "@" not in p else p for p in pm._proxies[:10]],
+        })
+
+    def _handle_spoof_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        pm = ProxyManager()
+        rotator = IPRotator()
+        if action == "rotate":
+            pm._current_idx = 0
+            self._send_json(200, "OK", {"status": "proxy_rotated", "proxy": pm.get_proxy()})
+        elif action == "status":
+            self._handle_spoof_get()
+        elif action == "reload":
+            pm._load_proxies()
+            self._send_json(200, "OK", {"status": "proxies_reloaded", "count": pm.proxy_count})
+        else:
+            self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
+
+    def _handle_palantir_get(self):
+        ph = PalantirHardening()
+        status = ph.get_status()
+        status["agent_log"] = ph.get_agent_log(20)
+        self._send_json(200, "OK", status)
+
+    def _handle_palantir_post(self):
+        body = self._read_json_body()
+        action = body.get("action", "")
+        ph = PalantirHardening()
+        if action == "enable":
+            ph.enabled = True
+            ph.log_agent("enabled via API")
+            self._send_json(200, "OK", {"status": "palantir_enabled"})
+        elif action == "disable":
+            ph.enabled = False
+            ph.log_agent("disabled via API")
+            self._send_json(200, "OK", {"status": "palantir_disabled"})
+        elif action == "chaff_on":
+            ph._chaff_enabled = True
+            self._send_json(200, "OK", {"status": "chaff_enabled"})
+        elif action == "chaff_off":
+            ph._chaff_enabled = False
+            self._send_json(200, "OK", {"status": "chaff_disabled"})
+        elif action == "broadcast_on":
+            ph._broadcast_all = True
+            self._send_json(200, "OK", {"status": "broadcast_enabled"})
+        elif action == "broadcast_off":
+            ph._broadcast_all = False
+            self._send_json(200, "OK", {"status": "broadcast_disabled"})
+        elif action == "evasion":
+            ph.auto_evasion(True)
+            self._send_json(200, "OK", {"status": "evasion_activated"})
+        elif action == "log":
+            self._send_json(200, "OK", {"log": ph.get_agent_log(100)})
+        else:
+            self._handle_palantir_get()
+
     def _handle_mesh_sat_post(self):
         body = self._read_json_body()
         action = body.get("action", "")
@@ -9635,6 +9785,19 @@ class CPIPHandler(BaseHTTPRequestHandler):
 
     def _handle_diag_interfaces(self):
         self._send_json(200, "OK", {"interfaces": NetDiagnostics.get_interfaces()})
+
+    def _handle_providers(self):
+        ptype_str = parse_qs(urlparse(self.path).query).get("type", [None])[0]
+        try:
+            ptype = cpip_providers.ProviderType.from_str(ptype_str) if ptype_str else None
+        except ValueError:
+            self._send_json(400, "Bad Request", {"error": f"Unknown provider type: {ptype_str}"})
+            return
+        providers = cpip_providers.registry.get_info(ptype)
+        self._send_json(200, "OK", {
+            "count": len(providers),
+            "providers": providers,
+        })
 
     def _handle_crypto_status(self):
         self._send_json(200, "OK", {
@@ -11588,7 +11751,8 @@ def main():
     print(f"   ├ Radio:      {'Port ' + str(RADIO_FREQ//1000000) + ' MHz (' + RADIO_MODE.upper() + ')' if RADIO_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Mobile:     {'Port ' + str(MOBILE_PORT) + ' (' + MOBILE_INTERFACE + ')' if MOBILE_ENABLED else 'Disabled'}", flush=True)
     print(f"   ├ Thermos:    {'Aggregator mode' if THERMOS_ENABLED else 'Standard'}", flush=True)
-    print(f"   └ Dashboard:  {scheme}://{host_display}:{BIND_PORT}/dashboard", flush=True)
+    num_providers = len(cpip_providers.registry.get_info())
+    print(f"   └ Providers:  {num_providers} registered — /cpip/providers", flush=True)
     print(flush=True)
     print("   HTCPCP (RFC 2324+7168): BREW, WHEN, PROPFIND, POST, GET", flush=True)
     print(f"   coffee: URI scheme:     {len(COFFEE_SCHEME_NAMES)} international variants", flush=True)
@@ -11601,11 +11765,31 @@ def main():
     print("   COVERT (ECC):         /cpip/mesh/encode, /cpip/mesh/decode", flush=True)
     print("   DEADDROP:             /cpip/mesh/deaddrop?action=list|claim&id= (dead-drop query)", flush=True)
     print("   DEFENSE:              /cpip/defense (418 blacklist + stealth status)", flush=True)
+    print("   PROVIDERS:            /cpip/providers?type=kem|dns|mesh_transport (provider registry)", flush=True)
     print("   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print("   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
     print("   Crypto: AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS) hybrid KEM", flush=True)
     print("   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
+    if SPOOF_ENABLED:
+        pm = ProxyManager()
+        rotator = IPRotator()
+        tor_avail = "Tor=" + ("ON" if pm.tor_available else "no-daemon")
+        proxy_count = f"ProxyPool={pm.proxy_count}" if pm.proxy_count else ""
+        src_ips = f"SourceIPs={rotator.source_ip_count}"
+        spoof_info = " | ".join(filter(None, [SPOOF_MODE.upper(), tor_avail, proxy_count, src_ips]))
+        print(f"   IP Spoof:   {spoof_info}", flush=True)
+        wrap_urllib_for_spoof()
+    if PALANTIR_ENABLED:
+        ph = PalantirHardening()
+        palantir_mode = ph.mode.upper()
+        chaff_on = "Chaff=ON" if PALANTIR_CHAFF else ""
+        mix = f"MixDelay={PALANTIR_MIX_DELAY}s" if PALANTIR_MIX_DELAY else ""
+        fixed = f"Fixed={PALANTIR_FIXED_SIZE}B" if PALANTIR_FIXED_SIZE else ""
+        bc = "Broadcast=ON" if PALANTIR_BROADCAST else ""
+        info = " | ".join(filter(None, [palantir_mode, chaff_on, mix, fixed, bc]))
+        print(f"   Palantir:   {info}", flush=True)
+        ph.log_agent("hardening active at startup")
     print("   Anti-Stingray: IMSI catcher detection + RF anomaly monitoring", flush=True)
     print("   Anti-Surveillance: DPI detection + SSL intercept + exploit detection", flush=True)
     print("   Net Neutrality: Protocol masquerading + DPI evasion + throttle detection", flush=True)
@@ -11620,6 +11804,7 @@ def main():
     start_scheduler()
     start_ntp()
     MeshNode.start()
+    PalantirHardening.start()
     AntiISP.start()
     AntiStingray.start()
     AntiSurveillance.start()
@@ -11664,6 +11849,7 @@ def main():
         stop_scheduler()
         stop_radio()
         stop_ntp()
+        PalantirHardening.stop()
         AntiISP.stop()
         AntiStingray.stop()
         AntiSurveillance.stop()

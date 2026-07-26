@@ -73,6 +73,7 @@ PAGES = [
     ("crypto", "Crypto"),
     ("ecc", "ECC"),
     ("dns", "DNS"),
+    ("providers", "Providers"),
     ("config", "Config"),
     ("schedule", "Schedules"),
     ("history", "History"),
@@ -91,6 +92,7 @@ dns_data = Signal({})
 config_data = Signal({})
 schedule_data = Signal({})
 history_data = Signal({})
+providers_data = Signal([])
 loading = Signal(False)
 error_msg = Signal("")
 
@@ -120,6 +122,9 @@ def fetch_page(page: str):
         elif page == "history":
             data = api("GET", "/cpip/history")
             if data: history_data.set(data)
+        elif page == "providers":
+            data = api("GET", "/cpip/providers")
+            if data: providers_data.set(data.get("providers", []))
     except Exception as e:
         error_msg.set(str(e))
     loading.set(False)

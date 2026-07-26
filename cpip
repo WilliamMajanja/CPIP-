@@ -126,6 +126,24 @@ Usage:
 
   # Defenses
   cpip defense status                  418 defense status
+  cpip spoof status                    IP spoofing & proxy rotation status
+  cpip spoof rotate                    Force proxy rotation
+  cpip spoof reload                    Reload proxy list
+  cpip palantir status                 Palantir hardening status
+
+  # IP Spoofing / Proxy Rotation
+  cpip spoof status                    IP spoofing & proxy rotation status
+  cpip spoof rotate                    Force proxy rotation
+  cpip spoof reload                    Reload proxy list
+
+  # Palantir Counter-Surveillance Hardening
+  cpip palantir status                 Palantir hardening status
+  cpip palantir enable                 Enable hardening
+  cpip palantir disable                Disable hardening
+  cpip palantir chaff                  Toggle chaff traffic
+  cpip palantir broadcast              Toggle broadcast-all mode
+  cpip palantir evasion                Activate auto-evasion
+  cpip palantir log                    Show agent log
 
   # ITF (In The Face) — active network defense
   cpip itf status                       Full defense posture
@@ -696,6 +714,99 @@ print(f'Keep warm:      {d.get(\"keep_warm\")}')
                 ;;
             *)
                 die "Unknown defense command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Palantir Counter-Surveillance Hardening ──────────────────────
+    palantir)
+        case "${2:-status}" in
+            status)
+                echo "Palantir Counter-Surveillance Hardening:"
+                echo "---"
+                api GET "/cpip/palantir" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:     {d.get(\"enabled\")}')
+print(f'Mode:        {d.get(\"mode\",\"?\")}')
+print(f'Chaff:       {d.get(\"chaff\",\"?\")}')
+print(f'Mix Delay:   {d.get(\"mix_delay\",0)}s')
+print(f'Fixed Size:  {d.get(\"fixed_size\",0)}B')
+print(f'Broadcast:   {d.get(\"broadcast_all\",\"?\")}')
+print(f'Cover Bps:   {d.get(\"cover_bps\",0)}')
+print(f'ID Epoch:    {d.get(\"identity_epoch\",0)}')
+print(f'Mix Queue:   {d.get(\"mix_queue\",0)} pending')
+log = d.get('agent_log', [])
+if log:
+    print(f'Agent Log ({len(log)} entries):')
+    for e in log[-5:]:
+        print(f'  [{e.get(\"time\",\"?\")}] {e.get(\"msg\",\"?\")}')
+" 2>/dev/null || api GET "/cpip/palantir"
+                ;;
+            enable)
+                echo "Enabling Palantir hardening..."
+                api POST "/cpip/palantir" "{\"action\":\"enable\"}"
+                ;;
+            disable)
+                echo "Disabling Palantir hardening..."
+                api POST "/cpip/palantir" "{\"action\":\"disable\"}"
+                ;;
+            chaff)
+                echo "Toggling chaff traffic..."
+                api POST "/cpip/palantir" "{\"action\":\"chaff_on\"}"
+                ;;
+            broadcast)
+                echo "Toggling broadcast-all mode..."
+                api POST "/cpip/palantir" "{\"action\":\"broadcast_on\"}"
+                ;;
+            evasion)
+                echo "Activating auto-evasion..."
+                api POST "/cpip/palantir" "{\"action\":\"evasion\"}"
+                ;;
+            log)
+                api GET "/cpip/palantir" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for e in d.get('agent_log', []):
+    print(f'[{e.get(\"time\",\"?\")}] {e.get(\"msg\",\"?\")}')
+" 2>/dev/null
+                ;;
+            *)
+                die "Unknown palantir command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── IP Spoofing / Proxy Rotation ──────────────────────────────────
+    spoof)
+        case "${2:-status}" in
+            status)
+                echo "IP Spoofing & Proxy Rotation status:"
+                echo "---"
+                api GET "/cpip/spoof" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Spoofing:   {\"ON\" if d.get(\"spoof_enabled\") else \"OFF\"}')
+print(f'Mode:       {d.get(\"mode\",\"?\")}')
+print(f'Tor:        {\"available\" if d.get(\"tor_available\") else \"not running\"}')
+print(f'Proxies:    {d.get(\"proxy_count\",0)} loaded')
+print(f'Source IPs: {d.get(\"source_ip_count\",0)} ({len(d.get(\"source_ips\",[]))})')
+proxies = d.get('proxies', [])
+if proxies:
+    for p in proxies[:5]:
+        print(f'  {p}')
+" 2>/dev/null || api GET "/cpip/spoof"
+                ;;
+            rotate)
+                echo "Rotating proxy..."
+                api POST "/cpip/spoof" "{\"action\":\"rotate\"}"
+                ;;
+            reload)
+                echo "Reloading proxy list..."
+                api POST "/cpip/spoof" "{\"action\":\"reload\"}"
+                ;;
+            *)
+                die "Unknown spoof command: $2\nSee 'cpip help' for usage."
                 ;;
         esac
         ;;

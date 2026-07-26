@@ -19,19 +19,35 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
-dependencies = ["cryptography >= 42.0.0", "pqcrypto >= 0.4.0", "numpy >= 1.24.0"]
+dependencies = [
+    "cryptography >= 49.0.0",
+    "numpy >= 2.5.1",
+    "pqcrypto >= 0.4.0",
+]
 
 [project.optional-dependencies]
-tui = ["opentui >= 0.1.0"]
-
-[project.scripts]
-cpip-server = "server:main"
-cpip-gui = "cpip_gui:main"
+tui = ["opentui >= 0.1.2"]
+cli = ["rich >= 15.0.0"]
+hsm = ["pkcs11 >= 1.0.4"]
+all = ["opentui>=0.1.2", "rich>=15.0.0", "pkcs11>=1.0.4"]
 
 [project.urls]
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
 RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
 RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc2168"
 
+[project.scripts]
+cpip-server = "server:main"
+cpip-gui = "cpip_gui:main"
+cpip-tui = "cpip_tui:main"
+cpip-cw = "b4dm4n_cw:main"
+
 [tool.setuptools]
-py-modules = ["server", "cpip_gui"]
+packages = {find = {include = ["providers", "providers.*"]}}
+py-modules = [
+    "server", "cpip_gui", "cpip_tui", "b4dm4n_cw",
+    "inf1del_kyber",
+]
+
+[tool.setuptools.package-data]
+radio = ["*.py", "*.c", "*.h", "Makefile", "radio_if"]
