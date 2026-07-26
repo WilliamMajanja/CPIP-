@@ -24,6 +24,12 @@ class TestCPIPServer(unittest.TestCase):
                            capture_output=True, timeout=5)
         except Exception:
             pass
+        try:
+            subprocess.run(["fuser", "-k", f"{TEST_PORT}/tcp"],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
+        time.sleep(0.5)
         env = os.environ.copy()
         env.update({
             "CPIP_PORT": str(TEST_PORT),
@@ -43,13 +49,13 @@ class TestCPIPServer(unittest.TestCase):
                                     stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL)
         try:
-            for _ in range(20):
+            for _ in range(40):
                 try:
                     d = json.loads(urllib.request.urlopen(f"{BASE}/").read())
                     cls.POT_ID = d.get("pot_id", "test-pot")
                     return
                 except Exception:
-                    time.sleep(0.3)
+                    time.sleep(0.25)
             raise RuntimeError("Server did not start")
         except BaseException:
             cls.proc.terminate()
