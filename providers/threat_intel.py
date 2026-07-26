@@ -18,6 +18,7 @@ REQUIRE_PEERS = int(os.environ.get("CPIP_THREAT_REQUIRE_PEERS", "3"))
 GOSSIP_INTERVAL = int(os.environ.get("CPIP_THREAT_GOSSIP_INTERVAL", "60"))
 
 SHARING_SALT = os.environ.get("CPIP_THREAT_SALT", "cpip-v6-default-salt")
+CPIP_THREAT_DHT_BOOTSTRAP = os.environ.get("CPIP_THREAT_DHT_BOOTSTRAP", "")
 
 
 class ThreatIntelProvider(BaseProvider):

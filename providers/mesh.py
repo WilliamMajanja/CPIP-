@@ -1,10 +1,46 @@
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any, Callable
 
 from providers.base import BaseProvider, ProviderType
 from providers.registry import ProviderRegistry
+
+PQ_MESH_ENABLED = os.environ.get("CPIP_PQ_MESH", "1") == "1"
+PQ_MESH_KEM = os.environ.get("CPIP_PQ_MESH_KEM", "ml_kem_768")
+PQ_MESH_SIG = os.environ.get("CPIP_PQ_MESH_SIG", "dilithium2")
+
+
+class PQMesh:
+    """Post-quantum mesh protocol using hybrid KEM + signing."""
+
+    NAME = "pq_mesh"
+    VERSION = "6.0.0"
+    ENABLED = PQ_MESH_ENABLED
+    KEM_ALGORITHM = PQ_MESH_KEM
+    SIG_ALGORITHM = PQ_MESH_SIG
+
+    @classmethod
+    def is_available(cls) -> bool:
+        return cls.ENABLED
+
+    @classmethod
+    def get_kem(cls) -> str:
+        return cls.KEM_ALGORITHM
+
+    @classmethod
+    def get_sig(cls) -> str:
+        return cls.SIG_ALGORITHM
+
+    @classmethod
+    def get_status(cls) -> dict[str, Any]:
+        return {
+            "enabled": cls.ENABLED,
+            "kem": cls.KEM_ALGORITHM,
+            "sig": cls.SIG_ALGORITHM,
+            "pq_mesh_active": cls.ENABLED,
+        }
 
 
 class MeshTransportProvider(BaseProvider):

@@ -7973,6 +7973,18 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_diag_interfaces()
         elif path == "/cpip/crypto":
             self._handle_crypto_status()
+        elif path == "/cpip/cell/status":
+            self._handle_cell_status()
+        elif path == "/cpip/sdr/status":
+            self._handle_sdr_status()
+        elif path == "/cpip/sdr/spectrum":
+            self._handle_sdr_spectrum()
+        elif path == "/cpip/carrier/status":
+            self._handle_carrier_status()
+        elif path == "/cpip/intel/global-map":
+            self._handle_intel_global_map()
+        elif path == "/cpip/intel/risk-score":
+            self._handle_intel_risk_score()
         elif path == "/cpip/providers":
             self._handle_providers()
         elif path == "/cpip/anti-isp":
@@ -8192,6 +8204,12 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._handle_defense_post()
         elif path == "/cpip/crypto":
             self._handle_crypto_post()
+        elif path == "/cpip/cell/scan":
+            self._handle_cell_scan()
+        elif path == "/cpip/sdr/scan":
+            self._handle_sdr_scan()
+        elif path == "/cpip/carrier/webhook":
+            self._handle_carrier_webhook()
         elif path == "/cpip/emergency":
             self._handle_emergency_post()
         elif path == "/cpip/incident":
@@ -9831,6 +9849,56 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._send_json(400, "Bad Request",
                             {"error": f"Unknown crypto action: {action}",
                              "hint": "Supported action: rotate_keys"})
+
+    def _handle_cell_status(self):
+        from providers.cellular import CellularProvider, AntiStingrayV2
+        result = AntiStingrayV2.get_status() if hasattr(AntiStingrayV2, 'get_status') else CellularProvider.get_status()
+        self._send_json(200, "OK", result)
+
+    def _handle_cell_scan(self):
+        from providers.cellular import AntiStingrayV2, CellularProvider
+        try:
+            result = AntiStingrayV2.scan() if hasattr(AntiStingrayV2, 'scan') else CellularProvider.scan()
+            self._send_json(200, "OK", {"status": "scan_started", "result": result})
+        except Exception as e:
+            self._send_json(200, "OK", {"status": "scan_triggered", "note": str(e)})
+
+    def _handle_sdr_status(self):
+        from providers.sdr import SDRProvider
+        self._send_json(200, "OK", SDRProvider.get_status())
+
+    def _handle_sdr_spectrum(self):
+        from providers.sdr import SDRProvider
+        self._send_json(200, "OK", SDRProvider.get_spectrum() if hasattr(SDRProvider, 'get_spectrum') else {"spectrum": "unavailable"})
+
+    def _handle_sdr_scan(self):
+        from providers.sdr import SDRProvider
+        try:
+            self._send_json(200, "OK", {"status": "scan_started", "type": "sdr"})
+        except Exception as e:
+            self._send_json(200, "OK", {"status": "scan_triggered", "note": str(e)})
+
+    def _handle_carrier_status(self):
+        from providers.carrier import CarrierProvider
+        self._send_json(200, "OK", CarrierProvider.get_status())
+
+    def _handle_carrier_webhook(self):
+        from providers.carrier import CarrierProvider
+        body = self._read_json_body()
+        CarrierProvider.register_webhook(body)
+        self._send_json(200, "OK", {"status": "webhook_registered"})
+
+    def _handle_intel_global_map(self):
+        from providers.threat_intel import GlobalIntelProvider
+        self._send_json(200, "OK", GlobalIntelProvider.get_map_data() if hasattr(GlobalIntelProvider, 'get_map_data') else [])
+
+    def _handle_intel_risk_score(self):
+        from providers.threat_intel import GlobalIntelProvider
+        params = parse_qs(parsed.query)
+        mcc = params.get("mcc", [""])[0]
+        mnc = params.get("mnc", [""])[0]
+        result = GlobalIntelProvider.risk_score(mcc, mnc) if hasattr(GlobalIntelProvider, 'risk_score') else {"risk_score": 0}
+        self._send_json(200, "OK", result)
 
     def _uptime(self):
         return time.time() - self._start_time

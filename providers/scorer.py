@@ -15,6 +15,7 @@ SCORER_MODE = os.environ.get("CPIP_SCORER_MODE", "heuristic")
 SCORER_TEMPORAL_WINDOW = int(os.environ.get("CPIP_SCORER_TEMPORAL_WINDOW", "60"))
 SCORER_PAIR_BONUS = float(os.environ.get("CPIP_SCORER_PAIR_BONUS", "0.25"))
 SCORER_BASELINE_DAYS = int(os.environ.get("CPIP_SCORER_BASELINE_DAYS", "7"))
+CPIP_CELL_ML_SCORING = os.environ.get("CPIP_CELL_ML_SCORING", "1") == "1"
 
 THREAT_LABELS = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
 

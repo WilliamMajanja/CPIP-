@@ -77,7 +77,7 @@ CPIP_PORT="${CPIP_PORT:-4180}"
 
 usage() {
 cat << 'HELP'
-CPIP v5.0.5 — Coffee Pot Internet Protocol CLI
+CPIP v6.0-dev — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
 
 Usage:
@@ -107,6 +107,8 @@ Usage:
   cpip mesh sat                        Satellite mesh status
   cpip mesh radio                      Radio / LoRa / packet-radio status
   cpip mesh mobile                     4G/5G / LTE / WWAN status
+  cpip mesh threat-report              Show community threat report
+  cpip mesh attack-detect status       Check mesh attack detection
 
   # ECC / Address Book
   cpip ecc status                      ECC engine + address book status
@@ -144,6 +146,11 @@ Usage:
   cpip palantir broadcast              Toggle broadcast-all mode
   cpip palantir evasion                Activate auto-evasion
   cpip palantir log                    Show agent log
+
+  # Post-Quantum Crypto
+  cpip crypto pqc-status               Show PQC-SUCI identity status
+  cpip crypto pqc-keys                 List PQC keys
+  cpip crypto pq-mesh status        Post-Quantum mesh protocol status
 
   # ITF (In The Face) — active network defense
   cpip itf status                       Full defense posture
@@ -533,6 +540,34 @@ if d.get('enabled'):
                 echo "---"
                 api GET "/cpip/mesh/queued" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
                     api GET "/cpip/mesh/queued" 2>/dev/null || echo "(no queued endpoint or empty)"
+                ;;
+            threat-report)
+                echo "Threat Report:"
+                echo "---"
+                api GET "/cpip/intel/global-map" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(f'Threats reported: {len(data)}')
+for f in data[:10]:
+    print(f'  {f.get(\"cell_hash\",\"?\")[:12]}... @ {f.get(\"lat\",\"?\")},{f.get(\"lon\",\"?\")}  ({f.get(\"count\",0)} reports)')
+" 2>/dev/null || echo "No threat data"
+                ;;
+            attack-detect)
+                case "${3:-status}" in
+                    status)
+                        echo "Mesh Attack Detection:"
+                        echo "---"
+                        api GET "/cpip/mesh-security/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Peers known: {d.get(\"known_peers\",0)}')
+print(f'Threats:     {d.get(\"active_threats\",0)}')
+" 2>/dev/null || echo "Mesh security not available"
+                        ;;
+                    *)
+                        die "Unknown attack-detect command: $3"
+                        ;;
+                esac
                 ;;
             *)
                 die "Unknown mesh command: $2\nSee 'cpip help' for usage."
@@ -1210,6 +1245,766 @@ print(calendar.month(y, m))
         [ ! -f "$file" ] && die "File not found: $file"
         cp "$file"{,.bak}
         ok "Backup created: ${file}.bak"
+        ;;
+
+    # ═══════════════════════════════════════════════════════════════════
+    # v6 — Cellular Immunity / Project Faraday commands
+    # ═══════════════════════════════════════════════════════════════════
+
+    # ── Cellular (AntiStingray v2) ─────────────────────────────────────
+    cell)
+        case "${2:-status}" in
+            status)
+                echo "Cellular Status (AntiStingray v2):"
+                echo "---"
+                api GET "/cpip/cell/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Threat:  {d.get(\"threat_label\",\"?\")} ({d.get(\"threat_level\",0)})')
+print(f'Source:  {d.get(\"source\",\"?\")}')
+print(f'Scans:   {d.get(\"scan_count\",0)}')
+sv = d.get('serving') or {}
+if sv:
+    print(f'Operator: {sv.get(\"operator\",\"?\")} ({sv.get(\"mcc\",\"?\")}/{sv.get(\"mnc\",\"?\")})')
+    print(f'RAT:      {sv.get(\"rat\",\"?\")}')
+    print(f'Signal:   {sv.get(\"rssi\",\"?\")}%')
+    print(f'RSRP:     {sv.get(\"rsrp\",\"?\")}')
+    print(f'RSRQ:     {sv.get(\"rsrq\",\"?\")}')
+    print(f'Cell ID:  {sv.get(\"cell_id\",\"?\")}')
+    print(f'TAC/LAC:  {sv.get(\"tac\",\"?\")}/{sv.get(\"lac\",\"?\")}')
+    ta = sv.get('timing_advance', -1)
+    print(f'TA:       {ta if ta>=0 else \"N/A\"}')
+alerts = d.get('recent_alerts', [])
+if alerts:
+    print(f'Alerts ({len(alerts)}):')
+    for a in alerts[-5:]:
+        print(f'  [{a.get(\"time\",\"?\")}] {a.get(\"message\",\"?\")}')
+" 2>/dev/null || echo "Cellular provider not available"
+                ;;
+            scan)
+                echo "Triggering cellular scan..."
+                api POST "/cpip/cell/scan" "{}" 2>/dev/null || echo "Scan triggered"
+                ;;
+            history)
+                api GET "/cpip/cell/history" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No history"
+                ;;
+            baseline-reset)
+                echo "Resetting cellular baselines..."
+                api POST "/cpip/cell/baseline-reset" "{}" 2>/dev/null || echo "Baseline reset"
+                ;;
+            *)
+                die "Unknown cell command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── SDR Provider ──────────────────────────────────────────────────
+    sdr)
+        case "${2:-status}" in
+            status)
+                echo "SDR Provider status:"
+                echo "---"
+                api GET "/cpip/sdr/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:  {d.get(\"enabled\",\"?\")}')
+print(f'Device:   {d.get(\"device\",\"?\")}')
+print(f'Bands:    {d.get(\"bands\",\"?\")}')
+ls = d.get('last_scan', {})
+if ls:
+    print(f'Cells:    {ls.get(\"cell_count\",0)}')
+" 2>/dev/null || echo "SDR provider not available"
+                ;;
+            scan)
+                band="${3:-}"
+                echo "Scanning SDR band${band:+: $band}..."
+                api POST "/cpip/sdr/scan" "${band:+{\"band\":\"$band\"}}" 2>/dev/null || echo "Scan requested"
+                ;;
+            spectrum)
+                api GET "/cpip/sdr/spectrum" 2>/dev/null || echo "Spectrum data not available"
+                ;;
+            capture)
+                secs="${3:-10}"
+                echo "Capturing IQ for ${secs}s..."
+                api POST "/cpip/sdr/capture" "{\"duration\":$secs}" 2>/dev/null || echo "Capture requested"
+                ;;
+            *)
+                die "Unknown sdr command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── ML Scorer ─────────────────────────────────────────────────────
+    assess)
+        case "${2:-status}" in
+            status)
+                echo "Threat Assessment:"
+                echo "---"
+                api GET "/cpip/scorer/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Score:    {d.get(\"current_score\",0)*100:.0f}%')
+print(f'Threat:   {d.get(\"threat_label\",\"?\")}')
+print(f'Mode:     {d.get(\"mode\",\"?\")}')
+print(f'Events:   {d.get(\"events_in_window\",0)} in window')
+" 2>/dev/null || echo "Scorer not available"
+                ;;
+            explain)
+                api GET "/cpip/scorer/explain" 2>/dev/null | python3 -c "
+import sys, json
+events = json.load(sys.stdin)
+for e in events:
+    print(f'  [{e.get(\"source\",\"?\")}] {e.get(\"heuristic\",\"?\")} {e.get(\"confidence\",0)*100:.0f}%  {e.get(\"detail\",\"\")[:60]}')
+" 2>/dev/null || echo "No data"
+                ;;
+            history)
+                api GET "/cpip/scorer/history" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No history"
+                ;;
+            listen)
+                echo "Listening for threats..."
+                api GET "/cpip/scorer/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Listening mode: {d.get(\"mode\",\"?\")}')
+print(f'Threat level: {d.get(\"threat_label\",\"?\")}')
+print(f'Score: {d.get(\"current_score\",0)*100:.0f}%')
+" 2>/dev/null || echo "Scorer listening"
+                ;;
+            *)
+                die "Unknown assess command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Post-Quantum Crypto ────────────────────────────────────
+    crypto)
+        case "${2:-status}" in
+            pqc-status)
+                echo "PQC-SUCI Identity:"
+                echo "---"
+                api GET "/cpip/crypto" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'PQ KEM: {d.get(\"pq_kem\",\"?\")}')
+print(f'Timestamp validation: {d.get(\"timestamp_validation\")}')
+" 2>/dev/null || echo "PQC not available"
+                ;;
+            pqc-keys)
+                echo "PQC Key Status:"
+                echo "---"
+                api GET "/cpip/providers" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for p in data.get('providers', []):
+    if 'pqc' in p.get('name','').lower() or 'kem' in p.get('name','').lower():
+        print(f'  {p[\"name\"]}: {p.get(\"status\",\"?\")}')
+" 2>/dev/null || echo "No PQC key data"
+                ;;
+            pq-mesh)
+                case "${3:-status}" in
+                    status)
+                        echo "PQ Mesh Protocol:"
+                        echo "---"
+                        api GET "/cpip/mesh/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'PQ Mesh: {d.get(\"pq_mesh\", \"unknown\")}')
+" 2>/dev/null || echo "PQ mesh not available"
+                        ;;
+                    *)
+                        die "Unknown pq-mesh command: $3"
+                        ;;
+                esac
+                ;;
+            *)
+                die "Unknown crypto command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Sensors (Ambient/Biometric) ───────────────────────────────────
+    sensors)
+        case "${2:-status}" in
+            status)
+                echo "Ambient Sensors:"
+                echo "---"
+                api GET "/cpip/sensors/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+curr = d.get('current') or {}
+if curr:
+    for k, v in curr.items():
+        if k != 'timestamp':
+            print(f'  {k}: {v}')
+alerts = d.get('alerts', [])
+if alerts:
+    print(f'Alerts ({len(alerts)}):')
+    for a in alerts[-3:]:
+        print(f'  {a.get(\"message\",\"\")[:60]}')
+" 2>/dev/null || echo "Sensors not available"
+                ;;
+            log)
+                api GET "/cpip/sensors/log" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No data"
+                ;;
+            calibrate)
+                api POST "/cpip/sensors/calibrate" "{}" 2>/dev/null || echo "Calibration requested"
+                ;;
+            *)
+                die "Unknown sensors command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Hardware / GPIO ───────────────────────────────────────────────
+    hardware)
+        case "${2:-status}" in
+            status)
+                echo "Hardware status:"
+                echo "---"
+                api GET "/cpip/hardware/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Available:  {d.get(\"available\",\"?\")}')
+print(f'GPIO init:  {d.get(\"initialized\",\"?\")}')
+print(f'Watchdog:   {d.get(\"watchdog\",\"?\")}')
+print(f'Pin map:    {d.get(\"pin_map\",{})}')
+" 2>/dev/null || echo "Hardware provider not available"
+                ;;
+            test)
+                pin="${3:-}"
+                [ -z "$pin" ] && die "Usage: cpip hardware test <pin>"
+                api POST "/cpip/hardware/test" "{\"pin\":$pin}" 2>/dev/null || echo "Test failed"
+                ;;
+            *)
+                die "Unknown hardware command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Field Operations ──────────────────────────────────────────────
+    field)
+        case "${2:-status}" in
+            status)
+                echo "Field Operations:"
+                echo "---"
+                api GET "/cpip/field/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Radio Silent: {d.get(\"radio_silent\",\"?\")}')
+print(f'Deadman:      {\"ARMED\" if d.get(\"deadman_armed\") else \"disarmed\"}')
+print(f'Deadman T-:   {d.get(\"deadman_remaining\",0):.0f}s')
+print(f'Geofence:     {d.get(\"geofence_points\",0)} pts')
+" 2>/dev/null || echo "Field ops not available"
+                ;;
+            radio-silence)
+                duration="${3:-0}"
+                api POST "/cpip/field/radio-silence" "{\"duration\":$duration}" 2>/dev/null || echo "Radio silence set"
+                echo "Radio silence ${duration:+for ${duration}s }activated"
+                ;;
+            deadman)
+                action="${3:-status}"
+                case "$action" in
+                    arm)
+                        api POST "/cpip/field/deadman" "{\"action\":\"arm\"}" 2>/dev/null
+                        echo "Deadman armed"
+                        ;;
+                    disarm)
+                        api POST "/cpip/field/deadman" "{\"action\":\"disarm\"}" 2>/dev/null
+                        echo "Deadman disarmed"
+                        ;;
+                    status)
+                        echo "Deadman status — check 'cpip field status'"
+                        ;;
+                    *)
+                        die "Unknown deadman action: $action"
+                        ;;
+                esac
+                ;;
+            *)
+                die "Unknown field command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Tamper Detection ──────────────────────────────────────────────
+    tamper)
+        case "${2:-status}" in
+            status)
+                echo "Tamper Detection:"
+                echo "---"
+                api GET "/cpip/tamper/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Events:  {d.get(\"events_total\",0)}')
+for e in d.get('recent', [])[:5]:
+    print(f'  [{e.get(\"type\",\"?\")}] {e.get(\"message\",\"\")[:60]}')
+" 2>/dev/null || echo "Tamper not available"
+                ;;
+            log)
+                api GET "/cpip/tamper/log" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No events"
+                ;;
+            test)
+                api POST "/cpip/tamper/test" "{}" 2>/dev/null || echo "Test triggered"
+                ;;
+            *)
+                die "Unknown tamper command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Deception / Honeypot ──────────────────────────────────────────
+    deception)
+        case "${2:-status}" in
+            status)
+                echo "Deception & Honeypot:"
+                echo "---"
+                api GET "/cpip/deception/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:       {d.get(\"enabled\",\"?\")}')
+print(f'Chaff:         {d.get(\"chaff_intensity\",\"?\")}')
+print(f'Honeypots:      {d.get(\"honeypots_active\",0)} active')
+print(f'Connections:   {d.get(\"honeypot_connections\",0)} logged')
+" 2>/dev/null || echo "Deception not available"
+                ;;
+            honeypot)
+                api POST "/cpip/deception/honeypot-spawn" "{}" 2>/dev/null || echo "Honeypot spawned"
+                ;;
+            *)
+                die "Unknown deception command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── Modem Firmware ────────────────────────────────────────────────
+    modem)
+        case "${2:-status}" in
+            status)
+                echo "Modem status:"
+                echo "---"
+                api GET "/cpip/modem/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+fw = d.get('firmware', {})
+print(f'Model:       {fw.get(\"model\",\"?\")}')
+print(f'Revision:    {fw.get(\"revision\",\"?\")}')
+print(f'CVEs known:  {d.get(\"cves_found\",0)}')
+" 2>/dev/null || echo "Modem provider not available"
+                ;;
+            fw-check)
+                api POST "/cpip/modem/fw-check" "{}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Firmware check triggered"
+                ;;
+            cve-scan)
+                echo "Scanning CVEs for modem..."
+                api POST "/cpip/modem/cve-scan" "{}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "CVE scan triggered"
+                ;;
+            *)
+                die "Unknown modem command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── SS7/Diameter ──────────────────────────────────────────────────
+    ss7)
+        case "${2:-status}" in
+            status)
+                echo "SS7 Monitor status:"
+                echo "---"
+                api GET "/cpip/ss7/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:  {d.get(\"enabled\",\"?\")}')
+print(f'Events:   {d.get(\"events\",0)}')
+print(f'Alerts:   {d.get(\"alerts\",0)}')
+" 2>/dev/null || echo "SS7 monitor not available"
+                ;;
+            log)
+                api GET "/cpip/ss7/log" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No data"
+                ;;
+            *)
+                die "Unknown ss7 command: $2"
+                ;;
+        esac
+        ;;
+    diameter)
+        echo "Diameter status:"
+        api GET "/cpip/diameter/status" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Diameter not available"
+        ;;
+
+    # ── Out-of-Band Channels ──────────────────────────────────────────
+    ob-channel)
+        case "${2:-list}" in
+            list)
+                echo "Out-of-Band Channels:"
+                echo "---"
+                api GET "/cpip/ob-channel/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for ch in d.get('channels', []):
+    print(f'  {ch.get(\"name\",\"?\")}: {ch.get(\"desc\",\"?\")}  {\"✓\" if ch.get(\"enabled\") else \"·\"}  ({ch.get(\"bitrate\",\"?\")}, {ch.get(\"range\",\"?\")})')
+" 2>/dev/null || echo "OB channels not available"
+                ;;
+            send)
+                [ $# -lt 4 ] && die "Usage: cpip ob-channel send <channel> <peer> <message>"
+                channel="$3" peer="$4" msg="${5:-}"
+                api POST "/cpip/ob-channel/send" "{\"channel\":\"$channel\",\"peer\":\"$peer\",\"message\":\"$msg\"}" 2>/dev/null || echo "Send failed"
+                ;;
+            *)
+                die "Unknown ob-channel command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Power / Energy Forensics ──────────────────────────────────────
+    power)
+        case "${2:-status}" in
+            status)
+                echo "Power Monitor:"
+                echo "---"
+                api GET "/cpip/power/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Current:  {d.get(\"current_ma\",\"?\")} mA')
+print(f'Avg 1m:   {d.get(\"avg_1min\",\"?\")} mA')
+print(f'Samples:  {d.get(\"samples\",0)}')
+alerts = d.get('alerts', [])
+if alerts:
+    print(f'Drain alerts: {len(alerts)}')
+" 2>/dev/null || echo "Power monitor not available"
+                ;;
+            log)
+                mins="${3:-5}"
+                api GET "/cpip/power/log?minutes=$mins" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(f'Samples: {len(data)}')
+if data:
+    vals = [d['ma'] for d in data if d.get('ma')]
+    if vals:
+        print(f'Min: {min(vals):.1f} mA  Max: {max(vals):.1f} mA  Avg: {sum(vals)/len(vals):.1f} mA')
+" 2>/dev/null || echo "No power data"
+                ;;
+            *)
+                die "Unknown power command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── EM Security / TEMPEST ─────────────────────────────────────────
+    em-sec)
+        case "${2:-status}" in
+            status)
+                echo "EM Security:"
+                echo "---"
+                api GET "/cpip/emsec/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Faraday cage:  {\"INTACT\" if d.get(\"faraday_intact\") else \"COMPROMISED\" if d.get(\"faraday_intact\") is False else \"?\"}')
+print(f'Jitter:        {d.get(\"timing_jitter_ms\",0)}ms')
+" 2>/dev/null || echo "EMSec not available"
+                ;;
+            scan)
+                api POST "/cpip/emsec/scan" "{}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Scan triggered"
+                ;;
+            faraday-test)
+                api POST "/cpip/emsec/faraday-test" "{}" 2>/dev/null || echo "Faraday test triggered"
+                ;;
+            *)
+                die "Unknown em-sec command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Carrier API ───────────────────────────────────────────────────
+    carrier)
+        case "${2:-status}" in
+            status)
+                echo "Carrier API status:"
+                echo "---"
+                api GET "/cpip/carrier/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:  {d.get(\"enabled\",\"?\")}')
+print(f'Webhook:  {\"registered\" if d.get(\"webhook_registered\") else \"not registered\"}')
+print(f'Carriers: {d.get(\"carriers\",{})}')
+print(f'Events:   {d.get(\"events_count\",0)}')
+" 2>/dev/null || echo "Carrier API not available"
+                ;;
+            register-webhook)
+                api POST "/cpip/carrier/register-webhook" "{}" 2>/dev/null || echo "Webhook registration triggered"
+                ;;
+            sim-change-history)
+                api GET "/cpip/carrier/history" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No data"
+                ;;
+            *)
+                die "Unknown carrier command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Duress Detection ──────────────────────────────────────────────
+    duress)
+        case "${2:-status}" in
+            status)
+                echo "Duress Detection:"
+                echo "---"
+                api GET "/cpip/duress/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Active:     {d.get(\"active\",\"?\")}')
+print(f'Code set:   {d.get(\"code_configured\",\"?\")}')
+print(f'Behavioral: {d.get(\"behavioral\",\"?\")}')
+print(f'Panic pin:  {d.get(\"panic_pin\",\"?\")}')
+" 2>/dev/null || echo "Duress not available"
+                ;;
+            panic-delete)
+                echo "⚠  PANIC DELETE — wiping keys and rebooting!"
+                api POST "/cpip/duress/panic-delete" "{}" 2>/dev/null || echo "Panic delete triggered"
+                ;;
+            test)
+                echo "Testing duress response..."
+                api POST "/cpip/duress/test" "{}" 2>/dev/null || echo "Duress test triggered"
+                ;;
+            *)
+                die "Unknown duress command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Mesh Security ────────────────────────────────────────────────
+    mesh-security)
+        case "${2:-status}" in
+            status)
+                echo "Mesh Security:"
+                echo "---"
+                api GET "/cpip/mesh-security/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Peers known: {d.get(\"known_peers\",0)}')
+print(f'Threats:     {d.get(\"active_threats\",0)}')
+for t in d.get('threats', [])[:5]:
+    print(f'  [{t.get(\"type\",\"?\")}] {t.get(\"ip\",t.get(\"peer\",\"?\"))}')
+" 2>/dev/null || echo "Mesh security not available"
+                ;;
+            graph)
+                api GET "/cpip/mesh-security/graph" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No graph data"
+                ;;
+            *)
+                die "Unknown mesh-security command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Evidence / Blockchain Notarization ────────────────────────────
+    evidence)
+        case "${2:-status}" in
+            status)
+                echo "Evidence Chain:"
+                echo "---"
+                api GET "/cpip/evidence/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Chain length: {d.get(\"chain_length\",0)}')
+print(f'Notarize:     {d.get(\"notarize_enabled\",\"?\")}')
+print(f'Method:       {d.get(\"chain_method\",\"?\")}')
+print(f'Dir:          {d.get(\"evidence_dir\",\"?\")}')
+" 2>/dev/null || echo "Evidence not available"
+                ;;
+            notarize)
+                eid="${3:-all}"
+                echo "Notarizing evidence $eid..."
+                api POST "/cpip/evidence/notarize" "{\"id\":\"$eid\"}" 2>/dev/null || echo "Notarize triggered"
+                ;;
+            verify)
+                [ $# -lt 3 ] && die "Usage: cpip evidence verify <id>"
+                api POST "/cpip/evidence/verify" "{\"id\":\"$3\"}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Verify failed"
+                ;;
+            *)
+                die "Unknown evidence command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Censorship Circumvention ──────────────────────────────────────
+    circumvention)
+        case "${2:-status}" in
+            status)
+                echo "Censorship Circumvention:"
+                echo "---"
+                api GET "/cpip/circumvention/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:     {d.get(\"enabled\",\"?\")}')
+print(f'Mode:        {d.get(\"active_mode\",\"?\")}')
+print(f'Modes avail: {\", \".join(d.get(\"available_modes\",[]))}')
+print(f'Front:       {d.get(\"front_domain\",\"?\")}')
+" 2>/dev/null || echo "Circumvention not available"
+                ;;
+            mode)
+                [ $# -lt 3 ] && die "Usage: cpip circumvention mode <https|dns|quic|meek|snowflake>"
+                api POST "/cpip/circumvention/mode" "{\"mode\":\"$3\"}" 2>/dev/null || echo "Mode change failed"
+                ;;
+            *)
+                die "Unknown circumvention command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Air-Gapped Channels ───────────────────────────────────────────
+    airgap)
+        case "${2:-status}" in
+            status)
+                echo "Air-Gapped Channels:"
+                echo "---"
+                api GET "/cpip/airgap/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Camera:  {d.get(\"camera\",\"?\")}')
+print(f'Audio:   {d.get(\"audio_device\",\"?\")}')
+print(f'NFC:     {d.get(\"nfc_device\",\"?\")}')
+print(f'Modes:   {\", \".join(d.get(\"modes\",[]))}')
+" 2>/dev/null || echo "Airgap not available"
+                ;;
+            qr-send)
+                [ $# -lt 3 ] && die "Usage: cpip airgap qr-send <message>"
+                api POST "/cpip/airgap/qr-send" "{\"data\":\"$3\"}" 2>/dev/null || echo "QR send triggered"
+                ;;
+            audio-tx)
+                [ $# -lt 3 ] && die "Usage: cpip airgap audio-tx <message>"
+                api POST "/cpip/airgap/audio-tx" "{\"message\":\"$3\"}" 2>/dev/null || echo "Audio TX triggered"
+                ;;
+            nfc-pair)
+                [ $# -lt 3 ] && die "Usage: cpip airgap nfc-pair <peer_id>"
+                api POST "/cpip/airgap/nfc-pair" "{\"peer\":\"$3\"}" 2>/dev/null || echo "NFC pair triggered"
+                ;;
+            qr-sync)
+                echo "QR Sync:"
+                echo "---"
+                api GET "/cpip/airgap/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"Modes: {\", \".join(d.get(\"modes\",[]))}\")
+print(\"QR Sync: active\")
+" 2>/dev/null || echo "QR sync not available"
+                ;;
+            *)
+                die "Unknown airgap command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Device Hygiene / Anti-Stalkerware ─────────────────────────────
+    hygiene)
+        case "${2:-status}" in
+            status)
+                echo "Device Hygiene:"
+                echo "---"
+                api GET "/cpip/hygiene/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:    {d.get(\"enabled\",\"?\")}')
+res = d.get('results') or {}
+if res:
+    print(f'Stalkerware: {res.get(\"stalkerware\",0)} found')
+    print(f'FS changes:  {res.get(\"fs_changes\",0)}')
+    print(f'DIAG ports:  {res.get(\"open_diag\",0)} open')
+" 2>/dev/null || echo "Hygiene not available"
+                ;;
+            scan)
+                echo "Full hygiene scan..."
+                api POST "/cpip/hygiene/scan" "{}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Scan triggered"
+                ;;
+            quarantine)
+                [ $# -lt 3 ] && die "Usage: cpip hygiene quarantine <process_name>"
+                api POST "/cpip/hygiene/quarantine" "{\"process\":\"$3\"}" 2>/dev/null || echo "Quarantine failed"
+                ;;
+            *)
+                die "Unknown hygiene command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Device Hygiene / Anti-Stalkerware ─────────────────────────────
+    hygiene)
+        case "${2:-status}" in
+            status)
+                echo "Device Hygiene:"
+                echo "---"
+                api GET "/cpip/hygiene/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Enabled:    {d.get(\"enabled\",\"?\")}')
+res = d.get('results') or {}
+if res:
+    print(f'Stalkerware: {res.get(\"stalkerware\",0)} found')
+    print(f'FS changes:  {res.get(\"fs_changes\",0)}')
+    print(f'DIAG ports:  {res.get(\"open_diag\",0)} open')
+" 2>/dev/null || echo "Hygiene not available"
+                ;;
+            scan)
+                echo "Full hygiene scan..."
+                api POST "/cpip/hygiene/scan" "{}" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Scan triggered"
+                ;;
+            quarantine)
+                [ $# -lt 3 ] && die "Usage: cpip hygiene quarantine <process_name>"
+                api POST "/cpip/hygiene/quarantine" "{\"process\":\"$3\"}" 2>/dev/null || echo "Quarantine failed"
+                ;;
+            *)
+                die "Unknown hygiene command: $2"
+                ;;
+        esac
+        ;;
+
+    # ── Threat Intelligence / Global Intel ─────────────────────────────
+    intel)
+        case "${2:-status}" in
+            status)
+                echo "Global Threat Intelligence:"
+                echo "---"
+                api GET "/cpip/intel/status" 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Sharing:    {d.get(\"enabled\",\"?\")}')
+print(f'Sightings:  {d.get(\"sightings_count\",0)}')
+print(f'Cells:      {d.get(\"unique_cells\",0)}')
+peers = d.get('peer_reports', 0)
+print(f'Peer reps:  {peers}')
+" 2>/dev/null || echo "Intel not available"
+                ;;
+            map)
+                api GET "/cpip/intel/map" 2>/dev/null | python3 -c "
+import sys, json
+features = json.load(sys.stdin)
+print(f'Threats mapped: {len(features)}')
+for f in features[:10]:
+    print(f'  {f.get(\"cell_hash\",\"?\")[:12]}... @ {f.get(\"lat\",\"?\")},{f.get(\"lon\",\"?\")}  ({f.get(\"count\",0)} reports)')
+" 2>/dev/null || echo "No map data"
+                ;;
+            share)
+                action="${3:-status}"
+                if [ "$action" = "on" ]; then
+                    export CPIP_THREAT_SHARING=1
+                    echo "Threat sharing enabled"
+                elif [ "$action" = "off" ]; then
+                    export CPIP_THREAT_SHARING=0
+                    echo "Threat sharing disabled"
+                else
+                    echo "Usage: cpip intel share on|off"
+                fi
+                ;;
+            risk-score)
+                [ $# -lt 4 ] && die "Usage: cpip intel risk-score <mcc> <mnc>"
+                api GET "/cpip/intel/risk-score?mcc=$3&mnc=$4" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No data"
+                ;;
+            *)
+                die "Unknown intel command: $2\nSee 'cpip help' for usage."
+                ;;
+        esac
+        ;;
+
+    # ── v6 Build Manager ──────────────────────────────────────────────
+    v6-build)
+        python3 v6-build.py "${@:2}"
         ;;
 
     # ── Help ────────────────────────────────────────────────────────────

@@ -213,3 +213,51 @@ def encaps(public_key: bytes) -> tuple:
 
 def decaps(secret_key: bytes, ciphertext: bytes) -> bytes:
     return Kyber.decaps(secret_key, ciphertext)
+
+
+PQC_IDENTITY_MAILBOX = os.environ.get("CPIP_PQC_IDENTITY", "mailbox")
+PQC_KEM_ALGORITHM = os.environ.get("CPIP_PQC_KEM", "ml_kem_768")
+
+
+class PQCIdentity:
+    """Quantum-resistant identity using PQC key encapsulation."""
+
+    NAME = "pqc_identity"
+    VERSION = "6.0.0"
+    KEM_ALGORITHM = PQC_KEM_ALGORITHM
+    MAILBOX = PQC_IDENTITY_MAILBOX
+
+    _identity_key: bytes | None = None
+    _identity_cert: bytes | None = None
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            Kyber.is_available()
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def generate_identity(cls) -> tuple[bytes, bytes]:
+        pub, sec = Kyber.generate_keypair()
+        cls._identity_key = sec
+        cls._identity_cert = pub
+        return pub, sec
+
+    @classmethod
+    def get_kem_algorithm(cls) -> str:
+        return cls.KEM_ALGORITHM
+
+    @classmethod
+    def get_mailbox(cls) -> str:
+        return cls.MAILBOX
+
+    @classmethod
+    def get_status(cls) -> dict[str, Any]:
+        return {
+            "kem_algorithm": cls.KEM_ALGORITHM,
+            "mailbox": cls.MAILBOX,
+            "identity_present": cls._identity_key is not None,
+            "available": cls.is_available(),
+        }

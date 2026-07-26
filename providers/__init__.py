@@ -1,7 +1,7 @@
 from providers.base import BaseProvider, ProviderType, ProviderConfig
 from providers.registry import ProviderRegistry
-from providers.kem import KEMProvider, PQC_KEM_REGISTRY, Kyber, get_pqc_kem, list_pqc_kems
-from providers.mesh import MeshTransportProvider, BondedMeshTransport
+from providers.kem import KEMProvider, PQC_KEM_REGISTRY, Kyber, get_pqc_kem, list_pqc_kems, PQCIdentity
+from providers.mesh import MeshTransportProvider, BondedMeshTransport, PQMesh
 from providers.dns import DNSProvider, CloudflareDoHProvider, GoogleDoHProvider, DNS_PROVIDERS
 from providers.cellular import CellularProvider, AntiStingrayV2
 from providers.sdr import SDRProvider, SpectrumDefense
@@ -32,8 +32,8 @@ register = registry.register
 __all__ = [
     "BaseProvider", "ProviderType", "ProviderConfig",
     "ProviderRegistry", "registry", "register",
-    "KEMProvider", "PQC_KEM_REGISTRY", "Kyber", "get_pqc_kem", "list_pqc_kems",
-    "MeshTransportProvider", "BondedMeshTransport",
+    "KEMProvider", "PQC_KEM_REGISTRY", "Kyber", "get_pqc_kem", "list_pqc_kems", "PQCIdentity",
+    "MeshTransportProvider", "BondedMeshTransport", "PQMesh",
     "DNSProvider", "CloudflareDoHProvider", "GoogleDoHProvider", "DNS_PROVIDERS",
     "CellularProvider", "AntiStingrayV2",
     "SDRProvider", "SpectrumDefense",

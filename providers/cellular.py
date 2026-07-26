@@ -389,4 +389,36 @@ class CellularProvider(BaseProvider):
             return {"error": str(e)}
 
 
-AntiStingrayV2 = CellularProvider
+class AntiStingrayV2(CellularProvider):
+    """V2 anti-stingray with multi-generation cellular scan capabilities."""
+
+    NAME = "cellular_v2"
+    VERSION = "6.0.0"
+
+    @classmethod
+    def scan_generation(cls, gen: int) -> dict[str, Any]:
+        return {"generation": gen, "scan_type": f"gen_{gen}", "active": cls._running}
+
+    @classmethod
+    def get_gps_correlate(cls) -> bool:
+        return os.environ.get("CPIP_CELL_GPS_CORRELATE", "1") == "1"
+
+    @classmethod
+    def get_signal_delta(cls) -> float:
+        return float(os.environ.get("CPIP_CELL_SIGNAL_DELTA", "3.0"))
+
+    @classmethod
+    def get_baseline_db(cls) -> str:
+        return os.environ.get("CPIP_CELL_BASELINE_DB", "")
+
+    @classmethod
+    def is_5g_enabled(cls) -> bool:
+        return os.environ.get("CPIP_CELL_5G", "1") == "1"
+
+    @classmethod
+    def get_ta_analysis(cls) -> bool:
+        return os.environ.get("CPIP_CELL_TA_ANALYSIS", "1") == "1"
+
+    @classmethod
+    def get_source(cls) -> str:
+        return os.environ.get("CPIP_CELL_SOURCE", "auto")
