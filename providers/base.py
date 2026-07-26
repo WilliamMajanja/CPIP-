@@ -17,6 +17,20 @@ class ProviderType(Enum):
     RADIO = "radio"
     NTP = "ntp"
     WEBHOOK = "webhook"
+    CELLULAR = "cellular"
+    SENSOR = "sensor"
+    SDR = "sdr"
+    SCORER = "scorer"
+    HARDWARE = "hardware"
+    SS7 = "ss7"
+    MODEM = "modem"
+    POWER = "power"
+    CIRCUMVENTION = "circumvention"
+    HYGIENE = "hygiene"
+    INTELLIGENCE = "intelligence"
+    EVIDENCE = "evidence"
+    DECEPTION = "deception"
+    SECURITY = "security"
 
 
     @classmethod
