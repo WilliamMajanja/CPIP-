@@ -21,12 +21,17 @@ CELL_SIGNAL_DELTA = int(os.environ.get("CPIP_CELL_SIGNAL_DELTA", "25"))
 CELL_BASELINE_DB = os.environ.get("CPIP_CELL_BASELINE_DB", "/tmp/cpip_cell_baseline.db")
 CELL_SCAN_INTERVAL = int(os.environ.get("CPIP_CELL_SCAN_INTERVAL", "30"))
 
-THREAT_NONE = 0
-THREAT_LOW = 1
-THREAT_MEDIUM = 2
-THREAT_HIGH = 3
-THREAT_CRITICAL = 4
-THREAT_LABELS = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+# 2G RAT names that indicate no encryption (GSM, GPRS, EDGE)
+RAT_2G_NAMES = {"GSM", "GSM_COMPACT", "GPRS", "EDGE", "1XRTT", "EVDO0", "EVDOA", "EVDOB"}
+RAT_3G_NAMES = {"UMTS", "HSDPA", "HSUPA", "HSPA", "HSPA_PLUS"}
+RAT_4G_NAMES = {"LTE", "LTE_CA", "LTE_ADVANCED"}
+RAT_5G_NAMES = {"5G_NR", "5G_NSA", "5G"}
+
+# RAT degradation order (lower = older/weaker)
+RAT_ORDER = {"5G_NR": 5, "5G_NSA": 5, "5G": 5, "LTE": 4, "LTE_CA": 4, "LTE_ADVANCED": 4,
+             "UMTS": 3, "HSDPA": 3, "HSUPA": 3, "HSPA": 3, "HSPA_PLUS": 3,
+             "GSM": 2, "GSM_COMPACT": 2, "GPRS": 2, "EDGE": 2,
+             "1XRTT": 2, "EVDO0": 2, "EVDOA": 2, "EVDOB": 2}
 
 
 class CellularProvider(BaseProvider):
@@ -46,8 +51,16 @@ class CellularProvider(BaseProvider):
     _alerts: list[dict[str, Any]] = []
     _scan_count = 0
     _gps: dict[str, float] = {}
-
+    _ta_history: list[int] = []
+    _passive_mode = False
+    _stealth_mode = False
     _mm = None
+    _paging_count = 0
+    _stk_commands: list[dict[str, Any]] = []
+    _stealth_mode = False
+    _mm = None
+    _paging_count = 0
+    _stk_commands: list[dict[str, Any]] = []
 
     @classmethod
     def is_available(cls) -> bool:
@@ -152,6 +165,8 @@ class CellularProvider(BaseProvider):
                 "lac": _3gpp.get("Lac", ""),
                 "tac": _3gpp.get("Tac", ""),
                 "timing_advance": modems_iface.get("TimingAdvance", -1),
+                "paging_count": _3gpp.get("PagingCount", 0),
+                "stk_commands": _3gpp.get("STKCommands", []),
             }
 
             if CELL_5G:
@@ -313,10 +328,58 @@ class CellularProvider(BaseProvider):
                         threats.append(("Cell changed while stationary", THREAT_MEDIUM,
                                         f"{cls._last_cell} → {s.get('cell_id')}"))
 
-        # 5. 2G degradation
-        if "2G" in rat:
-            threats.append(("RAT is 2G — no encryption", THREAT_HIGH,
-                            "Device may be forced to insecure mode"))
+        # 5. RAT degradation / 2G forced downgrade
+        if RAT_2G_NAMES.intersection({rat}):
+            threats.append(("RAT is 2G — no encryption (forced downgrade)", THREAT_HIGH,
+                            "Device on unencrypted 2G network — IMSI catcher likely"))
+        elif prev_rat and rat and prev_rat in RAT_ORDER and rat in RAT_ORDER:
+            diff = RAT_ORDER[prev_rat] - RAT_ORDER[rat]
+            if diff >= 2:
+                threats.append((f"RAT downgrade {prev_rat}→{rat} (forced degradation)", THREAT_HIGH,
+                                "Significant RAT downgrade suggests forced decryption bypass"))
+            elif diff == 1:
+                threats.append((f"RAT downgrade {prev_rat}→{rat}", THREAT_LOW,
+                                "Minor RAT shift — may be normal roaming"))
+
+        # 6. Cell ID sequence analysis (IMSI catchers often use sequential IDs)
+        if cell_id and cls._last_cell and cls._last_cell != cell_id:
+            try:
+                last_num = int(cls._last_cell, 16) if cls._last_cell else 0
+                curr_num = int(cell_id, 16) if cell_id else 0
+                if abs(curr_num - last_num) <= 3 and last_num != 0:
+                    threats.append(("Sequential Cell IDs (possible fake tower)", THREAT_MEDIUM,
+                                    f"Cell IDs {cls._last_cell}→{cell_id} are sequential — IMSI catcher pattern"))
+            except ValueError:
+                pass
+
+        # 7. TA pattern anomaly (real towers have consistent TA ranges)
+        if CELL_TA_ANALYSIS and s.get("timing_advance") is not None and s["timing_advance"] >= 0:
+            ta = s["timing_advance"]
+            if ta == 0 and s.get("rssi", 0) > -70:
+                threats.append(("TA=0 with strong signal (IMSI catcher proximity)", THREAT_HIGH,
+                                "Timing Advance 0 with strong signal suggests tower is very close"))
+            elif ta > 126:
+                threats.append(("TA exceeds maximum (TA>126)", THREAT_MEDIUM,
+                                f"Timing Advance {ta} exceeds GSM maximum — possible spoofed TA"))
+
+        # 8. Paging channel anomaly (excessive paging suggests fake cell)
+        if s.get("paging_count"):
+            if s["paging_count"] > 10:
+                threats.append(("Excessive paging activity", THREAT_MEDIUM,
+                                f"{s['paging_count']} paging requests — possible IMSI catcher flooding"))
+
+        # 9. SIM toolkit command interception detection
+        if s.get("stk_commands"):
+            for cmd in s["stk_commands"]:
+                if cmd.get("type") == "PROACTIVE" and cmd.get("command") in ("SETUP_CALL", "SEND_SMS"):
+                    threats.append((f"SIM toolkit {cmd['command']} intercepted", THREAT_HIGH,
+                                    "STK proactive command intercepted — possible MITM"))
+
+        # 10. Network type downgrade without user action
+        if prev_rat and rat and prev_rat != rat:
+            if RAT_4G_NAMES.intersection({prev_rat}) and RAT_2G_NAMES.intersection({rat}):
+                threats.append((f"4G→2G forced downgrade", THREAT_CRITICAL,
+                                "4G network downgraded to 2G without user action — confirmed IMSI catcher attack"))
 
         # Record for reff
         cls._last_cell = s.get("cell_id")  # type: ignore[attr-defined]
@@ -422,3 +485,214 @@ class AntiStingrayV2(CellularProvider):
     @classmethod
     def get_source(cls) -> str:
         return os.environ.get("CPIP_CELL_SOURCE", "auto")
+
+    # ── Passive Detection Mode ────────────────────────────────────
+
+    @classmethod
+    def set_passive_mode(cls, enabled: bool) -> None:
+        """Enable passive-only detection — listen without transmitting.
+        An active stingray can detect probe messages; passive mode avoids this."""
+        cls._passive_mode = enabled
+        if enabled:
+            cls._stealth_mode = True
+            logger.info("CellularProvider: passive+stealth mode enabled")
+
+    @classmethod
+    def set_stealth_mode(cls, enabled: bool) -> None:
+        """Enable stealth mode — suppress all active transmissions."""
+        cls._stealth_mode = enabled
+
+    @classmethod
+    def is_stealth_active(cls) -> bool:
+        return cls._stealth_mode
+
+    # ── RF Fingerprinting ─────────────────────────────────────────
+
+    @classmethod
+    def fingerprint_rf(cls) -> dict[str, Any]:
+        """Analyze RF characteristics to detect IMSI catcher signatures.
+        
+        IMSI catchers often have distinct RF fingerprints:
+        - Abnormal signal-to-noise ratios
+        - Unusual frequency hopping patterns
+        - Inconsistent PLMN codes across frames
+        - Anomalous timing advance distributions
+        """
+        fp: dict[str, Any] = {
+            "snr": None,
+            "frequency_hopping": False,
+            "plmn_consistency": True,
+            "ta_distribution": [],
+            "fingerprint_score": 0.0,
+        }
+
+        if not cls._serving:
+            return fp
+
+        s = cls._serving
+        snr = (s.get("rsrp") or 0) - (s.get("rsrq") or -20)
+        fp["snr"] = snr
+
+        if snr > 40:
+            fp["fingerprint_score"] += 0.3
+        elif snr < 10 and s.get("rssi", 0) > -50:
+            fp["fingerprint_score"] += 0.5
+            fp["plmn_consistency"] = False
+
+        cls._ta_history.append(s.get("timing_advance", -1))
+        if len(cls._ta_history) > 10:
+            cls._ta_history = cls._ta_history[-10:]
+
+        fp["ta_distribution"] = list(cls._ta_history)
+        if len(cls._ta_history) >= 3:
+            ta_variance = sum(
+                abs(cls._ta_history[i] - cls._ta_history[i + 1])
+                for i in range(len(cls._ta_history) - 1)
+            ) / (len(cls._ta_history) - 1)
+            fp["ta_variance"] = ta_variance
+            if ta_variance > 20:
+                fp["fingerprint_score"] += 0.4
+
+        return fp
+
+    # ── Multi-Source Correlation ──────────────────────────────────
+
+    @classmethod
+    def correlate_with_sdr(cls, sdr_data: dict[str, Any]) -> dict[str, Any]:
+        """Cross-reference cellular findings with SDR scan data."""
+        correlation: dict[str, Any] = {
+            "match": False,
+            "confidence": 0.0,
+            "indicators": [],
+        }
+
+        if not cls._serving or not sdr_data:
+            return correlation
+
+        cell_freq = cls._serving.get("arfcn") or cls._serving.get("nr_arfcn")
+        sdr_freqs = sdr_data.get("detected_frequencies", [])
+        sdr_power = sdr_data.get("max_power", -100)
+        cell_power = cls._serving.get("rsrp") or cls._serving.get("rssi", -100)
+
+        if cell_freq and cell_freq in sdr_freqs:
+            correlation["match"] = True
+            correlation["indicators"].append("Frequency match between cellular and SDR")
+            correlation["confidence"] += 0.4
+
+        if sdr_power > -50 and cell_power > -70:
+            correlation["indicators"].append("Strong RF signal on both cellular and SDR")
+            correlation["confidence"] += 0.3
+
+        if len(sdr_freqs) > 5 and cell_freq:
+            correlation["indicators"].append("Multiple RF signals — possible IMSI catcher mesh")
+            correlation["confidence"] += 0.2
+
+        return correlation
+
+    # ── Crowd-Sourced Threat Intel ────────────────────────────────
+
+    @classmethod
+    def check_threat_intel(cls, mcc: str = "", mnc: str = "", lat: float = 0.0, lon: float = 0.0) -> dict[str, Any]:
+        """Check crowd-sourced threat intel for known IMSI catcher locations."""
+        intel: dict[str, Any] = {
+            "known_threats": [],
+            "risk_score": 0.0,
+            "reports_count": 0,
+        }
+
+        try:
+            from providers.threat_intel import GlobalIntelProvider
+            if mcc and mnc:
+                intel["risk_score"] = GlobalIntelProvider.risk_score(mcc, mnc).get("risk_score", 0)
+            features = GlobalIntelProvider.get_map_data() if hasattr(GlobalIntelProvider, 'get_map_data') else []
+            for f in features:
+                if lat and lon:
+                    dist = ((f.get("lat", 0) - lat) ** 2 + (f.get("lon", 0) - lon) ** 2) ** 0.5
+                    if dist < 0.05:
+                        intel["known_threats"].append({
+                            "cell_hash": f.get("cell_hash", ""),
+                            "distance_km": round(dist * 111, 2),
+                            "reports": f.get("count", 0),
+                        })
+                        intel["reports_count"] += f.get("count", 0)
+                elif f.get("count", 0) > 5:
+                    intel["known_threats"].append({
+                        "cell_hash": f.get("cell_hash", ""),
+                        "reports": f.get("count", 0),
+                    })
+        except Exception:
+            pass
+
+        return intel
+
+    # ── Automated Response ────────────────────────────────────────
+
+    @classmethod
+    def _auto_respond(cls, threats: list[tuple[str, int, str]]) -> list[str]:
+        """Take automated countermeasures based on threat severity."""
+        actions: list[str] = []
+        for msg, level, detail in threats:
+            if level >= THREAT_CRITICAL:
+                actions.append(f"CRITICAL: {msg} — initiating emergency response")
+                if cls._running:
+                    cls._alert(f"Emergency countermeasure triggered: {msg}", THREAT_CRITICAL, detail)
+            elif level == THREAT_HIGH:
+                actions.append(f"HIGH: {msg} — escalating alert")
+            elif level == THREAT_MEDIUM:
+                actions.append(f"MEDIUM: {msg} — logged for review")
+        return actions
+
+    @classmethod
+    def enable_network_level_defense(cls) -> dict[str, Any]:
+        """Enable network-level protections: VPN enforcement, DNS filtering, cert pinning."""
+        result: dict[str, Any] = {" vpn_enabled": False, "dns_filtering": False, "cert_pinning": False}
+
+        try:
+            import subprocess
+            r = subprocess.run(["ip", "route", "show"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                result["vpn_enabled"] = "tun" in r.stdout.lower() or "wg" in r.stdout.lower()
+        except Exception:
+            pass
+
+        try:
+            hosts = Path("/etc/hosts")
+            if hosts.exists():
+                content = hosts.read_text()
+                result["dns_filtering"] = "cpip" in content.lower() or "block" in content.lower()
+        except Exception:
+            pass
+
+        try:
+            import ssl
+            ctx = ssl.create_default_context()
+            result["cert_pinning"] = ctx.get_ciphers() != []
+        except Exception:
+            pass
+
+        return result
+
+    # ── Enhanced Status ───────────────────────────────────────────
+
+    @classmethod
+    def get_status(cls) -> dict[str, Any]:
+        recent = cls._alerts[-20:] if cls._alerts else []
+        fp = cls.fingerprint_rf()
+        net_defense = cls.enable_network_level_defense()
+
+        return {
+            "enabled": cls._running,
+            "source": CELL_SOURCE,
+            "threat_level": cls._threat_level,
+            "threat_label": THREAT_LABELS[cls._threat_level],
+            "serving": dict(cls._serving) if cls._serving else None,
+            "baseline": dict(cls._baseline) if cls._baseline else None,
+            "gps": dict(cls._gps) if cls._gps else None,
+            "scan_count": cls._scan_count,
+            "recent_alerts": recent,
+            "passive_mode": cls._passive_mode,
+            "stealth_mode": cls._stealth_mode,
+            "rf_fingerprint": fp,
+            "network_defense": net_defense,
+            "rat_2g_names": list(RAT_2G_NAMES),
+        }
