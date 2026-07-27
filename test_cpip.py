@@ -65,7 +65,23 @@ class TestCPIPServer(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.proc.terminate()
-        cls.proc.wait(5)
+        try:
+            cls.proc.wait(5)
+        except subprocess.TimeoutExpired:
+            cls.proc.kill()
+            cls.proc.wait(5)
+        # Extra cleanup to ensure port is freed
+        try:
+            subprocess.run(["pkill", "-9", "-f", "python3.*server.py"],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
+        try:
+            subprocess.run(["fuser", "-k", f"{TEST_PORT}/tcp"],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
+        time.sleep(0.3)
 
     def _get(self, path):
         with urllib.request.urlopen(f"{BASE}{path}") as r:
