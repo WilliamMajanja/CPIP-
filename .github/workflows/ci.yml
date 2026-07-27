@@ -31,6 +31,11 @@ jobs:
           python3 --version
           which fuser
           which pkill
+      - name: Kill any existing servers
+        run: |
+          pkill -9 -f "python3.*server.py" || true
+          fuser -k ${CPIP_TEST_PORT:-4182}/tcp || true
+          sleep 1
       - name: Syntax check
         run: python3 -m py_compile server.py providers/*.py
       - name: Run tests
