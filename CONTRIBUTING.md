@@ -1,5 +1,10 @@
 # Contributing to CPIP
 
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
+[![Python 3.x](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)]()
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
+
 Thank you for your interest in CPIP — the Coffee Pot Internet Protocol.
 
 ## Code of Conduct

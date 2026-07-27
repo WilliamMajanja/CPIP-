@@ -1,5 +1,8 @@
 # CPIP v5.2.3 — Palantir Hardening + RFC 6969 + IP Spoofing
 
+[![Version](https://img.shields.io/badge/version-5.2.3-blue.svg)]()
+[![Release](https://img.shields.io/badge/release-2025--07--26-green.svg)]()
+
 **Release Date:** 2026-07-26  
 **Protocol:** CPIP/5.2.3  
 **RFC Base:** RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + RFC 6969 (OSPFv3 Instance ID)

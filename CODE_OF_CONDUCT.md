@@ -1,5 +1,8 @@
 # Code of Conduct
 
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
+
 ## Our Pledge
 
 We as members, contributors, and leaders pledge to make participation in

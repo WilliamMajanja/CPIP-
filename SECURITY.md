@@ -1,5 +1,12 @@
 # Security Policy
 
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
+[![FIPS](https://img.shields.io/badge/FIPS-197%20%7C%20186--4%20%7C%20180--4-blue.svg)]()
+[![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()
+[![Anti-Stingray](https://img.shields.io/badge/Anti--Stingray-IMSI%20Catcher%20Detection-red.svg)]()
+[![Anti-Surveillance](https://img.shields.io/badge/Anti--Surveillance-DPI%20%7C%20Obfuscation%20%7C%20Metadata%20Strip-red.svg)]()
+
 > **Cryptographic Primitives**: CPIP v5 uses FIPS-compliant cryptographic primitives
 > for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
 > HKDF-SHA256, and HMAC-SHA256. All constant-time operations use the `cryptography`

@@ -1,7 +1,13 @@
 # Blackpaper: The Coffee Protocol (CPIP)
 ### A Multi-Transport Mesh with Hybrid Post-Quantum Cryptography and Active Network Defense
 
-**Version 5.1.1** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
+[![Python 3.x](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)]()
+[![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
+[![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()
+
+**Version 6.0.2** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
 
 ---
 
