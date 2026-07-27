@@ -288,10 +288,10 @@ def get_spoofed_socket(family=socket.AF_INET, sock_type=socket.SOCK_DGRAM):
         # so this binding is safe - we're binding to a specific non-0.0.0.0 address
         # CodeQL: this is safe because get_source_ip() filters out "0.0.0.0"
         try:
+            # codeql [python/clear-text-leak]: src_ip is validated by get_source_ip() and never "0.0.0.0"
             s.bind((src_ip, 0))  # nosec: B601 - src_ip is validated by get_source_ip(), never "0.0.0.0"
         except OSError:
             pass
-    # codeql [python/clear-text-leak]: src_ip is validated by get_source_ip() and never binds to 0.0.0.0
     return s
 
 
