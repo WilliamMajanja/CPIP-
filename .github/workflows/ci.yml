@@ -28,7 +28,7 @@ jobs:
       - name: Syntax check
         run: python3 -m py_compile server.py providers/*.py
       - name: Run tests
-        run: python3 test_cpip.py
+        run: python3 test_cpip.py -v 2>&1 | tee test-output.log
       - name: Validate cpip syntax
         run: bash -n cpip
       - name: Build radio interface
