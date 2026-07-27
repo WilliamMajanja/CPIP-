@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 import providers as cpip_providers
@@ -7128,7 +7128,7 @@ class BandwidthAggregator:
 
     @classmethod
     def send_bonded(cls, payload: bytes,
-                    send_fns: dict[str, callable]) -> int:
+                    send_fns: dict[str, Callable]) -> int:
         """Send payload across all active links using the provided send
         callables. Returns total bytes sent.
 
@@ -7168,7 +7168,7 @@ class BandwidthAggregator:
             idx += 1
 
         # Send all fragments in parallel across their assigned links
-        def _send_one(link_id: str, send_fn: callable, hdr: FragmentHeader,
+        def _send_one(link_id: str, send_fn: Callable, hdr: FragmentHeader,
                       frag_data: bytes) -> None:
             try:
                 packet = hdr.pack() + frag_data
@@ -7228,7 +7228,7 @@ class BondedMeshTransport:
     """
 
     @classmethod
-    def get_send_fns(cls, dst_pot: str = "") -> dict[str, callable]:
+    def get_send_fns(cls, dst_pot: str = "") -> dict[str, Callable]:
         """Return a dict of link_id -> callable for all available transports
         that can reach `dst_pot`. Each callable takes raw bytes and sends them."""
         fns = {}
