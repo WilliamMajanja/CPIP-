@@ -3,7 +3,8 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-5.2.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
 [![Mesh](https://img.shields.io/badge/mesh-LAN%20%7C%20Satellite%20%7C%20Radio%20%7C%20Mobile-blueviolet.svg)]()
@@ -17,6 +18,7 @@
 [![Anti-ISP](https://img.shields.io/badge/Anti--ISP-STUN%20%7C%20UPnP%20%7C%20DNS%20Tunnel%20%7C%20WSS%20%7C%20DoH-red.svg)]()
 [![Anti-Stingray](https://img.shields.io/badge/Anti--Stingray-IMSI%20Catcher%20Detection-red.svg)]()
 [![Anti-Surveillance](https://img.shields.io/badge/Anti--Surveillance-DPI%20%7C%20Obfuscation%20%7C%20Metadata%20Strip-red.svg)]()
+[![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()
 [![Net Neutrality](https://img.shields.io/badge/Net%20Neutrality-BW%20Monitor%20%7C%20Masquerade%20%7C%20Fragmentation-red.svg)]()
 [![TUI](https://img.shields.io/badge/TUI-OpenTUI-brightgreen.svg)]()
 [![b4dm4n-cw](https://img.shields.io/badge/b4dm4n--cw-Cipher%20Workbench-yellowgreen.svg)]()
@@ -57,7 +59,7 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **Mesh networking** — Peer-to-peer with store-and-forward, auto-discovery, and E2EE
 - **Multi-transport routing** — LAN UDP, satellite (internet-wide), radio (LoRa/TNC), mobile 4G/5G with automatic message forwarding between transports
 - **Runtime transport toggles** — Enable/disable satellite and mobile transports via API without restart
-- **Runtime defense policy toggles** — Independent enable/disable of every Anti-ISP, Anti-Stingray, Anti-Surveillance, and Net-Neutrality vector via API or dashboard
+- **Runtime defense policy toggles** — Independent enable/disable of every Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, and Net-Neutrality vector via API or dashboard
 - **Covert channel** — Data embedded in Accept-Additions brew headers with LocalStorage-backed message history
 - **ITF (In The Face) defense** — Active probe blocking with HTTP 418 responses
 - **Pentest tool detection** — Fingerprinting of 16 security tools (Burp Suite, Nmap, SQLMap, Nikto, and 12 more)
@@ -226,6 +228,7 @@ CPIP includes a single-page application dashboard served at `/dashboard` with tw
 | **🌐 Anti-ISP** | STUN/UPnP/relay/DNS-tunnel/WSS/DoH status + per-vector toggles, hole-punch test |
 | **📶 Anti-Stingray** | Threat level, cell tower, signal, scans + per-vector toggles, rescan |
 | **👁 Anti-Surveillance** | Threat level, DPI signatures, SSL intercept, process integrity + per-vector toggles, scan |
+| **🕵️ Anti-Palantir** | Mix-net status, chaff traffic, identity rotation, traffic normalization + per-vector toggles |
 | **⚖ Net Neutrality** | Throttle detection, masked/fragmented/jitter stats + per-vector toggles |
 | **📊 Signal** | Mesh/HTTP/satellite traffic, human-readable uptime, link quality table, emergency status |
 | **🔧 Diag** | TCP ping, port scan, DNS resolve, traceroute, network interfaces |
@@ -238,9 +241,9 @@ CPIP includes a single-page application dashboard served at `/dashboard` with tw
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring, beverage icons, list/delete |
 | **📜 History** | Brew history with beverage icons, time/additions/duration, filter (9 beverages), clear |
 
-The 20 tabs are organized into 7 logical groups: Core (Brew, Mesh, Covert), Security (ITF, Crypto, IR), Defense (Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality), Network (Signal, Diag), Identity (WoT, DNS), Comms (Groups, Sync, Drops), Infra (Bond, Schedule, History). The tab bar is scrollable and supports keyboard shortcuts (Ctrl+1–9).
+The 21 tabs are organized into 7 logical groups: Core (Brew, Mesh, Covert), Security (ITF, Crypto, IR), Defense (Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, Net Neutrality), Network (Signal, Diag), Identity (WoT, DNS), Comms (Groups, Sync, Drops), Infra (Bond, Schedule, History). The tab bar is scrollable and supports keyboard shortcuts (Ctrl+1–9).
 
-The defense groups (Anti-ISP, Anti-Stingray, Anti-Surveillance, Net Neutrality) each have dedicated tabs with per-vector toggles reachable via API or dashboard.
+The defense groups (Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, Net Neutrality) each have dedicated tabs with per-vector toggles reachable via API or dashboard.
 
 The status bar displays live badges for brewing state, GPIO, mesh, covert, ITF stealth, NTP, and SSE connection status. A live event log shows real-time brew and mesh message events via Server-Sent Events.
 
@@ -619,6 +622,19 @@ All configuration is via environment variables. No configuration files are requi
 | `CPIP_MOBILE_KEEPALIVE` | `30` | Keepalive interval (seconds) |
 | `CPIP_MOBILE_TELEMETRY` | `0` | Auto-read RSRP/RSSI/SINR via ModemManager/sysfs |
 
+### Anti-Palantir / Counter-Surveillance
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_PALANTIR` | `0` | Enable Anti-Palantir hardening (disabled by default for performance) |
+| `CPIP_PALANTIR_MODE` | `auto` | Operation mode: `auto` (reactive), `active` (always on), `passive` (monitor only) |
+| `CPIP_PALANTIR_CHAFF` | `1` | Generate chaff traffic to all peers for plausible deniability |
+| `CPIP_PALANTIR_MIX_DELAY` | `5.0` | Maximum mix-net delay in seconds (message reordering) |
+| `CPIP_PALANTIR_FIXED_SIZE` | `1024` | Pad all messages to fixed size in bytes (traffic normalization) |
+| `CPIP_PALANTIR_ID_ROTATE` | `3600` | Identity rotation interval in seconds (POT_ID + keys) |
+| `CPIP_PALANTIR_BROADCAST` | `0` | Broadcast-all mode: send every message to every peer (anti-link-analysis) |
+| `CPIP_PALANTIR_TIMING` | `cbr` | Timing profile: `cbr` (constant bitrate) or `vbr` (variable) |
+| `CPIP_PALANTIR_COVER_BPS` | `500` | Cover traffic bitrate in bits per second |
 
 
 ### ITF Defense
@@ -684,6 +700,22 @@ All defenses default to **on** and are individually togglable at runtime via `PO
 | `CPIP_TLS_FP_ROTATE` | `3600` | TLS fingerprint rotation (seconds) |
 | `CPIP_EXPLOITKIT_DETECT` | `1` | 0-click exploit-kit detection |
 | `CPIP_PROC_INJECT_DETECT` | `1` | Process-injection / hooking detection |
+
+### Anti-Palantir / Counter-Surveillance Policy
+
+All countermeasures default to **on** and are individually togglable at runtime via `POST /cpip/palantir` or `PUT /cpip/config`. This module hardens CPIP against mass surveillance platforms (Palantir Gotham/Foundry, Pegasus, FinFisher) by implementing traffic analysis countermeasures.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_PALANTIR` | `0` | Master enable for Anti-Palantir hardening |
+| `CPIP_PALANTIR_MODE` | `auto` | Operation mode: `auto`|`active`|`passive` |
+| `CPIP_PALANTIR_CHAFF` | `1` | Generate chaff traffic to all peers |
+| `CPIP_PALANTIR_MIX_DELAY` | `5.0` | Maximum mix-net delay (seconds) |
+| `CPIP_PALANTIR_FIXED_SIZE` | `1024` | Pad all messages to fixed size (bytes) |
+| `CPIP_PALANTIR_ID_ROTATE` | `3600` | Identity (POT_ID + keys) rotation interval (seconds) |
+| `CPIP_PALANTIR_BROADCAST` | `0` | Broadcast-all mode (every message to every peer) |
+| `CPIP_PALANTIR_TIMING` | `cbr` | Timing profile: `cbr` (constant bitrate) or `vbr` |
+| `CPIP_PALANTIR_COVER_BPS` | `500` | Cover traffic bitrate (bits per second) |
 
 ### Net-Neutrality Policy
 
@@ -908,6 +940,14 @@ Every defense vector is independently togglable at runtime without restart. The 
 | `POST` | `/cpip/anti-stingray` | `{"action":"rescan"}` | Force immediate rescan |
 | `POST` | `/cpip/anti-surveillance` | `{"action":"toggle","feature":"dpi_evasion","enabled":false}` | Toggle defense vector |
 | `POST` | `/cpip/anti-surveillance` | `{"action":"scan"}` | Force immediate scan |
+| `POST` | `/cpip/palantir` | `{"action":"enable"}` | Enable Anti-Palantir hardening |
+| `POST` | `/cpip/palantir` | `{"action":"disable"}` | Disable Anti-Palantir hardening |
+| `POST` | `/cpip/palantir` | `{"action":"chaff_on"}` | Enable chaff traffic generation |
+| `POST` | `/cpip/palantir` | `{"action":"chaff_off"}` | Disable chaff traffic |
+| `POST` | `/cpip/palantir` | `{"action":"broadcast_on"}` | Enable broadcast-all mode |
+| `POST` | `/cpip/palantir` | `{"action":"broadcast_off"}` | Disable broadcast-all |
+| `POST` | `/cpip/palantir` | `{"action":"evasion"}` | Activate auto-evasion |
+| `POST` | `/cpip/palantir` | `{"action":"log"}` | Show agent audit log |
 | `POST` | `/cpip/net-neutrality` | `{"action":"toggle","feature":"fragmentation","enabled":false}` | Toggle countermeasure |
 | `GET` | `/cpip/config` | None | Returns live `policies` block (all four groups) |
 | `PUT` | `/cpip/config` | `{"policies":{"anti_isp":{"stun":false}}}` | Bulk-update policies at runtime |

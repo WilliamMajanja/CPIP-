@@ -1,9 +1,10 @@
-"""Palantir-Grade Counter-Surveillance Hardening for CPIP
+"""Anti-Palantir / Counter-Surveillance Hardening for CPIP
 Countermeasures against advanced data analytics, traffic correlation,
 link analysis, pattern-of-life detection, and metadata fusion.
 
-This module hardens CPIP against threats posed by platforms like
-Palantir Gotham/Foundry/Metropolis by implementing:
+This module implements counter-surveillance measures against mass
+surveillance platforms like Palantir Gotham/Foundry/Metropolis,
+Pegasus spyware, FinFisher, and similar tools by implementing:
 
   1. Constant-time message sending + fixed-size buckets
   2. Message mixing / delay / reorder (basic mix-net)
