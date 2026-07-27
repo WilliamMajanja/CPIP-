@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """CPIP/HTCPCP Server v5.2.3 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
