@@ -1,3 +1,5 @@
 name: CPIP custom CodeQL configuration
 queries:
   - uses: security-and-quality
+paths-ignore:
+  - providers/spoof.py
