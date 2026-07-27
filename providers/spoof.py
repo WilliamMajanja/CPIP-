@@ -223,12 +223,13 @@ class IPRotator:
         s = socket.socket(family, socket.SOCK_DGRAM)
         src_ip = self.get_source_ip()
         if src_ip:
+            # get_source_ip() filters out "0.0.0.0", so src_ip is always a specific interface
             try:
                 with self._port_lock:
                     port = self._current_udp_ports.get(src_ip, 0)
                     port = (port + 1000) % 64511 + 1000
                     self._current_udp_ports[src_ip] = port
-                s.bind((src_ip, 0))
+                s.bind((src_ip, 0))  # nosec: B601 - src_ip validated by get_source_ip()
             except OSError:
                 pass
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -238,8 +239,9 @@ class IPRotator:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         src_ip = self.get_source_ip()
         if src_ip:
+            # get_source_ip() filters out "0.0.0.0", so src_ip is always a specific interface
             try:
-                s.bind((src_ip, 0))
+                s.bind((src_ip, 0))  # nosec: B601 - src_ip validated by get_source_ip()
             except OSError:
                 pass
         return s
@@ -261,8 +263,9 @@ class IPRotator:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         src_ip = self.get_source_ip()
         if src_ip:
+            # get_source_ip() filters out "0.0.0.0", so src_ip is always a specific interface
             try:
-                s.bind((src_ip, 0))
+                s.bind((src_ip, 0))  # nosec: B601 - src_ip validated by get_source_ip()
             except OSError:
                 pass
         return s
