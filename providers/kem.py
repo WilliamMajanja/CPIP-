@@ -224,7 +224,7 @@ class PQCIdentity:
     """Quantum-resistant identity using PQC key encapsulation."""
 
     NAME = "pqc_identity"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
     KEM_ALGORITHM = PQC_KEM_ALGORITHM
     MAILBOX = PQC_IDENTITY_MAILBOX
 

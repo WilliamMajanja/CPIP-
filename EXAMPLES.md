@@ -1,6 +1,6 @@
 # CPIP Usage Examples
 
-[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 
 ## Basic Brewing

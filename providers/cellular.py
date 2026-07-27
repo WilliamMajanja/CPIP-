@@ -37,7 +37,7 @@ RAT_ORDER = {"5G_NR": 5, "5G_NSA": 5, "5G": 5, "LTE": 4, "LTE_CA": 4, "LTE_ADVAN
 class CellularProvider(BaseProvider):
     TYPE = ProviderType.CELLULAR
     NAME = "cellular"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _instance: ClassVar[CellularProvider | None] = None
     _lock = threading.Lock()
@@ -456,7 +456,7 @@ class AntiStingrayV2(CellularProvider):
     """V2 anti-stingray with multi-generation cellular scan capabilities."""
 
     NAME = "cellular_v2"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     @classmethod
     def scan_generation(cls, gen: int) -> dict[str, Any]:

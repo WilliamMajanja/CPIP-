@@ -22,7 +22,7 @@ EMSEC_TIMING_JITTER = int(os.environ.get("CPIP_EMSEC_TIMING_JITTER_MS", "50"))
 class EMSecProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "emsec"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _running = False
     _faraday_intact = True

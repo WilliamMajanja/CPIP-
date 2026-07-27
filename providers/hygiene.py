@@ -35,7 +35,7 @@ STALKERWARE_DB_BUILTIN = json.dumps(STALKERWARE_SIGNATURES)
 class HygieneProvider(BaseProvider):
     TYPE = ProviderType.HYGIENE
     NAME = "hygiene"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _scan_results: dict[str, Any] = {}
     _last_scan = 0

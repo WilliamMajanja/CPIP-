@@ -23,7 +23,7 @@ AI_TTS = os.environ.get("CPIP_AI_TTS", "none")
 class AIAssessorProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "ai_assessor"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _assessments: list[dict] = []
 

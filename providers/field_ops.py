@@ -20,7 +20,7 @@ GEOFENCE_PATH = os.environ.get("CPIP_FIELD_GEOFENCE", "")
 class FieldOpsProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "field_ops"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _radio_silent = RADIO_SILENT
     _deadman_armed = False

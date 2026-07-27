@@ -20,7 +20,7 @@ TAMPER_RTC_CHECK = os.environ.get("CPIP_TAMPER_RTC_CHECK", "1") == "1"
 class TamperProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "tamper"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _events: list[dict] = []
     _lock = threading.Lock()

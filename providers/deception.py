@@ -20,7 +20,7 @@ HONEYPOT_COUNT = int(os.environ.get("CPIP_DECEPTION_HONEYPOT_COUNT", "3"))
 class DeceptionProvider(BaseProvider):
     TYPE = ProviderType.DECEPTION
     NAME = "deception"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _honeypots: list[dict] = []
     _honeypot_connections: list[dict] = []

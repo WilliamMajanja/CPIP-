@@ -1,6 +1,6 @@
 # Security Policy
 
-[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
 [![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
 [![FIPS](https://img.shields.io/badge/FIPS-197%20%7C%20186--4%20%7C%20180--4-blue.svg)]()
 [![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()

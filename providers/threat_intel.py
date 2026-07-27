@@ -24,7 +24,7 @@ CPIP_THREAT_DHT_BOOTSTRAP = os.environ.get("CPIP_THREAT_DHT_BOOTSTRAP", "")
 class ThreatIntelProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "threat_intel"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _lock = threading.Lock()
     _sightings: dict[str, list[dict]] = {}

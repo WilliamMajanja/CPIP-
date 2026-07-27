@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""CPIP/HTCPCP Server v5.2.3 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v6.0.3 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
@@ -301,7 +301,7 @@ BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
 BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
-CPIP_VERSION = "5.2.3"
+CPIP_VERSION = "6.0.3"
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + RFC 6969 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding + Palantir + IP Spoofing)"
 _START_TIME = time.time()
 

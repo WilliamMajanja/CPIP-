@@ -21,7 +21,7 @@ CARRIER_VZ_KEY = os.environ.get("CPIP_CARRIER_VZ_EDGE_KEY", "")
 class CarrierProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "carrier"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _events: list[dict] = []
     _webhook_registered = False

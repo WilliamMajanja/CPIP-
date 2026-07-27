@@ -22,7 +22,7 @@ EVIDENCE_CHAIN = os.environ.get("CPIP_EVIDENCE_CHAIN", "ots")
 class EvidenceProvider(BaseProvider):
     TYPE = ProviderType.EVIDENCE
     NAME = "evidence"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _evidence_dir = Path("/tmp/cpip_evidence")
     _chain: list[dict] = []

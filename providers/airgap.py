@@ -22,7 +22,7 @@ AIRGAP_NFC_DEVICE = os.environ.get("CPIP_AIRGAP_NFC_DEVICE", "")
 class AirGapProvider(BaseProvider):
     TYPE = ProviderType.RADIO
     NAME = "airgap"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _messages_sent = 0
     _messages_received = 0

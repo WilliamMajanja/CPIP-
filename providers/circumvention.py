@@ -25,7 +25,7 @@ SUPPORTED_MODES = ["https", "dns", "quic", "meek", "snowflake", "obfs4"]
 class CircumventionProvider(BaseProvider):
     TYPE = ProviderType.CIRCUMVENTION
     NAME = "circumvention"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _active_mode = CIRCUMVENTION_MODE
     _running = False

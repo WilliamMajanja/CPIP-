@@ -23,7 +23,7 @@ THREAT_LABELS = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
 class Scorer(BaseProvider):
     TYPE = ProviderType.SCORER
     NAME = "scorer"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _events: list[dict[str, Any]] = []
     _lock = threading.Lock()

@@ -22,7 +22,7 @@ SENSOR_THERMAL = os.environ.get("CPIP_SENSOR_THERMAL", "0") == "1"
 class SensorProvider(BaseProvider):
     TYPE = ProviderType.SENSOR
     NAME = "sensors"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _running = False
     _thread: threading.Thread | None = None

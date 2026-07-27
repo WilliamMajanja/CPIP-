@@ -167,7 +167,7 @@ class CovertKeyManagerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("CPIP Covert Key Manager v5.1.1")
+        self.root.title("CPIP Covert Key Manager v6.0.3")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         
         self.root.resizable(False, False)

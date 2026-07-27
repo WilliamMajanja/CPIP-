@@ -20,7 +20,7 @@ MESH_DISAPPEAR_HOURS = int(os.environ.get("CPIP_MESH_DISAPPEAR_HOURS", "48"))
 class MeshSecurityProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "mesh_security"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _peers: dict[str, dict] = {}
     _nonces_seen: dict[str, set] = {}

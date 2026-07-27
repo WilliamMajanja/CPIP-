@@ -16,7 +16,7 @@ class PQMesh:
     """Post-quantum mesh protocol using hybrid KEM + signing."""
 
     NAME = "pq_mesh"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
     ENABLED = PQ_MESH_ENABLED
     KEM_ALGORITHM = PQ_MESH_KEM
     SIG_ALGORITHM = PQ_MESH_SIG

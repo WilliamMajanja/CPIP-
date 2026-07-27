@@ -19,7 +19,7 @@ POWER_DRAIN_THRESHOLD = float(os.environ.get("CPIP_POWER_DRAIN_THRESHOLD", "2.0"
 class PowerProvider(BaseProvider):
     TYPE = ProviderType.POWER
     NAME = "power"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _running = False
     _thread: threading.Thread | None = None

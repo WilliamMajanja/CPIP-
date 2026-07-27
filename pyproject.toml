@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cpip"
-version = "6.0.0"
+version = "6.0.3"
 description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
 readme = "README.md"
 license = {text = "Unlicense"}

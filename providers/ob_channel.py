@@ -21,7 +21,7 @@ OB_FAILOVER = os.environ.get("CPIP_OB_FAILOVER", "1") == "1"
 class OBChannelProvider(BaseProvider):
     TYPE = ProviderType.RADIO
     NAME = "ob_channel"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _channels: dict[str, bool] = {"bt": False, "nfc": False, "audio": False, "lifi": False}
     _messages_sent = 0

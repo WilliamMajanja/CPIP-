@@ -20,7 +20,7 @@ SS7_BLOCK_ATI = os.environ.get("CPIP_SS7_BLOCK_ATI", "1") == "1"
 class SS7Monitor(BaseProvider):
     TYPE = ProviderType.SS7
     NAME = "ss7_monitor"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _running = False
     _thread: threading.Thread | None = None

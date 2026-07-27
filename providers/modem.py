@@ -20,7 +20,7 @@ MODEM_NVD_API_KEY = os.environ.get("CPIP_MODEM_NVD_API_KEY", "")
 class ModemProvider(BaseProvider):
     TYPE = ProviderType.MODEM
     NAME = "modem"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _fw_info: dict = {}
     _fw_history: list[dict] = []

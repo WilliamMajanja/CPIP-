@@ -21,7 +21,7 @@ DURESS_PANIC_PIN = int(os.environ.get("CPIP_DURESS_PANIC_DELETE_PIN", "26"))
 class DuressProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "duress"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _duress_active = False
     _duress_triggered_at = 0

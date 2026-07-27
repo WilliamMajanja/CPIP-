@@ -19,7 +19,7 @@ GPIO_WATCHDOG = os.environ.get("CPIP_GPIO_WATCHDOG", "1") == "1"
 class HardwareProvider(BaseProvider):
     TYPE = ProviderType.HARDWARE
     NAME = "hardware"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _gpio_initialized = False
     _gpio = None

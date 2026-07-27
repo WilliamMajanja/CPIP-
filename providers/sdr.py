@@ -37,7 +37,7 @@ class SDRBackend(Enum):
 class SDRProvider(BaseProvider):
     TYPE = ProviderType.SDR
     NAME = "sdr"
-    VERSION = "6.0.0"
+    VERSION = "6.0.3"
 
     _instance: ClassVar[SDRProvider | None] = None
     _running = False
