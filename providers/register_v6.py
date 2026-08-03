@@ -3,7 +3,7 @@ import logging
 
 from providers.registry import ProviderRegistry
 from providers.cellular import CellularProvider
-from providers.sdr import SDRProvider
+from providers.sdr import SDRProvider, SpectrumDefense
 from providers.scorer import Scorer
 from providers.threat_intel import ThreatIntelProvider
 from providers.hardware import HardwareProvider
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 ALL_V6_PROVIDERS = [
     CellularProvider,
     SDRProvider,
+    SpectrumDefense,
     Scorer,
     ThreatIntelProvider,
     HardwareProvider,
