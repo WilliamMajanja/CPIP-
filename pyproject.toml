@@ -36,7 +36,7 @@ all = ["opentui>=0.1.2", "rich>=15.0.0", "pkcs11>=1.0.4"]
 [project.urls]
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
 RFC-2324 = "https://datatracker.ietf.org/doc/html/rfc2324"
-RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc2168"
+RFC-7168 = "https://datatracker.ietf.org/doc/html/rfc7168"
 
 [project.scripts]
 cpip-server = "server:main"

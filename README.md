@@ -43,12 +43,13 @@ Implementation of RFC 2324 (HTCPCP) and RFC 7168 (HTCPCP-TEA) with mesh networki
 - [API Reference](#api-reference)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
+- [Specification and Request Records](#specification-and-request-records)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Overview
 
-The Hyper Text Coffee Pot Control Protocol (HTCPCP) was published as RFC 2324 on April 1, 1998, defining the HTTP 418 "I'm a teapot" status code and specifying how to control coffee pots over the internet. RFC 7168 extended it for tea in 2014.
+The Hyper Text Coffee Pot Control Protocol (HTCPCP) was published as the humorous, Informational RFC 2324 on April 1, 1998; it is not an Internet Standards Track specification. RFC 7168, also Informational, updates it for tea. These protocol references do not certify CPIP's implementation, security, or conformance.
 
 CPIP implements the full HTCPCP specification and extends it into a multi-transport mesh communication system with active network defense. The protocol operates over four transport layers — LAN, satellite, radio (LoRa/TNC), and mobile broadband — with end-to-end encryption, store-and-forward messaging, and covert channels. All HTCPCP brew requests and responses double as cover traffic for encrypted mesh messages.
 
@@ -1064,6 +1065,10 @@ CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blo
 **Configuration:** `CPIP_ENABLED=1`, `CPIP_RECIPE=minima`, `CPIP_RPC_AUTH=1`, `CPIP_DEFENSE_ENABLED=1`. See [SECURITY.md](SECURITY.md) § Minima Integration for full details.
 
 **PQ Complementarity:** Minima uses WOTS+ (FIPS 205, 128-bit PQ) for consensus signatures. CPIP adds Kyber (non-FIPS ML-KEM-768) for transport encryption. The two approaches are complementary — WOTS+ for consensus, Kyber for key exchange.
+
+## Specification and Request Records
+
+The numbered files in [`specs/`](specs/README.md) are CPIP project proposals, not IETF RFC publications. Use a CPIP-RFF for a new feature, an RFC-CR for a change to existing behavior, and a CPIP-RFC for a substantial project protocol/architecture specification. Their statuses and target versions must be checked; a Draft does not imply implementation.
 
 ## Contributing
 

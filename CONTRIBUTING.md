@@ -21,6 +21,19 @@ participating, you are expected to uphold its terms.
 - Test cases and verification scripts
 - Performance optimizations (especially for Raspberry Pi Zero)
 
+## Feature Requests and Changes
+
+- Use `CPIP-RFF-NNNN` for a new capability request; use `RFC-CR-NNNN` for a
+  proposed change to existing behavior, defaults, data handling, or compatibility.
+- Use `CPIP-RFC-NNNN` for a substantial CPIP protocol/architecture specification.
+  These are project-local records, not IETF RFC publications or standards.
+- Include the affected version/commit, user/problem, exact expected behavior,
+  data flows, privacy/security risks, dependencies, compatibility, tests,
+  migration/rollback, references, and accountable owner.
+- Preserve proposal status: accepted is not implemented; implemented needs a
+  linked commit/tests; verified needs a reviewer, platform/version, and evidence.
+- Templates and the current draft inventory are in [`specs/`](specs/README.md).
+
 ## What We Do Not Accept
 
 - Pull requests that add external Python dependencies beyond the existing set (`cryptography`, `pqcrypto`, `numpy`, `opentui`)
