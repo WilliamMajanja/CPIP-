@@ -1,6 +1,6 @@
 # Quick Start
 
-[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 [![Python 3.x](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)]()
 
@@ -37,7 +37,15 @@ curl -k -X WHEN https://localhost:4180/
 ./b4dm4n_cw.py encaps mykeys.pk -o ct.bin
 ./b4dm4n_cw.py decaps mykeys.sk ct.bin
 
-# 9. Hybrid ECDH + Kyber (defense in depth) — use the -a hybrid alias
+# Standard parameter-size options and custom experimental 1nf1D3L ranks
+./b4dm4n_cw.py keygen -a ml-kem-512 -o kem512
+./b4dm4n_cw.py keygen -a ml-kem-1024 -o kem1024
+./b4dm4n_cw.py keygen -a 1nf1d3l-kem-2048 -o ext2048
+./b4dm4n_cw.py keygen -a 1nf1d3l-kem-4096 -o ext4096
+# Force the KEM's standard-library-only backend
+CPIP_ML_KEM_BACKEND=stdlib ./b4dm4n_cw.py keygen -a 1nf1d3l-kem-2048 -o ext2048-stdlib
+
+# 9. Optional standalone hybrid ECDH + KEM operation (not mesh E2EE)
 ./b4dm4n_cw.py keygen -a hybrid -o hybrid
 ./b4dm4n_cw.py encaps -a hybrid hybrid.pk -o hyb_ct.bin
 ./b4dm4n_cw.py decaps -a hybrid hybrid.sk hyb_ct.bin
@@ -92,7 +100,7 @@ docker run -d -p 4180:4180 cpip
 ## Raspberry Pi
 
 ```bash
-sudo ./deploy.sh
+sudo ./deploy-pi.sh
 ```
 
 See [README.md](README.md) for full documentation.

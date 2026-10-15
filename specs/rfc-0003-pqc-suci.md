@@ -53,18 +53,20 @@ cpip crypto pqc-handshake <peer>
 
 ```
 CPIP_PQC_IDENTITY=0|1|hybrid    (default: hybrid)
-CPIP_PQC_KEM=kyber768|kyber1024|hqc192
+CPIP_PQC_KEM=ml_kem_512|ml_kem_768|ml_kem_1024|1nf1d3l_kem_2048|1nf1d3l_kem_4096 (default: ml_kem_768)
+CPIP_ML_KEM_BACKEND=auto|stdlib|numpy|pqcrypto (stdlib has no third-party KEM dependency)
 ```
 
 ## Security Considerations
 
-- Kyber-1024 targets NIST security level 5 (highest)
+- Standardized FIPS 203 ML-KEM-1024 targets NIST level 5; do not assign that level to the custom 1nf1D3L implementation.
 - Hybrid mode (ECDH + Kyber) protects against cryptanalytic breakthroughs
   in both classical and quantum cryptanalysis
-- PQ key sizes are larger (Kyber PK=1184B, SK=2400B, CT=1088B for ML-KEM-768)
+- Standard parameter-size options are 512/768/1024. Experimental custom 1nf1D3L ranks 2048/4096 use separate algorithm IDs and are not security-level claims.
+- The bundled implementation is non-FIPS and not wire-compatible with FIPS 203 ciphertexts.
 
 ## Limitations
 
-- Requires `pqcrypto >= 0.6.0` with Kyber/ML-KEM support
+- The standard-library backend has no third-party KEM dependency; the accelerated backend requires NumPy, and the optional standardized backend requires `pqcrypto`.
 - Larger key exchange messages increase mesh handshake size
 - Not all peers may support PQ — fallback to ECDH required

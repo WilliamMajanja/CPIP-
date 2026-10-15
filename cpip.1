@@ -1,4 +1,4 @@
-.TH CPIP 1 "2026-07-23" "CPIP v5.1.1" "Coffee Pot Internet Protocol"
+.TH CPIP 1 "2026-10-15" "CPIP v7.0.0" "Coffee Pot Internet Protocol"
 .SH NAME
 cpip \- command-line client for the Coffee Pot Internet Protocol
 .SH SYNOPSIS
@@ -220,10 +220,12 @@ Encode a covert message
 CLI client.
 .SH BUGS
 Classical cryptography (AES-256-GCM, ECDSA/ECDH P-256, HKDF/HMAC-SHA256) is
-FIPS-compliant via the \fBcryptography\fR library. 1nf1D3L's Kyber (ML-KEM-768
-variant with η=3) is NOT FIPS 203 validated — it is intended for research,
-red-teaming, and coffee-protocol use cases, not FIPS-required deployments.
-CPIP does not implement RSA-KEM; the hybrid KEM is ECDH P-256 + Kyber.
+FIPS-aligned classical algorithms use the \fBcryptography\fR library. The
+bundled 1nf1D3L KEM variants are custom and NOT FIPS 203 validated. Standard
+parameter-size options 512/768/1024 are provided alongside experimental custom
+K=8/16 ranks named 2048/4096; those labels are not security-level claims. A
+standard-library-only KEM backend is available. The configured KEM catalog is
+not currently negotiated by mesh E2EE. CPIP does not implement RSA-KEM.
 .SH SEE ALSO
 .BR server.py (1),
 RFC 2324 (https://datatracker.ietf.org/doc/html/rfc2324),

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""CPIP/HTCPCP Server v6.0.3 — Coffee Pot Internet Protocol
+"""CPIP/HTCPCP Server v7.0.0 — Coffee Pot Internet Protocol
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + CPIP Extension
 
 Cryptography:
 - CoffeeCipher v5: AES-256-GCM (FIPS 197) + HKDF-SHA256
 - ECDSA P-256 (FIPS 186-4): Signatures + ECDH
-- HybridKEM: ECDH P-256 + Kyber (ML-KEM-768) (defense in depth)
+- Optional HybridKEM API: ECDH P-256 + configured KEM backend; bundled 1nf1D3L variants are custom/non-FIPS
+- SLH-DSA (FIPS 205): Stateless hash-based signatures (12 variants)
+- ML-DSA (FIPS 204): Module-lattice signatures (Dilithium)
 - All randomness: os.urandom (FIPS 140-2 compliant RNG)
 """
 
@@ -69,12 +71,39 @@ from socketserver import ThreadingMixIn
 from typing import Any, Callable, ClassVar
 from urllib.parse import parse_qs, urlparse
 
+
+def _load_project_env() -> None:
+    """Load plain CPIP_* settings saved by the desktop key manager.
+
+    Existing process environment always wins; values are never evaluated as
+    shell syntax and non-CPIP entries are ignored.
+    """
+    env_path = Path(__file__).resolve().parent / ".env"
+    try:
+        for line in env_path.read_text().splitlines():
+            item = line.strip()
+            if not item or item.startswith("#") or "=" not in item:
+                continue
+            name, value = item.split("=", 1)
+            name, value = name.strip(), value.strip()
+            if not name.startswith("CPIP_"):
+                continue
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            os.environ.setdefault(name, value)
+    except OSError:
+        pass
+
+
+_load_project_env()
+
 import providers as cpip_providers
 from providers.base import BaseProvider, ProviderType
 from providers.registry import ProviderRegistry
 from providers.kem import KEMProvider, PQC_KEM_REGISTRY, get_pqc_kem, list_pqc_kems, register_kem_provider
 from providers.spoof import SPOOF_ENABLED, SPOOF_MODE, IPRotator, ProxyManager, get_spoofed_socket, wrap_urllib_for_spoof
 from providers.palantir import PalantirHardening, PALANTIR_ENABLED, PALANTIR_CHAFF, PALANTIR_MIX_DELAY, PALANTIR_FIXED_SIZE, PALANTIR_BROADCAST
+from providers import rfc_api
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -146,15 +175,18 @@ HTTP_REDIRECT_PORT = int(os.environ.get("CPIP_HTTP_REDIRECT_PORT", "4181"))
 _raw_key = os.environ.get("CPIP_COVERT_KEY", "")
 if not _raw_key or _raw_key == "CHANGE_ME_COFFEE_BLEND_2024":
     _was_default = _raw_key == "CHANGE_ME_COFFEE_BLEND_2024"
-    _raw_key = base64.b64encode(os.urandom(32)).decode()
-    COVERT_KEY = _raw_key.encode()
+    COVERT_KEY_SEED = os.urandom(32)
+    COVERT_KEY = b"\x00" * 32
+    _COVERT_KEY_DERIVED = False
     if _was_default:
-        print("   ⚠ REJECTED default COVERT_KEY — auto-generated (32 bytes, not logged)", flush=True)
+        print("   ⚠ REJECTED default COVERT_KEY — keygen-derived (ECP256 P-256)", flush=True)
     else:
-        print("   ⚠ COVERT_KEY not set — auto-generated (32 bytes, not logged)", flush=True)
+        print("   ⚠ COVERT_KEY not set — keygen-derived (ECP256 P-256)", flush=True)
     print("   ⚠ Set CPIP_COVERT_KEY in environment to use a fixed key.", flush=True)
 else:
+    COVERT_KEY_SEED = b""
     COVERT_KEY = _raw_key.encode()
+    _COVERT_KEY_DERIVED = True
 if len(COVERT_KEY) < 16:
     print("   ⚠ WARNING: COVERT_KEY is shorter than 16 bytes — insecure.", flush=True)
     print("   ⚠ Use a key of at least 24 bytes (32 bytes recommended).", flush=True)
@@ -301,7 +333,7 @@ BOND_STALE_LINK = float(os.environ.get("CPIP_BOND_STALE", "30.0"))
 BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
-CPIP_VERSION = "6.0.3"
+CPIP_VERSION = "7.0.0"
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + RFC 6969 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding + Palantir + IP Spoofing)"
 _START_TIME = time.time()
 
@@ -826,80 +858,366 @@ class ECP256:
 # ECP256 is the canonical name; previously aliased as Ed25519
 
 
-# ── Kyber (ML-KEM) — Unified Post-Quantum KEM Adapter ─────────────────
-# Tries: 1nf1D3L's Kyber (numpy) → pqcrypto (C extension) → error
-# All implementations produce compatible ML-KEM-768 key/ciphertext sizes.
-_KYBER_BACKEND = None
+# ── Parameterized standard and experimental 1nf1D3L KEM sizes ─────────
 
-def _get_kyber_backend():
-    """Lazy-init: select best available ML-KEM-768 backend."""
-    global _KYBER_BACKEND
-    if _KYBER_BACKEND is not None:
-        return _KYBER_BACKEND
+_ML_KEM_BACKENDS: dict[int, str] = {}
+_ML_KEM_SIZES = (512, 768, 1024, 2048, 4096)
+_STANDARD_ML_KEM_SIZES = (512, 768, 1024)
+
+# ── Derive COVERT_KEY from ECP256 keygen if not user-supplied ─────────
+if not _COVERT_KEY_DERIVED:
     try:
-        from inf1del_kyber import Inf1delKyber
-        Inf1delKyber.keygen()
-        _KYBER_BACKEND = "inf1del"
-        return _KYBER_BACKEND
+        _ck_pk, _ck_sk, _, _ = ECP256.generate_keypair(COVERT_KEY_SEED)
+        COVERT_KEY = _ck_sk[:32]
+        print("   ✔ COVERT_KEY derived via ECP256 P-256 keygen", flush=True)
     except Exception as _e:
-        logger.debug("Ignored: %s", _e)
-    if _PQCRYPTO_AVAILABLE:
-        _KYBER_BACKEND = "pqcrypto"
-        return _KYBER_BACKEND
-    raise RuntimeError("No ML-KEM-768 backend available (install numpy or pqcrypto)")
+        COVERT_KEY = hashlib.sha256(COVERT_KEY_SEED).digest()
+        print("   ⚠ ECP256 keygen fallback: %s" % _e, flush=True)
 
 
-class Kyber:
-    """Unified ML-KEM-768 adapter — delegates to best available backend.
-    
+def _get_ml_kem_backend(size: int) -> str:
+    """Select a KEM backend. ``stdlib`` uses no packages outside Python."""
+    requested = os.environ.get("CPIP_ML_KEM_BACKEND", "auto").strip().lower()
+    if size not in _ML_KEM_SIZES:
+        raise ValueError(f"Unsupported KEM size: {size}")
+    if requested in ("stdlib", "python", "pure-python"):
+        _ML_KEM_BACKENDS[size] = "stdlib"
+        return "stdlib"
+    if requested not in ("auto", "numpy", "inf1del", "pqcrypto"):
+        raise ValueError("CPIP_ML_KEM_BACKEND must be auto, stdlib, numpy, inf1del, or pqcrypto")
+    backend = _ML_KEM_BACKENDS.get(size)
+    if backend is not None:
+        return backend
+    if requested in ("auto", "numpy", "inf1del"):
+        try:
+            from inf1del_kyber import Inf1delKyber
+            Inf1delKyber.keygen(size=size)
+            _ML_KEM_BACKENDS[size] = "inf1del"
+            return "inf1del"
+        except Exception as _e:
+            logger.debug("Inf1delKyber init failed for ML-KEM-%d: %s", size, _e)
+            if requested in ("numpy", "inf1del"):
+                raise RuntimeError(f"Requested NumPy KEM backend unavailable for size {size}") from _e
+    if requested == "pqcrypto" and size not in _STANDARD_ML_KEM_SIZES:
+        raise RuntimeError("pqcrypto only provides standard ML-KEM-512/768/1024; extended sizes require the 1nf1D3L backend")
+    if requested == "pqcrypto" and not _PQCRYPTO_AVAILABLE:
+        raise RuntimeError("pqcrypto backend requested but unavailable")
+    if requested in ("auto", "pqcrypto") and size in _STANDARD_ML_KEM_SIZES and _PQCRYPTO_AVAILABLE:
+        _ML_KEM_BACKENDS[size] = "pqcrypto"
+        return "pqcrypto"
+    if requested == "auto":
+        try:
+            from pure_mlkem import PurePythonMLKEM
+            PurePythonMLKEM(size).keygen()
+            _ML_KEM_BACKENDS[size] = "stdlib"
+            return "stdlib"
+        except Exception as _e:
+            logger.debug("stdlib ML-KEM-%d init failed: %s", size, _e)
+    raise RuntimeError(f"No ML-KEM-{size} backend available")
+
+
+class DSA_ML_KEM:
+    """Bundled custom KEM at standard and experimental module ranks.
+
     Backends (in priority order):
-    1. 1nf1D3L's Kyber (numpy-accelerated, eta=3, domain-separated)
-    2. pqcrypto ML-KEM-768 (C extension, standard FIPS 203 params)
-    
-    All backends produce compatible key/ciphertext sizes:
-    - Public key: 1184 bytes
-    - Secret key: 2400 bytes
-    - Ciphertext: 1088 bytes
-    - Shared secret: 32 bytes
+    1. 1nf1D3L's NumPy implementation, if available
+    2. pqcrypto, if installed
+    3. The standard-library-only pure-Python implementation
+
+    512/768/1024 are standard parameter-size labels. 2048/4096 are experimental
+    1nf1D3L ranks, not standardized security levels. All bundled variants are
+    non-FIPS and are not wire-compatible with FIPS 203 ciphertexts.
     """
-    
-    N = 256
-    K = 3
-    Q = 3329
-    ETA1 = 2
-    ETA2 = 2
-    DU = 10
-    DV = 4
 
-    @classmethod
-    def keygen(cls) -> tuple:
-        backend = _get_kyber_backend()
+    _PARAMS = {
+        512: {"N": 256, "K": 2, "Q": 3329, "ETA1": 3, "ETA2": 2, "DU": 10, "DV": 4,
+               "PK_SIZE": 800, "SK_SIZE": 1632, "CT_SIZE": 800, "SS_SIZE": 32},
+        768: {"N": 256, "K": 3, "Q": 3329, "ETA1": 3, "ETA2": 2, "DU": 10, "DV": 4,
+               "PK_SIZE": 1184, "SK_SIZE": 2400, "CT_SIZE": 1120, "SS_SIZE": 32},
+        1024: {"N": 256, "K": 4, "Q": 3329, "ETA1": 3, "ETA2": 2, "DU": 11, "DV": 5,
+                 "PK_SIZE": 1568, "SK_SIZE": 3168, "CT_SIZE": 1600, "SS_SIZE": 32},
+        2048: {"N": 256, "K": 8, "Q": 3329, "ETA1": 3, "ETA2": 2, "DU": 12, "DV": 5,
+                 "PK_SIZE": 3104, "SK_SIZE": 6240, "CT_SIZE": 3264, "SS_SIZE": 32},
+        4096: {"N": 256, "K": 16, "Q": 3329, "ETA1": 3, "ETA2": 2, "DU": 13, "DV": 5,
+                 "PK_SIZE": 6176, "SK_SIZE": 12384, "CT_SIZE": 6848, "SS_SIZE": 32},
+    }
+
+    def __init__(self, size: int = 768):
+        if size not in self._PARAMS:
+            raise ValueError(f"Unsupported KEM size: {size}. Use 512, 768, 1024, 2048, or 4096.")
+        self.size = size
+        self._p = self._PARAMS[size]
+
+    @property
+    def algorithm(self) -> str:
+        if self.size in _STANDARD_ML_KEM_SIZES:
+            return f"ml_kem_{self.size}"
+        return f"1nf1d3l_kem_{self.size}"
+
+    @property
+    def public_key_size(self) -> int:
+        return self._p["PK_SIZE"]
+
+    @property
+    def secret_key_size(self) -> int:
+        return self._p["SK_SIZE"]
+
+    @property
+    def ciphertext_size(self) -> int:
+        return self._p["CT_SIZE"]
+
+    @property
+    def shared_key_size(self) -> int:
+        return self._p["SS_SIZE"]
+
+    def keygen(self) -> tuple[bytes, bytes]:
+        """Generate ML-KEM-{self.size} keypair."""
+        backend = _get_ml_kem_backend(self.size)
         if backend == "inf1del":
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.keygen()
-        elif backend == "pqcrypto":
-            return MLKEM768.generate_keypair()
-        raise RuntimeError("No Kyber backend")
+            return Inf1delKyber.keygen(size=self.size)
+        if backend == "stdlib":
+            from pure_mlkem import keygen
+            return keygen(size=self.size)
+        if backend == "pqcrypto":
+            mod = __import__(f"pqcrypto.kem.ml_kem_{self.size}", fromlist=["ml_kem"])
+            return mod.generate_keypair()
+        raise RuntimeError(f"No ML-KEM-{self.size} backend available")
 
-    @classmethod
-    def encaps(cls, public_key: bytes) -> tuple:
-        backend = _get_kyber_backend()
+    def encapsulate(self, public_key: bytes) -> tuple[bytes, bytes]:
+        """Encapsulate for an ML-KEM-{self.size} public key."""
+        backend = _get_ml_kem_backend(self.size)
         if backend == "inf1del":
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.encaps(public_key)
-        elif backend == "pqcrypto":
-            return MLKEM768.encapsulate(public_key)
-        raise RuntimeError("No Kyber backend")
+            return Inf1delKyber.encaps(public_key, size=self.size)
+        if backend == "stdlib":
+            from pure_mlkem import encaps
+            return encaps(public_key, size=self.size)
+        if backend == "pqcrypto":
+            mod = __import__(f"pqcrypto.kem.ml_kem_{self.size}", fromlist=["ml_kem"])
+            return mod.encrypt(public_key)
+        raise RuntimeError(f"No ML-KEM-{self.size} backend available")
 
-    @classmethod
-    def decaps(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
-        backend = _get_kyber_backend()
+    def decapsulate(self, secret_key: bytes, ciphertext: bytes) -> bytes:
+        """Decapsulate using ML-KEM-{self.size} secret key."""
+        backend = _get_ml_kem_backend(self.size)
         if backend == "inf1del":
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.decaps(secret_key, ciphertext)
-        elif backend == "pqcrypto":
-            return MLKEM768.decapsulate(secret_key, ciphertext)
-        raise RuntimeError("No Kyber backend")
+            return Inf1delKyber.decaps(secret_key, ciphertext, size=self.size)
+        if backend == "stdlib":
+            from pure_mlkem import decaps
+            return decaps(secret_key, ciphertext, size=self.size)
+        if backend == "pqcrypto":
+            mod = __import__(f"pqcrypto.kem.ml_kem_{self.size}", fromlist=["ml_kem"])
+            return mod.decrypt(secret_key, ciphertext)
+        raise RuntimeError(f"No ML-KEM-{self.size} backend available")
+
+    def hybrid_keygen(self, ecc_seed: bytes | None = None) -> tuple[bytes, bytes]:
+        """Hybrid ECDH P-256 + ML-KEM-{self.size} keypair."""
+        ecc_pk, ecc_seed_out, _, _ = ECP256.generate_keypair(ecc_seed)
+        pk, sk = self.keygen()
+        ecc_pk_len = len(ecc_pk).to_bytes(2, "big")
+        hybrid_pk = ecc_pk_len + ecc_pk + pk
+        hybrid_sk = ecc_seed_out + sk
+        return hybrid_pk, hybrid_sk
+
+    def hybrid_encapsulate(self, hybrid_pk: bytes) -> tuple[bytes, bytes]:
+        """Hybrid encapsulation: ECDH + ML-KEM-{self.size}."""
+        ecc_pk_len = int.from_bytes(hybrid_pk[:2], "big")
+        ecc_pk = hybrid_pk[2:2 + ecc_pk_len]
+        kyber_pk = hybrid_pk[2 + ecc_pk_len:]
+        ecc_ephem_seed = secrets.token_bytes(32)
+        ecc_ephem_pk, _, _, _ = ECP256.generate_keypair(ecc_ephem_seed)
+        ecdh_shared = ECP256.key_exchange(ecc_ephem_seed, ecc_pk)
+        kyber_ct, kyber_ss = self.encapsulate(kyber_pk)
+        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-mlkem-v1"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-mlkem-v1", 32)
+        ecc_ephem_len = len(ecc_ephem_pk).to_bytes(2, "big")
+        ciphertext = ecc_ephem_len + ecc_ephem_pk + kyber_ct
+        return ciphertext, shared
+
+    def hybrid_decapsulate(self, hybrid_sk: bytes, ciphertext: bytes) -> bytes:
+        """Hybrid decapsulation: ECDH + ML-KEM-{self.size}."""
+        ecc_seed = hybrid_sk[:32]
+        kyber_sk = hybrid_sk[32:]
+        ecc_ephem_len = int.from_bytes(ciphertext[:2], "big")
+        ecc_ephem_pk = ciphertext[2:2 + ecc_ephem_len]
+        kyber_ct = ciphertext[2 + ecc_ephem_len:]
+        ecdh_shared = ECP256.key_exchange(ecc_seed, ecc_ephem_pk)
+        kyber_ss = self.decapsulate(kyber_sk, kyber_ct)
+        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-mlkem-v1"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-mlkem-v1", 32)
+        return shared
+
+
+# ── DSA-SLH-DSA (SPHINCS+) — Stateless Hash-Based Signatures ────
+
+class DSA_SLH_SPHINCS:
+    """SLH-DSA (SPHINCS+) stateless hash-based signature scheme.
+
+    NIST FIPS 205 standardized. Supports SHA2 and SHAKE variants
+    at 128-bit, 192-bit, and 256-bit security levels.
+
+    Backend priority:
+    1. 1nf1D3L's SLH-DSA (domain-separated, recipe-bound)
+    2. pqcrypto SPHINCS+ (C extension, standard params)
+    """
+
+    _VARIANTS = {
+        "slh_dsa_sha2_128f_simple": {"security": 128, "hash": "sha2", "fors": "128f"},
+        "slh_dsa_sha2_128s_simple": {"security": 128, "hash": "sha2", "fors": "128s"},
+        "slh_dsa_sha2_192f_simple": {"security": 192, "hash": "sha2", "fors": "192f"},
+        "slh_dsa_sha2_192s_simple": {"security": 192, "hash": "sha2", "fors": "192s"},
+        "slh_dsa_sha2_256f_simple": {"security": 256, "hash": "sha2", "fors": "256f"},
+        "slh_dsa_sha2_256s_simple": {"security": 256, "hash": "sha2", "fors": "256s"},
+        "slh_dsa_shake_128f_simple": {"security": 128, "hash": "shake", "fors": "128f"},
+        "slh_dsa_shake_128s_simple": {"security": 128, "hash": "shake", "fors": "128s"},
+        "slh_dsa_shake_192f_simple": {"security": 192, "hash": "shake", "fors": "192f"},
+        "slh_dsa_shake_192s_simple": {"security": 192, "hash": "shake", "fors": "192s"},
+        "slh_dsa_shake_256f_simple": {"security": 256, "hash": "shake", "fors": "256f"},
+        "slh_dsa_shake_256s_simple": {"security": 256, "hash": "shake", "fors": "256s"},
+    }
+
+    def __init__(self, variant: str = "slh_dsa_sha2_256f_simple", recipe: str = "espresso"):
+        if variant not in self._VARIANTS:
+            raise ValueError(f"Unknown SLH-DSA variant: {variant}")
+        self.variant = variant
+        self._info = self._VARIANTS[variant]
+        self.recipe = recipe
+        self._mod = None
+        self._backend = None
+
+    @property
+    def algorithm(self) -> str:
+        return self.variant
+
+    @property
+    def security_level(self) -> int:
+        return self._info["security"]
+
+    def _get_backend(self) -> str:
+        """Determine backend: 'inf1del' (domain-separated) or 'pqcrypto'."""
+        if self._backend is not None:
+            return self._backend
+        try:
+            from inf1del_kyber import Inf1delSLH
+            Inf1delSLH(self.variant, self.recipe)
+            self._backend = "inf1del"
+            return self._backend
+        except Exception:
+            pass
+        self._backend = "pqcrypto"
+        return self._backend
+
+    def _load_mod(self):
+        if self._mod is not None:
+            return self._mod
+        candidates = [f"pqcrypto.sign.{self.variant}"]
+        if self.variant.startswith("slh_dsa_"):
+            candidates.append(f"pqcrypto.sign.sphincs_{self.variant[len('slh_dsa_'):]}")
+        for modname in candidates:
+            try:
+                self._mod = __import__(modname, fromlist=["pqcrypto"])
+                return self._mod
+            except ImportError:
+                continue
+        raise RuntimeError(f"SLH-DSA variant '{self.variant}' not available (pqcrypto not installed)")
+
+    def keygen(self) -> tuple[bytes, bytes]:
+        """Generate SLH-DSA keypair. Returns (public_key, secret_key)."""
+        backend = self._get_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delSLH
+            return Inf1delSLH.keygen(self.variant, self.recipe)
+        mod = self._load_mod()
+        return mod.generate_keypair()
+
+    def sign(self, secret_key: bytes, message: bytes) -> tuple[bytes, bytes]:
+        """Sign a message. Returns (signature, public_key).
+
+        The pqcrypto SPHINCS+ modules use the detached-signature API and
+        return only the signature; the public key is embedded at the end of
+        the SPHINCS+ secret key (SK = SEED || SK_PRF || PK), so it is
+        recovered here to honor the documented (signature, public_key) return.
+        """
+        backend = self._get_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delSLH
+            return Inf1delSLH.sign(secret_key, message, self.variant, self.recipe)
+        mod = self._load_mod()
+        result = mod.sign(secret_key, message)
+        if isinstance(result, tuple):
+            return result
+        return result, secret_key[len(secret_key) // 2:]
+
+    def verify(self, public_key: bytes, message: bytes, signature: bytes) -> bool:
+        """Verify a signature. Returns True if valid."""
+        backend = self._get_backend()
+        if backend == "inf1del":
+            from inf1del_kyber import Inf1delSLH
+            return Inf1delSLH.verify(public_key, message, signature, self.variant, self.recipe)
+        mod = self._load_mod()
+        try:
+            return mod.verify(public_key, message, signature)
+        except Exception:
+            return False
+
+
+# ── DSA-ML-DSA (Dilithium) — Module-Lattice Signatures ─────────
+
+class DSA_ML_DSA:
+    """ML-DSA (Dilithium) module-lattice signature scheme.
+
+    NIST FIPS 204 standardized. Supports security levels 2 (44), 3 (65), and 5 (87).
+    """
+
+    _VARIANTS = {
+        "ml_dsa_44": {"security": 128, "level": 2},
+        "ml_dsa_65": {"security": 192, "level": 3},
+        "ml_dsa_87": {"security": 256, "level": 5},
+    }
+
+    def __init__(self, variant: str = "ml_dsa_65"):
+        if variant not in self._VARIANTS:
+            raise ValueError(f"Unknown ML-DSA variant: {variant}")
+        self.variant = variant
+        self._info = self._VARIANTS[variant]
+        self._mod = None
+
+    @property
+    def algorithm(self) -> str:
+        return self.variant
+
+    @property
+    def security_level(self) -> int:
+        return self._info["security"]
+
+    def _load_mod(self):
+        if self._mod is not None:
+            return self._mod
+        try:
+            self._mod = __import__(f"pqcrypto.sign.{self.variant}", fromlist=["pqcrypto"])
+        except ImportError:
+            raise RuntimeError(f"ML-DSA variant '{self.variant}' not available (pqcrypto not installed)")
+        return self._mod
+
+    def keygen(self) -> tuple[bytes, bytes]:
+        """Generate ML-DSA keypair. Returns (public_key, secret_key)."""
+        mod = self._load_mod()
+        return mod.generate_keypair()
+
+    def sign(self, secret_key: bytes, message: bytes) -> tuple[bytes, bytes]:
+        """Sign a message. Returns (signature, public_key)."""
+        mod = self._load_mod()
+        return mod.sign(secret_key, message)
+
+    def verify(self, public_key: bytes, message: bytes, signature: bytes) -> bool:
+        """Verify a signature. Returns True if valid."""
+        mod = self._load_mod()
+        try:
+            return mod.verify(public_key, message, signature)
+        except Exception:
+            return False
 
 
 # ── Non-FIPS PQC KEMs (HQC, Classic McEliece, ML-KEM variants) ────────
@@ -1357,7 +1675,7 @@ class McEliece8192128f(PQCKEM):
 
 class MLKEM512(PQCKEM):
     """ML-KEM-512 (FIPS 203) - Module-Lattice KEM, NIST standardized.
-    
+
     Security: 128-bit classical / 64-bit quantum
     """
     ALGORITHM = "ml_kem_512"
@@ -1365,30 +1683,51 @@ class MLKEM512(PQCKEM):
     SECRET_KEY_SIZE = 1632
     CIPHERTEXT_SIZE = 768
     SHARED_KEY_SIZE = 32
-    
+
     @classmethod
     def generate_keypair(cls) -> tuple[bytes, bytes]:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        return _mlkem512.generate_keypair()
-    
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                return _mlkem512.generate_keypair()
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.keygen(size=512)
+        except Exception:
+            raise RuntimeError("No ML-KEM-512 backend available")
+
     @classmethod
     def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        ct, ss = _mlkem512.encrypt(public_key)
-        return ct, ss
-    
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                ct, ss = _mlkem512.encrypt(public_key)
+                return ct, ss
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.encaps(public_key, size=512)
+        except Exception:
+            raise RuntimeError("No ML-KEM-512 backend available")
+
     @classmethod
     def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        return _mlkem512.decrypt(secret_key, ciphertext)
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                return _mlkem512.decrypt(secret_key, ciphertext)
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.decaps(secret_key, ciphertext, size=512)
+        except Exception:
+            raise RuntimeError("No ML-KEM-512 backend available")
 
 
 class MLKEM768(PQCKEM):
     """ML-KEM-768 (FIPS 203) - Module-Lattice KEM, NIST standardized.
-    
+
     Security: 192-bit classical / 128-bit quantum
     """
     ALGORITHM = "ml_kem_768"
@@ -1396,42 +1735,51 @@ class MLKEM768(PQCKEM):
     SECRET_KEY_SIZE = 2400
     CIPHERTEXT_SIZE = 1088
     SHARED_KEY_SIZE = 32
-    
+
     @classmethod
     def generate_keypair(cls) -> tuple[bytes, bytes]:
         if _PQCRYPTO_AVAILABLE:
-            return _mlkem768.generate_keypair()
+            try:
+                return _mlkem768.generate_keypair()
+            except Exception:
+                pass
         try:
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.keygen()
+            return Inf1delKyber.keygen(size=768)
         except Exception:
             raise RuntimeError("No ML-KEM-768 backend available")
-    
+
     @classmethod
     def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
         if _PQCRYPTO_AVAILABLE:
-            ct, ss = _mlkem768.encrypt(public_key)
-            return ct, ss
+            try:
+                ct, ss = _mlkem768.encrypt(public_key)
+                return ct, ss
+            except Exception:
+                pass
         try:
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.encaps(public_key)
+            return Inf1delKyber.encaps(public_key, size=768)
         except Exception:
             raise RuntimeError("No ML-KEM-768 backend available")
-    
+
     @classmethod
     def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
         if _PQCRYPTO_AVAILABLE:
-            return _mlkem768.decrypt(secret_key, ciphertext)
+            try:
+                return _mlkem768.decrypt(secret_key, ciphertext)
+            except Exception:
+                pass
         try:
             from inf1del_kyber import Inf1delKyber
-            return Inf1delKyber.decaps(secret_key, ciphertext)
+            return Inf1delKyber.decaps(secret_key, ciphertext, size=768)
         except Exception:
             raise RuntimeError("No ML-KEM-768 backend available")
 
 
 class MLKEM1024(PQCKEM):
     """ML-KEM-1024 (FIPS 203) - Module-Lattice KEM, NIST standardized.
-    
+
     Security: 256-bit classical / 128-bit quantum
     """
     ALGORITHM = "ml_kem_1024"
@@ -1439,25 +1787,46 @@ class MLKEM1024(PQCKEM):
     SECRET_KEY_SIZE = 3168
     CIPHERTEXT_SIZE = 1568
     SHARED_KEY_SIZE = 32
-    
+
     @classmethod
     def generate_keypair(cls) -> tuple[bytes, bytes]:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        return _mlkem1024.generate_keypair()
-    
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                return _mlkem1024.generate_keypair()
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.keygen(size=1024)
+        except Exception:
+            raise RuntimeError("No ML-KEM-1024 backend available")
+
     @classmethod
     def encapsulate(cls, public_key: bytes) -> tuple[bytes, bytes]:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        ct, ss = _mlkem1024.encrypt(public_key)
-        return ct, ss
-    
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                ct, ss = _mlkem1024.encrypt(public_key)
+                return ct, ss
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.encaps(public_key, size=1024)
+        except Exception:
+            raise RuntimeError("No ML-KEM-1024 backend available")
+
     @classmethod
     def decapsulate(cls, secret_key: bytes, ciphertext: bytes) -> bytes:
-        if not _PQCRYPTO_AVAILABLE:
-            raise RuntimeError("pqcrypto not available")
-        return _mlkem1024.decrypt(secret_key, ciphertext)
+        if _PQCRYPTO_AVAILABLE:
+            try:
+                return _mlkem1024.decrypt(secret_key, ciphertext)
+            except Exception:
+                pass
+        try:
+            from inf1del_kyber import Inf1delKyber
+            return Inf1delKyber.decaps(secret_key, ciphertext, size=1024)
+        except Exception:
+            raise RuntimeError("No ML-KEM-1024 backend available")
 
 
 # Registry of all available PQC KEMs
@@ -1475,19 +1844,36 @@ PQC_KEM_REGISTRY = {
     "mceliece6960119f": McEliece6960119f,
     "mceliece8192128": McEliece8192128,
     "mceliece8192128f": McEliece8192128f,
-    "ml_kem_512": MLKEM512,
-    "ml_kem_768": MLKEM768,
-    "ml_kem_1024": MLKEM1024,
+    "ml_kem_512": DSA_ML_KEM(512),
+    "ml_kem_768": DSA_ML_KEM(768),
+    "ml_kem_1024": DSA_ML_KEM(1024),
 }
 
 
 # ── Register PQC KEMs with the provider system ───────────────────────
 def _register_kem_providers():
-    """Wrap each PQCKEM subclass as a KEMProvider and register it.
-    Skips ml_kem_768 — Kyber provider in providers/kem.py already covers it
-    with both 1nf1D3L and pqcrypto backends."""
+    """Wrap each PQC KEM as a KEMProvider and register it."""
     for name, cls in PQC_KEM_REGISTRY.items():
-        if name == "ml_kem_768":
+        if isinstance(cls, DSA_ML_KEM):
+            # Register each DSA_ML_KEM size as a separate provider
+            provider_cls = type(
+                f"KEM_{name}",
+                (KEMProvider,),
+                {
+                    "NAME": name,
+                    "ALGORITHM": cls.algorithm,
+                    "PUBLIC_KEY_SIZE": cls.public_key_size,
+                    "SECRET_KEY_SIZE": cls.secret_key_size,
+                    "CIPHERTEXT_SIZE": cls.ciphertext_size,
+                    "SHARED_KEY_SIZE": cls.shared_key_size,
+                    "_kem_instance": cls,
+                    "_implementation_available": classmethod(lambda c: True),
+                    "generate_keypair": classmethod(lambda c: c._kem_instance.keygen()),
+                    "encapsulate": classmethod(lambda c, pk: c._kem_instance.encapsulate(pk)),
+                    "decapsulate": classmethod(lambda c, sk, ct: c._kem_instance.decapsulate(sk, ct)),
+                },
+            )
+            register_kem_provider(name, provider_cls)
             continue
         def _make_provider(n, c):
             return type(
@@ -1542,32 +1928,34 @@ def list_pqc_kems() -> dict:
     return result
 
 
-# ── Hybrid Key Exchange (ECDH P-256 + Kyber) ──────────────────────────
+# ── Hybrid Key Exchange (ECDH P-256 + DSA-ML-KEM) ──────────────────
 class HybridKEM:
-    """Hybrid key exchange combining ECDH P-256 with Kyber (ML-KEM-768).
-    
-    Post-quantum security: secure if EITHER classical ECDH or Kyber holds.
+    """Hybrid key exchange combining ECDH P-256 with DSA-ML-KEM.
+
+    Post-quantum security: secure if EITHER classical ECDH or ML-KEM holds.
     Uses HKDF-SHA256 to combine shared secrets.
-    
-    Key sizes (with 1nf1D3L Kyber backend, CT=1120B):
-    - Hybrid public key: ECC_len(2) || ECC_pk(65) || Kyber_pk(1184) = 1251 bytes
-    - Hybrid secret key: ECC_seed(32) || Kyber_sk(2400) = 2432 bytes
-    - Ciphertext: ECC_ephem_len(2) || ECC_ephem_pk(65) || Kyber_ct(1120) = 1187 bytes
+    Supports all standard ML-KEM sizes (512, 768, 1024).
+
+    Key sizes (with 1nf1D3L backend):
+    - Hybrid public key: ECC_len(2) || ECC_pk(65) || ML-KEM_pk(N) = 67 + N bytes
+    - Hybrid secret key: ECC_seed(32) || ML-KEM_sk(N) = 32 + N bytes
+    - Ciphertext: ECC_ephem_len(2) || ECC_ephem_pk(65) || ML-KEM_ct(N) = 67 + N bytes
     - Shared secret: 32 bytes
     """
 
     @classmethod
-    def generate_keypair(cls) -> tuple:
+    def generate_keypair(cls, ml_kem_size: int = 768) -> tuple:
         """Generate hybrid keypair. Returns (hybrid_pk, hybrid_sk)."""
         ecc_pk, ecc_seed, _, _ = ECP256.generate_keypair()
-        kyber_pk, kyber_sk = Kyber.keygen()
+        kem = DSA_ML_KEM(ml_kem_size)
+        pk, sk = kem.keygen()
         ecc_pk_len = len(ecc_pk).to_bytes(2, 'big')
-        hybrid_pk = ecc_pk_len + ecc_pk + kyber_pk
-        hybrid_sk = ecc_seed + kyber_sk
+        hybrid_pk = ecc_pk_len + ecc_pk + pk
+        hybrid_sk = ecc_seed + sk
         return hybrid_pk, hybrid_sk
 
     @classmethod
-    def encapsulate(cls, hybrid_pk: bytes) -> tuple:
+    def encapsulate(cls, hybrid_pk: bytes, ml_kem_size: int = 768) -> tuple:
         """Encapsulate for a hybrid public key. Returns (ciphertext, shared_secret)."""
         ecc_pk_len = int.from_bytes(hybrid_pk[:2], 'big')
         ecc_pk = hybrid_pk[2:2 + ecc_pk_len]
@@ -1577,17 +1965,18 @@ class HybridKEM:
         ecc_ephem_pk, _, _, _ = ECP256.generate_keypair(ecc_ephem_seed)
         ecdh_shared = ECP256.key_exchange(ecc_ephem_seed, ecc_pk)
         
-        kyber_ct, kyber_ss = Kyber.encaps(kyber_pk)
+        kem = DSA_ML_KEM(ml_kem_size)
+        kyber_ct, kyber_ss = kem.encapsulate(kyber_pk)
         
-        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-kem-kyber-v1"
-        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-kyber-v1", 32)
+        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-mlkem-v1"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-mlkem-v1", 32)
         
         ecc_ephem_len = len(ecc_ephem_pk).to_bytes(2, 'big')
         ciphertext = ecc_ephem_len + ecc_ephem_pk + kyber_ct
         return ciphertext, shared
 
     @classmethod
-    def decapsulate(cls, hybrid_sk: bytes, ciphertext: bytes) -> bytes:
+    def decapsulate(cls, hybrid_sk: bytes, ciphertext: bytes, ml_kem_size: int = 768) -> bytes:
         """Decapsulate using hybrid secret key. Returns shared_secret."""
         ecc_seed = hybrid_sk[:32]
         kyber_sk = hybrid_sk[32:]
@@ -1597,10 +1986,11 @@ class HybridKEM:
         kyber_ct = ciphertext[2 + ecc_ephem_len:]
         
         ecdh_shared = ECP256.key_exchange(ecc_seed, ecc_ephem_pk)
-        kyber_ss = Kyber.decaps(kyber_sk, kyber_ct)
+        kem = DSA_ML_KEM(ml_kem_size)
+        kyber_ss = kem.decapsulate(kyber_sk, kyber_ct)
         
-        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-kem-kyber-v1"
-        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-kyber-v1", 32)
+        combined = ecdh_shared + kyber_ss + b"cpip-hybrid-mlkem-v1"
+        shared = CoffeeCipher._hkdf_expand(combined, b"cpip-hybrid-shared-mlkem-v1", 32)
         return shared
 
 
@@ -1816,7 +2206,7 @@ class WebOfTrust:
             "timestamp": time.time(),
         }
         sig_data = json.dumps(trust_sig, sort_keys=True).encode()
-        sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
+        sig = ECP256.sign(sig_data, node_seed)
         trust_sig["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -1971,7 +2361,7 @@ class DistributedDNS:
         
         sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
         if node_seed:
-            sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
+            sig = ECP256.sign(sig_data, node_seed)
             record["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -1982,7 +2372,7 @@ class DistributedDNS:
                     record["sig"] = record.get("sig", "")
                     sig_data = json.dumps({k: v for k, v in record.items() if k != "sig"}, sort_keys=True).encode()
                     if node_seed:
-                        sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
+                        sig = ECP256.sign(sig_data, node_seed)
                         record["sig"] = base64.b64encode(sig).decode()
                 elif existing.get("expires", 0) > time.time():
                     return {"error": f"Name '{name}' is taken by {existing.get('pot_id')}"}
@@ -2196,7 +2586,7 @@ class GroupChat:
         
         if node_seed:
             sig_data = json.dumps({k: v for k, v in msg.items() if k != "sig"}, sort_keys=True).encode()
-            sig = ECP256.sign(sig_data, ECP256._derive_key_from_seed(node_seed))
+            sig = ECP256.sign(sig_data, node_seed)
             msg["sig"] = base64.b64encode(sig).decode()
         
         with cls._lock:
@@ -2802,7 +3192,6 @@ class NetDiagnostics:
     """
 
     _BLOCKED_RANGES: ClassVar[list] = [
-        ("127.0.0.0", "127.255.255.255"),   # loopback
         ("10.0.0.0", "10.255.255.255"),      # RFC 1918
         ("172.16.0.0", "172.31.255.255"),    # RFC 1918
         ("192.168.0.0", "192.168.255.255"),  # RFC 1918
@@ -3526,14 +3915,17 @@ class MeshNode:
         Key derivation uses full HKDF Extract-then-Expand (SP 800-56C).
         """
         if not cls.node_seed:
-            return {"data": plaintext, "e2ee": False}
-        pk = cls._get_pubkey_for(dst_pot)
+            return {"data": plaintext, "e2ee": False, "error": "Local E2EE identity unavailable"}
+        pk = cls.node_pubkey if dst_pot == POT_ID else cls._get_pubkey_for(dst_pot)
         if not pk:
-            return {"data": plaintext, "e2ee": False}
+            return {"data": plaintext, "e2ee": False, "error": "Recipient public key unavailable"}
         try:
             eph_seed = secrets.token_bytes(32)
             shared = ECP256.key_exchange(eph_seed, pk)
-            salt = hashlib.sha256(b"cpip-e2ee-salt-v4:" + cls.node_address.encode() + dst_pot.encode()).digest()
+            dst_address = ECP256.pubkey_to_address(pk)
+            salt = hashlib.sha256(
+                b"cpip-e2ee-salt-v4:" + cls.node_address.encode() + dst_address.encode()
+            ).digest()
             otk = CoffeeCipher.hkdf(shared, salt, b"cpip-e2ee-v4", 32)
             ciphertext = CoffeeCipher.encrypt(plaintext.encode(), base_key=otk)
             eph_pub = ECP256._derive_key_from_seed(eph_seed).public_key().public_bytes(
@@ -3547,8 +3939,8 @@ class MeshNode:
                 "eph_pub": base64.b64encode(eph_pub).decode(),
                 "from_addr": cls.node_address,
             }
-        except Exception:
-            return {"data": plaintext, "e2ee": False}
+        except Exception as exc:
+            return {"data": plaintext, "e2ee": False, "error": f"E2EE encryption failed: {exc}"}
 
     @classmethod
     def _e2ee_decrypt(cls, msg_data: str, from_addr: str = "", eph_pub_b64: str = "") -> str:
@@ -3580,7 +3972,7 @@ class MeshNode:
                                 break
                         except Exception as _e:
                             logger.debug("Ignored: %s", _e)
-        if not sender_pk:
+        if not sender_pk and not eph_pub_b64:
             return msg_data
         try:
             ciphertext = base64.b64decode(msg_data)
@@ -3696,8 +4088,27 @@ class MeshNode:
             return
 
         ts = msg.get("timestamp", 0)
-        if ts and abs(time.time() - ts) > cls.MESSAGE_EXPIRY_SECONDS:
-            return
+        if ts:
+            try:
+                if not isinstance(ts, (int, float)) or abs(time.time() - ts) > cls.MESSAGE_EXPIRY_SECONDS:
+                    return
+            except (TypeError, ValueError):
+                return
+
+        # ── RFC-0021 mesh attack detection: peer tracking + replay guard ──
+        try:
+            from providers.mesh_security import MeshSecurityProvider
+            MeshSecurityProvider.track_peer(sender, addr[0], msg.get("introducer", ""))
+            nonce = msg.get("nonce")
+            if nonce is not None:
+                try:
+                    nonce = int(nonce)
+                except (TypeError, ValueError):
+                    return
+                if not MeshSecurityProvider.check_nonce(sender, nonce):
+                    return
+        except Exception as _e:
+            logger.debug("Ignored: %s", _e)
 
         if msg_type == "heartbeat":
             with cls.peers_lock:
@@ -4008,6 +4419,7 @@ class MeshNode:
             "alt": SATELLITE_ALT if SATELLITE_ENABLED else None,
             "sat_port": SATELLITE_PORT if SATELLITE_ENABLED else None,
             "timestamp": time.time(),
+            "nonce": time.time_ns(),
             "mesh_secret": base64.b64encode(
                 hashlib.sha256(cls.node_secret + b"mesh-secret-v2").digest()
             ).decode(),
@@ -4165,19 +4577,14 @@ class MeshNode:
                 for stored in cls.message_store:
                     if stored["attempts"] >= 3 or not stored.get("e2ee"):
                         continue
-                    # Re-encrypt with fresh ECDH for forward secrecy
-                    pk = cls._get_pubkey_for(stored["dst"])
-                    if pk and cls.node_seed:
-                        try:
-                            shared = ECP256.key_exchange(cls.node_seed, pk)
-                            otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
-                            new_enc = CoffeeCipher.encrypt(
-                                stored.get("_plaintext", "").encode(),
-                                base_key=otk,
-                            )
-                            stored["msg"]["data"] = base64.b64encode(new_enc).decode()
-                        except Exception as _e:
-                            logger.debug("Ignored: %s", _e)
+                    encrypted = cls._e2ee_encrypt(stored.get("_plaintext", ""), stored["dst"])
+                    if encrypted.get("e2ee"):
+                        stored["msg"].update({
+                            "data": encrypted["data"],
+                            "eph_pub": encrypted.get("eph_pub", ""),
+                            "e2ee_version": encrypted.get("e2ee_version", 4),
+                            "from_addr": encrypted.get("from_addr", ""),
+                        })
 
     # ── Starlink / Satellite Transport ──────────────────────────────────
 
@@ -4663,7 +5070,7 @@ class MeshNode:
             raw_data = msg.get("data", "")
             e2ee_decrypted = False
             if msg.get("e2ee") and msg.get("from_addr"):
-                decrypted = cls._e2ee_decrypt(raw_data, msg["from_addr"])
+                decrypted = cls._e2ee_decrypt(raw_data, msg["from_addr"], msg.get("eph_pub", ""))
                 if decrypted != raw_data:
                     raw_data = decrypted
                     e2ee_decrypted = True
@@ -4809,6 +5216,9 @@ class MeshNode:
     @classmethod
     def _send_direct(cls, dst_pot: str, msg: dict):
         try:
+            msg = dict(msg)
+            if (msg.get("from") or msg.get("pot")) == POT_ID:
+                msg.setdefault("nonce", time.time_ns())
             ph = PalantirHardening() if PALANTIR_ENABLED else None
 
             with cls.peers_lock:
@@ -4883,9 +5293,14 @@ class MeshNode:
         # E2EE encrypt the payload
         if use_e2ee:
             encrypted = cls._e2ee_encrypt(data, dst)
+            if not encrypted.get("e2ee"):
+                return {"status": "error", "error": encrypted.get("error", "E2EE encryption failed"),
+                        "e2ee": False}
             payload_data = encrypted["data"]
             e2ee_meta = {
-                "e2ee": encrypted.get("e2ee", False),
+                "e2ee": True,
+                "e2ee_version": encrypted.get("e2ee_version", 4),
+                "eph_pub": encrypted.get("eph_pub", ""),
                 "from_addr": encrypted.get("from_addr", ""),
             }
         else:
@@ -4942,17 +5357,14 @@ class MeshNode:
                     stored["attempts"] += 1
                     # Re-encrypt E2EE payload with fresh key for forward secrecy
                     if stored.get("e2ee") and stored.get("_plaintext"):
-                        pk = cls._get_pubkey_for(stored["dst"])
-                        if pk and cls.node_seed:
-                            try:
-                                shared = ECP256.key_exchange(cls.node_seed, pk)
-                                otk = hashlib.sha256(shared + b"cpip-e2ee-v1").digest()
-                                new_ct = CoffeeCipher.encrypt(
-                                    stored["_plaintext"].encode(), base_key=otk,
-                                )
-                                stored["msg"]["data"] = base64.b64encode(new_ct).decode()
-                            except Exception as _e:
-                                logger.debug("Ignored: %s", _e)
+                        encrypted = cls._e2ee_encrypt(stored["_plaintext"], stored["dst"])
+                        if encrypted.get("e2ee"):
+                            stored["msg"].update({
+                                "data": encrypted["data"],
+                                "eph_pub": encrypted.get("eph_pub", ""),
+                                "e2ee_version": encrypted.get("e2ee_version", 4),
+                                "from_addr": encrypted.get("from_addr", ""),
+                            })
                     # Exponential backoff
                     if stored["attempts"] > 10:
                         # Dead-drop: re-encrypt for aggregator if Thermos mode
@@ -7880,7 +8292,7 @@ class ThreadedHTTPSServer(ThreadingMixIn, HTTPServer):
 
 
 class HTTPRedirectHandler(BaseHTTPRequestHandler):
-    """Redirects all HTTP requests to HTTPS."""
+    """Redirects all HTTP requests to cpip:// (TLS)."""
     def send_header(self, name, value):
         value = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n\t")
         super().send_header(name, value)
@@ -7890,10 +8302,10 @@ class HTTPRedirectHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         host = self.headers.get("Host", f"{BIND_ADDR}:{HTTP_REDIRECT_PORT}")
-        https_host = host.replace(f":{HTTP_REDIRECT_PORT}", f":{BIND_PORT}")
-        https_host = "".join(c for c in https_host if c.isprintable() and c not in "\r\n\t")
+        cpip_host = host.replace(f":{HTTP_REDIRECT_PORT}", f":{BIND_PORT}")
+        cpip_host = "".join(c for c in cpip_host if c.isprintable() and c not in "\r\n\t")
         safe_path = "".join(c for c in self.path if c.isprintable() and c not in "\r\n\t")
-        target = f"https://{https_host}{safe_path}"
+        target = f"https://{cpip_host}{safe_path}"
         if "\r" in target or "\n" in target:
             target = "/"
         self.send_response(301)
@@ -7948,10 +8360,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
     def _rpc_auth_check(self, path):
         """If CPIP_RPC_AUTH=1, require a valid X-CPIP-HMAC header on mutating
         /cpip/* endpoints. GET/BREW/WHEN/PROPFIND/OPTIONS and the dashboard
-        are exempt. Returns True if the request is allowed to proceed."""
+        are exempt. Localhost (127.0.0.1/::1) is also exempt for local UI.
+        Returns True if the request is allowed to proceed."""
         if not RPC_AUTH_ENABLED:
             return True
         if not path.startswith("/cpip"):
+            return True
+        addr = self.client_address[0]
+        if addr in ("127.0.0.1", "::1", "localhost"):
             return True
         token = self.headers.get("X-CPIP-HMAC", "")
         if _rpc_hmac_check(self.command, path, token):
@@ -8072,6 +8488,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             return
 
         teapot_tool_check(self.headers, self.client_address[0])
+        surveillance_fp_check(self.headers, self.client_address[0], urlparse(self.path).path)
 
         if teapot_probe_check(self.headers, self.client_address[0], path, "GET"):
             teapot_blacklist_addr(self.client_address[0])
@@ -8289,10 +8706,16 @@ class CPIPHandler(BaseHTTPRequestHandler):
         elif path in ("", "/cpip", "/"):
             self._handle_cpip_status()
         else:
-            self._send_json(404, "Not Found", {
-                "error": "Unknown endpoint", "path": path,
-                "hint": "Try /dashboard, /cpip/status, /cpip/mesh/status",
-            })
+            # ── RFC-0001..0026 provider routes (rfc_api.py) ──────────
+            rfc_result = rfc_api.route_get(path, query)
+            if rfc_result is not None:
+                code, payload = rfc_result
+                self._send_json(code, "OK" if code < 400 else "Error", payload)
+            else:
+                self._send_json(404, "Not Found", {
+                    "error": "Unknown endpoint", "path": path,
+                    "hint": "Try /dashboard, /cpip/status, /cpip/mesh/status",
+                })
 
     def do_PUT(self):
         path = urlparse(self.path).path.rstrip("/")
@@ -8344,6 +8767,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             })
             return
         teapot_tool_check(self.headers, self.client_address[0])
+        surveillance_fp_check(self.headers, self.client_address[0], urlparse(self.path).path)
         if teapot_probe_check(self.headers, self.client_address[0],
                               urlparse(self.path).path, "BREW"):
             teapot_blacklist_addr(self.client_address[0])
@@ -8372,6 +8796,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
             })
             return
         teapot_tool_check(self.headers, self.client_address[0])
+        surveillance_fp_check(self.headers, self.client_address[0], urlparse(self.path).path)
         if teapot_probe_check(self.headers, self.client_address[0], path, "POST"):
             teapot_blacklist_addr(self.client_address[0])
             self._send_json(418, "I'm a teapot", {
@@ -8751,7 +9176,17 @@ class CPIPHandler(BaseHTTPRequestHandler):
             self._send_json(200, "OK", {"status": "broadcast", "cert": cert})
 
         else:
-            self._handle_brew()
+            # ── RFC-0001..0026 provider routes (rfc_api.py) ──────────
+            parsed = urlparse(self.path)
+            path = parsed.path.rstrip("/")
+            params = parse_qs(parsed.query)
+            body = self._read_json_body()
+            rfc_result = rfc_api.route_post(path, body, params)
+            if rfc_result is not None:
+                code, payload = rfc_result
+                self._send_json(code, "OK" if code < 400 else "Error", payload)
+            else:
+                self._handle_brew()
 
     def do_WHEN(self):
         if is_coffee_uri_path(self.path):
@@ -9423,11 +9858,14 @@ class CPIPHandler(BaseHTTPRequestHandler):
     # ── Mesh Handlers ─────────────────────────────────────────────────
 
     def _handle_mesh_status(self):
+        pq_status = cpip_providers.PQCIdentity.get_status()
         self._send_json(200, "OK", {
             "mesh": MeshNode.get_status(),
             "covert": {"enabled": COVERT_ENABLED, "cover_traffic": COVER_TRAFFIC},
-            "cipher": "AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS)",
-            "cipher_note": "FIPS-compliant authenticated encryption (AES-GCM), constant-time ECDSA/ECDH P-256; hybrid KEM is ECDH P-256 + 1nf1D3L Kyber (non-FIPS ML-KEM-768).",
+            "cipher": "AES-256-GCM + ephemeral ECDH P-256 (mesh E2EE)",
+            "cipher_note": "The configured PQ KEM catalogue is not negotiated by the mesh E2EE transport in this release.",
+            "pq_kem": pq_status,
+            "pq_kem_mesh_integrated": False,
             "ecc": {
                 "algorithm": "ECDSA/ECDH P-256 (FIPS 186-4)",
                 "implementation": "Pure Python — no libsodium, no pycryptodome",
@@ -9443,7 +9881,7 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 "enabled": THERMOS_ENABLED,
                 "dead_drops_held": len(MeshNode.advertise_dead_drops()) if THERMOS_ENABLED else 0,
             },
-            "key_status": "Custom" if COVERT_KEY != b"CHANGE_ME_COFFEE_BLEND_2024" else "Default (CHANGE ME)",
+            "key_status": "Keygen-derived (ECP256 P-256)" if COVERT_KEY_SEED else ("Custom" if COVERT_KEY != b"CHANGE_ME_COFFEE_BLEND_2024" else "Default (CHANGE ME)"),
             "ssl": {
                 "enabled": SSL_ENABLED,
                 "auto_cert": SSL_AUTO_CERT,
@@ -9532,16 +9970,21 @@ class CPIPHandler(BaseHTTPRequestHandler):
         )
         result = MeshNode.send_message(dst, f"covert_brew:{message}") if dst else {"status": "encoded"}
         result["covert_additions"] = encoded["additions"]
-        self._send_json(200, "OK", result)
+        if result.get("status") == "error":
+            self._send_json(503, "Service Unavailable", result)
+        else:
+            self._send_json(200, "OK", result)
 
     def _handle_covert_status(self):
+        pq_status = cpip_providers.PQCIdentity.get_status()
         self._send_json(200, "OK", {
             "enabled": COVERT_ENABLED,
             "cover_traffic": COVER_TRAFFIC,
             "cipher": "AES-256-GCM (FIPS 197)",
             "ecc_available": MeshNode.node_pubkey is not None,
-            "pq_kem_available": True,
-            "hybrid_kem": "ECDH P-256 + Kyber (ML-KEM-768, non-FIPS)",
+            "pq_kem_available": pq_status.get("available", False),
+            "pq_kem": pq_status,
+            "pq_kem_used_for_covert": False,
         })
 
     def _handle_defense_get(self):
@@ -9568,6 +10011,11 @@ class CPIPHandler(BaseHTTPRequestHandler):
                     "last_seen": info["last_seen"],
                     "addrs": sorted(info["addrs"])[:20],
                 }
+        try:
+            from providers.surveillance_fp import SurveillanceFingerprintProvider
+            surv_fp = SurveillanceFingerprintProvider.get_status()
+        except Exception:
+            surv_fp = {"enabled": False, "matches": []}
         self._send_json(200, "OK", {
             "418_teapot": MESH_ENABLED,
             "stealth": MeshNode.stealth_mode,
@@ -9581,6 +10029,8 @@ class CPIPHandler(BaseHTTPRequestHandler):
             "blacklist_ttl": DEFENSE_BLACKLIST_TTL,
             "tools_detected": tools,
             "tools_total": len(tools),
+            "surveillance_fp": surv_fp,
+            "key_status": "Keygen-derived (ECP256 P-256)" if COVERT_KEY_SEED else ("Custom" if COVERT_KEY != b"CHANGE_ME_COFFEE_BLEND_2024" else "Default (CHANGE ME)"),
         })
 
     def _handle_defense_post(self):
@@ -9666,6 +10116,22 @@ class CPIPHandler(BaseHTTPRequestHandler):
             enabled = body.get("enabled", False)
             MeshNode.stealth_mode = bool(enabled)
             self._send_json(200, "OK", {"status": "stealth_set", "enabled": MeshNode.stealth_mode})
+        elif action == "keygen":
+            global COVERT_KEY, COVERT_KEY_SEED
+            new_seed = os.urandom(32)
+            try:
+                pk, sk, _, _ = ECP256.generate_keypair(new_seed)
+                new_key = sk[:32]
+            except Exception:
+                new_key = hashlib.sha256(new_seed).digest()
+            COVERT_KEY_SEED = new_seed
+            COVERT_KEY = new_key
+            self._send_json(200, "OK", {
+                "status": "keygen",
+                "key_status": "Keygen-derived (ECP256 P-256)",
+                "key_hex": new_key.hex(),
+                "note": "New HMAC key active. RPC auth tokens will use this key.",
+            })
         else:
             self._send_json(400, "Bad Request", {"error": f"Unknown action: {action}"})
 
@@ -9826,7 +10292,10 @@ class CPIPHandler(BaseHTTPRequestHandler):
                 result["ecc_encrypted"] = True
                 result["ecc_address"] = ECP256.pubkey_to_address(dst_pubkey)
 
-        self._send_json(200, "OK", result)
+        if result.get("status") == "error":
+            self._send_json(503, "Service Unavailable", result)
+        else:
+            self._send_json(200, "OK", result)
 
     def _handle_mesh_broadcast(self):
         body = self._read_json_body()
@@ -10037,21 +10506,24 @@ class CPIPHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_crypto_status(self):
+        pq_status = cpip_providers.PQCIdentity.get_status()
         self._send_json(200, "OK", {
             "cipher": "AES-256-GCM (FIPS 197)",
             "ecc": "ECDSA/ECDH P-256 (FIPS 186-4)",
-            "pq_kem": "1nf1D3L Kyber (non-FIPS ML-KEM-768, η=3) hybrid with ECDH P-256",
+            "pq_kem": pq_status.get("kem_algorithm"),
+            "pqc_kem_status": pq_status,
             "hash": "SHA-256 + SHA-3-256",
             "hmac": "HMAC-SHA256 + HMAC-SHA3-256",
             "key_derivation": "HKDF-SHA256",
-            "e2ee": "ECDH P-256 + Kyber (ML-KEM-768, non-FIPS) hybrid + AES-256-GCM",
+            "e2ee": "Ephemeral ECDH P-256 + AES-256-GCM; PQ KEM not integrated into mesh E2EE",
+            "pq_mesh_integrated": False,
             "node_address": MeshNode.node_address,
             "node_pubkey_present": MeshNode.node_pubkey is not None,
             "node_cert_hash": CoffeeCipher.hash(MeshNode.node_secret) if MeshNode.node_secret else None,
             "persist_encrypted": True,
             "timestamp_validation": True,
             "mesh_hmac": True,
-            "covert_channel_version": "v5 (CBC2 + ECCv2 + HybridKEM)",
+            "covert_channel_version": "v5 (CBC2 + ECCv2)",
             "emergency_mode": EmergencyMode.is_active(),
             "incident_auto_response": IncidentResponse._auto_response_enabled,
         })
@@ -10416,6 +10888,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="grid">
       <div class="card"><h2>418 Teapot</h2><div class="value" id="itf418">—</div><div class="label">Defense posture</div></div>
       <div class="card"><h2>Stealth</h2><div class="value" id="itfStealth">—</div><div class="label">Stealth mode <button class="btn small outline" id="stealthToggleBtn" onclick="toggleStealth()" style="margin-left:0.3rem">Toggle</button></div></div>
+      <div class="card"><h2>HMAC Key</h2><div class="value" id="itfKeyStatus" style="font-size:0.8rem">—</div><div class="label">RPC auth key <button class="btn small accent" onclick="hmacKeygen()" style="margin-left:0.3rem">Keygen</button></div></div>
       <div class="card"><h2>Port Hop</h2><div class="value" id="itfHop">—</div><div class="label"><span id="itfHopInterval"></span></div></div>
       <div class="card"><h2>Latent Ports</h2><div class="value" id="itfLatent">—</div><div class="label">Backup listener ports</div></div>
       <div class="card"><h2>Blacklisted</h2><div class="value" id="itfBlackCount">0</div><div class="label">Addresses blocked</div></div>
@@ -11176,6 +11649,8 @@ async function refreshItf() {{
   document.getElementById('itf418').style.color = d['418_teapot'] ? 'var(--accent)' : 'var(--muted)';
   document.getElementById('itfStealth').textContent = d.stealth ? 'ON' : 'OFF';
   document.getElementById('itfStealth').style.color = d.stealth ? '#00ff88' : 'var(--muted)';
+  const ks = document.getElementById('itfKeyStatus');
+  if (ks) {{ ks.textContent = d.key_status || '—'; ks.style.color = d.key_status?.includes('Keygen') ? '#00ff88' : 'var(--muted)'; }}
   document.getElementById('itfHop').textContent = d.port_hopping ? 'ON' : 'OFF';
   document.getElementById('itfHop').style.color = d.port_hopping ? '#00ff88' : 'var(--muted)';
   document.getElementById('itfHopInterval').textContent = d.port_hopping ? d.hop_interval + 's interval' : '';
@@ -11270,6 +11745,17 @@ function exportBlacklist() {{
     const text = lines.join('\\n');
     navigator.clipboard.writeText(text).then(() => showToast('Copied ' + d.blacklist.length + ' IPs to clipboard'));
   }});
+}}
+
+async function hmacKeygen() {{
+  if (!confirm('Generate a new HMAC key? Existing RPC auth tokens will be invalidated.')) return;
+  const r = await api('POST', '/cpip/defense', {{ action: 'keygen' }});
+  if (r && r.status === 'keygen') {{
+    showToast('HMAC key regenerated: ' + r.key_hex?.substring(0, 12) + '...');
+    refreshItf();
+  }} else {{
+    showToast('Keygen failed');
+  }}
 }}
 
 async function importBlacklist() {{
@@ -11904,6 +12390,23 @@ def teapot_tool_check(headers, addr, pentest_only=False):
     return detected
 
 
+def surveillance_fp_check(headers, addr, path=None):
+    """Fingerprint a request against the surveillance platform catalog.
+
+    Uses providers.surveillance_fp to match Palantir and other surveillance
+    platforms from observable request signals. Returns the fingerprint report
+    (matches, confidence, risk) or None when no surveillance platform matched.
+    """
+    try:
+        from providers.surveillance_fp import SurveillanceFingerprintProvider
+        report = SurveillanceFingerprintProvider.check_request(headers, addr, path)
+        if report and report.get("fingerprinted"):
+            return report
+    except Exception:
+        logger.debug("surveillance fingerprint check failed", exc_info=True)
+    return None
+
+
 # ── Main ──────────────────────────────────────────────────────────────
 def shutdown(signum, frame):
     global _discovery_socket
@@ -11966,12 +12469,19 @@ def main():
 
     global _http_server, _redirect_server, BIND_PORT, POT_ID
 
+    # ── Register RFC-0001..0026 providers (RFC-0001/0002/0004..0026) ──
+    try:
+        from providers.register_v6 import register_all
+        register_all()
+    except Exception as e:
+        logger.warning("Provider registration failed: %s", e)
+
     # ── SSL/TLS Setup ──────────────────────────────────────────────────
     use_ssl = SSL_ENABLED
     cert_file = SSL_CERT
     key_file = SSL_KEY
 
-    if use_ssl and SSL_AUTO_CERT and (not cert_file or not key_file):
+    if use_ssl and (not cert_file or not key_file):
         cert_file, key_file = _generate_self_signed_cert(SSL_CERT_DIR)
 
     if use_ssl:
@@ -12015,7 +12525,7 @@ def main():
         redirect_server = None
 
     bev = DEVICE_BEVERAGE_MAP.get(DEVICE_TYPE, ["tea"])
-    scheme = "https" if use_ssl else "http"
+    scheme = "cpip" if use_ssl else "http"
     host_display = BIND_ADDR if BIND_ADDR not in ("0.0.0.0", "") else "localhost"
 
     print(f"☕  CPIP v{CPIP_VERSION} — Coffee Pot Internet Protocol", flush=True)
@@ -12023,9 +12533,9 @@ def main():
     print(f"   ├ Pot ID:     {POT_ID}", flush=True)
     print(f"   ├ Hostname:   {HOSTNAME}", flush=True)
     print(f"   ├ Listen:     {BIND_ADDR}:{BIND_PORT}", flush=True)
-    print(f"   ├ TLS/SSL:    {'✓ HTTPS (' + cert_file + ')' if use_ssl else 'HTTP (no TLS)'}", flush=True)
+    print(f"   ├ TLS/SSL:    {'✓ cpip:// (' + cert_file + ')' if use_ssl else 'HTTP (no TLS)'}", flush=True)
     if use_ssl and HTTP_REDIRECT and redirect_server:
-        print(f"   ├ Redirect:   HTTP→HTTPS on port {HTTP_REDIRECT_PORT}", flush=True)
+        print(f"   ├ Redirect:   HTTP→cpip:// on port {HTTP_REDIRECT_PORT}", flush=True)
     print(f"   ├ Beverages:  {', '.join(bev)}", flush=True)
     print(f"   ├ GPIO:       {'Pin ' + str(GPIO_PIN) + ' (RPi.GPIO)' if gpio.is_available else 'Disabled'}", flush=True)
     print(f"   ├ mDNS:       {'Enabled' if AVAHI_ENABLED else 'Disabled'}", flush=True)
@@ -12056,7 +12566,7 @@ def main():
     print("   418 DEFENSE:          Unauthorized probes answered with 418 I'm a Teapot", flush=True)
     print(f"   NTP:                  {'Syncing to ' + NTP_SERVER if NTP_SYNC else 'Disabled'}", flush=True)
     print("   NO INTERNET REQUIRED — local mesh; Satellite relays internet-wide mesh", flush=True)
-    print("   Crypto: AES-256-GCM (FIPS 197) + ECDSA/ECDH P-256 (FIPS 186-4) + Kyber ML-KEM-768 (non-FIPS) hybrid KEM", flush=True)
+    print("   Crypto: AES-GCM + ECDH P-256; KEM catalog includes standard-size and experimental 1nf1D3L ranks (not mesh-negotiated)", flush=True)
     print("   Anti-ISP: STUN + UPnP + DNS-Tunnel + WSS + Relay + DoH", flush=True)
     if SPOOF_ENABLED:
         pm = ProxyManager()
@@ -12104,6 +12614,13 @@ def main():
               f"{'...' if len(links) > 5 else ''}", flush=True)
     start_radio()
 
+    # ── Start RFC-0001..0026 providers (RFC-0005..0026) ───────────────
+    try:
+        from providers.register_v6 import start_all
+        start_all()
+    except Exception as e:
+        logger.warning("Provider startup failed: %s", e)
+
     address_display = MeshNode.node_address or "(ECC keys generated on first mesh message)"
     print(f"   ├ ECC:        ECDSA/ECDH P-256 active — {address_display[:20]}...", flush=True)
 
@@ -12144,6 +12661,16 @@ def main():
         BandwidthAggregator.stop()
         LinkMonitor.stop()
         MeshNode.stop()
+        try:
+            from providers.register_v6 import ALL_V6_PROVIDERS
+            for p in ALL_V6_PROVIDERS:
+                try:
+                    if hasattr(p, "stop"):
+                        p.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
         print("[CPIP] Stopped.", flush=True)
 
 

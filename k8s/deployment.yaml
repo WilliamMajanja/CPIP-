@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-#  CPIP v5.1.1 — Kubernetes Self-Hosting Manifests
+#  CPIP v7.0.0 — Kubernetes Self-Hosting Manifests
 #  Coffee Pot Internet Protocol (RFC 2324 + RFC 7168 + Mesh + PQ-Crypto)
 #
 #  Deploy:
@@ -23,7 +23,7 @@ metadata:
   name: cpip
   labels:
     app.kubernetes.io/name: cpip
-    app.kubernetes.io/version: "5.1.1"
+    app.kubernetes.io/version: "7.0.0"
 
 ---
 # ── ConfigMap ─────────────────────────────────────────────────────────
@@ -56,6 +56,8 @@ data:
   CPIP_HTTP_REDIRECT: "1"
   CPIP_HTTP_REDIRECT_PORT: "4181"
   CPIP_RPC_AUTH: "1"
+  CPIP_PQC_KEM: "ml_kem_768"
+  CPIP_ML_KEM_BACKEND: "stdlib"
   CPIP_DEFENSE_RATE_LIMIT: "10"
   CPIP_DEFENSE_BLACKLIST_TTL: "3600"
   CPIP_DEFENSE_MAX_BLACKLIST: "1000"
@@ -111,7 +113,7 @@ metadata:
   namespace: cpip
   labels:
     app.kubernetes.io/name: cpip
-    app.kubernetes.io/version: "5.1.1"
+    app.kubernetes.io/version: "7.0.0"
 spec:
   replicas: 1
   strategy:
@@ -124,7 +126,7 @@ spec:
       labels:
         app: cpip
         app.kubernetes.io/name: cpip
-        app.kubernetes.io/version: "5.1.1"
+        app.kubernetes.io/version: "7.0.0"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4180"
@@ -137,7 +139,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: cpip
-          image: cpip:5.1.1
+          image: cpip:7.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -186,6 +188,7 @@ spec:
             httpGet:
               path: /health
               port: 4180
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
@@ -193,6 +196,7 @@ spec:
             httpGet:
               path: /ready
               port: 4180
+              scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
@@ -200,6 +204,7 @@ spec:
             httpGet:
               path: /health
               port: 4180
+              scheme: HTTPS
             failureThreshold: 30
             periodSeconds: 2
       volumes:

@@ -1,19 +1,19 @@
 # Blackpaper: The Coffee Protocol (CPIP)
 ### A Multi-Transport Mesh with Hybrid Post-Quantum Cryptography and Active Network Defense
 
-[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 [![Python 3.x](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)]()
 [![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
 [![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()
 
-**Version 6.0.3** · **Date: July 2026** · **Status: Public Domain (Unlicense)**
+**Version 7.0.0** · **Date: October 2026** · **Status: Public Domain (Unlicense)**
 
 ---
 
 ## Abstract
 
-CPIP (Coffee Pot Internet Protocol) is an implementation of the Hyper Text Coffee Pot Control Protocol (HTCPCP), originally specified as an April Fools' RFC (RFC 2324, 1998) and extended for tea in RFC 7168. This blackpaper describes how CPIP transforms that joke protocol into a production-grade, multi-transport mesh communication system with end-to-end encryption, hybrid post-quantum key exchange, store-and-forward messaging, covert channels, and active network defense. We document the protocol design, cryptographic architecture (CoffeeCipher v5 / AES-256-GCM, ECDSA/ECDH P-256, and a hybrid ECDH + 1nf1D3L Kyber ML-KEM-768 KEM), the four-transport routing fabric (LAN, satellite, radio, mobile), the ITF defense engine, and the integration surface with Minima blockchain nodes in the PiNet-OS edge stack. The system is intentionally FIPS-aligned for its classical primitives while keeping a non-FIPS post-quantum component for research and forward security.
+CPIP (Coffee Pot Internet Protocol) implements the Hyper Text Coffee Pot Control Protocol (HTCPCP), RFC 2324, and the tea extension RFC 7168. This paper describes its coffee control API, mesh transports, classical E2EE, provider interfaces, and experimental KEM options. The active mesh E2EE currently uses ephemeral ECDH P-256 and AES-GCM; the separate hybrid KEM API is experimental and not currently negotiated by mesh E2EE. Hardware and service capabilities depend on installed backends and are reported by the provider status API.
 
 ---
 
@@ -28,7 +28,7 @@ RFC 2324 defined the HTTP 418 "I'm a teapot" status code and a control vocabular
 1. **RFC fidelity** — Full HTCPCP / HTCPCP-TEA semantics (BREW, WHEN, PROPFIND, OPTIONS), the 418 semantics, addition vocabularies, and the international coffee-URI scheme family.
 2. **Plausible cover traffic** — All mesh and covert traffic is shaped as ordinary brew/tea transactions, defeating naive traffic classification.
 3. **Multi-transport resilience** — A single logical mesh spans LAN UDP, satellite/internet UDP, LoRa/TNC radio, and 4G/5G WWAN, with automatic cross-transport forwarding and routing-loop prevention.
-4. **Hybrid post-quantum security** — Classical ECDH P-256 is composed with a non-FIPS Kyber ML-KEM-768 variant; the combination is secure if *either* component holds.
+4. **Experimental KEM options** — The optional KEM API can combine ECDH P-256 with a configured custom KEM. The custom variants have not been independently reviewed and no formal hybrid security guarantee is claimed.
 5. **FIPS alignment where it counts** — AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, and HMAC-SHA256 are FIPS-197/186-4/180-4 compliant; the PQ component is explicitly non-FIPS and labelled as such.
 6. **Active defense** — Probe identification, pentest-tool fingerprinting, rate-limited blacklisting, and stealth/port-hopping, all runtime-togglable without restart.
 7. **Operability** — Single-file Python stdlib server, bash CLI, TUI, embedded web dashboard, Kubernetes manifests, systemd deployment, and one-click Pi-Apps install.
@@ -36,7 +36,7 @@ RFC 2324 defined the HTTP 418 "I'm a teapot" status code and a control vocabular
 ### 1.3 Non-Goals
 
 - CPIP does not implement RSA-KEM; the hybrid KEM is strictly ECDH + Kyber.
-- CPIP's Kyber is not FIPS 203 validated. It is a research variant (η=3) and is not claimed to be certified.
+- The bundled 1nf1D3L KEM is not FIPS 203 validated. Its 2048/4096 extended ranks are experimental parameter labels, not security-strength claims.
 - CPIP does not seek IETF standardization; it consumes an existing RFC for cover.
 
 ---
@@ -91,7 +91,7 @@ CPIP does **not** assume:
 │  ┌──────────────────┐  ┌──────────────────┐                  │
 │  │  Crypto Engine   │  │ Incident Response│                  │
 │  │ (AES-256-GCM,    │  │ (auto-detect,    │                  │
-│  │  ECDH+Kyber)     │  │  alert, mitigate)│                  │
+│  │  ECDH P-256)     │  │  alert, mitigate)│                  │
 │  └──────────────────┘  └──────────────────┘                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -157,25 +157,25 @@ Used for:
 
 ### 5.3 HybridKEM — ECDH P-256 + 1nf1D3L Kyber
 
-CPIP's hybrid key encapsulation mechanism combines a classical ECDH P-256 exchange with a post-quantum Kyber KEM. The two shared secrets are concatenated and fed to HKDF-SHA256 with domain tag `cpip-hybrid-kem-kyber-v1`.
+The optional hybrid KEM API combines ECDH P-256 with the configured bundled KEM and derives a result with HKDF-SHA256. This is a standalone API and is not currently negotiated by mesh E2EE.
 
-- **Security property**: The composite is secure if *either* the classical ECDH component *or* the PQ Kyber component resists the adversary. This hedges against both a sudden classical break and a future quantum adversary, while not trusting the non-FIPS PQ component alone.
+- **Security note**: No formal hybrid-security guarantee is claimed for the custom bundled KEM. The custom component is non-FIPS and has no independent security proof.
 - **Sizes**: PK ≈ 1251 B, SK ≈ 2432 B, CT ≈ 1187 B, SS = 32 B.
 - **Implementation**: `server.HybridKEM` in `server.py`.
 
 ### 5.4 1nf1D3L Kyber KEM (Non-FIPS, Research Variant)
 
-A modified ML-KEM-768 provided as the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
+A custom 1nf1D3L KEM implementation is provided by `inf1del_kyber.py` and a standard-library-only backend. It supports standard-size parameter options 512/768/1024 plus experimental custom module ranks K=8/16:
 
-- **Parameters**: n=256, k=3, q=3329, η₁=3, η₂=3, dᵤ=10, dᵥ=4.
+- **Parameters**: n=256, q=3329, η₁=3, η₂=2; k=2/3/4 for 512/768/1024 and k=8/16 for custom `1nf1d3l_kem_2048`/`1nf1d3l_kem_4096`.
 - **Domain tag**: `1NF1D3L-KYBER-V1` on every hash/KDF input.
-- **Wider noise**: η=3 (vs FIPS η=2) for enhanced concrete security at the cost of larger errors.
+- **Custom noise**: η₁=3, η₂=2. No security level is inferred from the extended-rank names.
 - **NTT twiddle perturbation**: Per-session random twiddle factors for side-channel resistance.
 - **Key confirmation**: Re-encapsulation check; decapsulation failures are caught and fed to a KDF with a rejection value `z` (implicit rejection).
 - **Sizes**: PK=1184 B, SK=2400 B, CT=1120 B, SS=32 B.
 - **CLI**: `./b4dm4n_cw.py {keygen,encaps,decaps,...}`; hybrid selected via `-a hybrid` (alias for `hybrid-ecdh-kyber`).
 
-This variant is **not** FIPS 203 validated and is intended for research and experimental use. It is explicitly labelled as non-FIPS in all status outputs.
+All bundled 1nf1D3L variants are non-FIPS and are not wire-compatible with FIPS 203 ciphertexts. The 2048/4096 variants are experimental parameter sets, not security-bit ratings; none has an independent security proof.
 
 ### 5.5 Supporting Primitives
 
@@ -355,7 +355,7 @@ Multi-link transport aggregation with per-link quality monitoring (latency, loss
 
 ## 12. Dashboard
 
-The web dashboard (`/dashboard`) is a single-page application with 20 tabs organized into 7 logical groups:
+The web dashboard (`/dashboard`) is a single-page application with 22 tabs organized into 8 logical groups, including live RFC-provider capability status:
 
 | Group | Tabs |
 |-------|------|
@@ -366,6 +366,7 @@ The web dashboard (`/dashboard`) is a single-page application with 20 tabs organ
 | Identity | WoT, DNS |
 | Comms | Groups, Sync, Drops |
 | Infra | Bond, Schedule, History |
+| Integrations | RFC Providers |
 
 Features: visibility-aware refresh (pauses when browser tab hidden), beverage icons, keyboard shortcuts (Ctrl+1–9), SSE live events, HMAC auth via Web Crypto API, scrollable tab bar. The dashboard's 90 API calls match all server routes 1:1.
 
@@ -382,19 +383,19 @@ CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py   # all transports
 
 ### 12.2 Raspberry Pi
 
-`sudo ./deploy.sh` installs the server to `/opt/cpip`, the CLI to `/usr/local/bin/cpip`, a systemd unit (`cpip.service`), and a Pi-Apps package when `pi-apps/` is present. GPIO relay control is available on Pi hardware (`CPIP_GPIO=1`).
+`sudo ./deploy-pi.sh` installs the server to `/opt/cpip`, the CLI to `/usr/local/bin/cpip`, a systemd unit (`cpip.service`), and a Pi-Apps package when `pi-apps/` is present. GPIO relay control is available on Pi hardware (`CPIP_GPIO=1`).
 
 ### 12.3 Kubernetes
 
-Bundled manifests (`k8s/deployment.yaml`) provide Namespace, ConfigMap, Secret, Deployment with health/readiness/startup probes, ClusterIP Service (HTTP 4180, mesh UDP 4191/4195/4196), nginx Ingress with TLS passthrough, NetworkPolicy, and a 1 Gi PVC. Image tag: `cpip:5.1.1`.
+Bundled manifests (`k8s/deployment.yaml`) provide Namespace, ConfigMap, Secret, Deployment with health/readiness/startup probes, ClusterIP Service (HTTPS 4180, mesh UDP 4191/4195/4196), nginx Ingress with TLS passthrough, NetworkPolicy, and a 1 Gi PVC. Image tag: `cpip:7.0.0`.
 
 ### 12.4 Docker
 
 ```bash
-docker build -t cpip:5.1.1 .
+docker build -t cpip:7.0.0 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:5.1.1
+  cpip:7.0.0
 ```
 
 ### 12.5 TLS/SSL
@@ -405,21 +406,21 @@ Three modes: auto self-signed (OpenSSL, falling back to `cryptography`, then a s
 
 ## 14. Minima / PiNet-OS Integration
 
-CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blockchain nodes in the PiNet-OS edge computing stack.
+CPIP v7.0.0 integrates with Minima blockchain nodes in the PiNet-OS edge computing stack.
 
 | Integration surface | CPIP capability |
 |---------------------|-----------------|
 | Data at rest | CoffeeCipher v5 (AES-256-GCM + HKDF-SHA256) |
 | Node identity | ECDSA P-256 challenge-response authentication |
 | RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
-| Key encapsulation | HybridKEM — ECDH P-256 + 1nf1D3L Kyber |
+| Key encapsulation | Optional standalone HybridKEM API; not active mesh E2EE |
 | Message signatures | ECDSA P-256 |
 | API defense | ITF Defense (probe blocking, pentest detection, blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
 
-Deployment: CPIP runs as a sidecar container (`cpip:5.1.1`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+Deployment: CPIP can run as a sidecar container (`cpip:7.0.0`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
 
-PQ complementarity: Minima uses WOTS+ (FIPS 205, 128-bit PQ) for consensus signatures; CPIP adds Kyber (non-FIPS ML-KEM-768) for transport encryption. The two approaches are complementary — WOTS+ for consensus, Kyber for key exchange.
+PQ complementarity: Minima uses WOTS+ for consensus signatures. CPIP exposes separate non-FIPS KEM options for experiments; they are not currently negotiated by the mesh E2EE transport.
 
 ---
 
@@ -446,12 +447,12 @@ All configuration is via environment variables; no config files are required. No
 
 ## 16. Security Considerations
 
-- **Non-FIPS PQ component**: 1nf1D3L Kyber is not FIPS 203 validated. It is a research variant (η=3) and must not be relied upon as a certified primitive. The hybrid construction limits the blast radius of any weakness in this component, provided the classical ECDH half holds.
+- **Non-FIPS KEM component**: 1nf1D3L variants are not FIPS 203 validated and have no independent security proof. Do not infer a security level from the 2048/4096 labels.
 - **Cover traffic is heuristic, not cryptographic**: DPI evasion depends on adversary behaviour; a determined classifier with traffic models may still distinguish covert-carrying brews. CPIP raises the cost, it does not make detection impossible.
 - **Software key storage**: Without an HSM (`CPIP_HSM_MODULE`), keys live in process memory. Emergency `wipe` zeroes what it can but cannot guarantee erasure from swap or core dumps.
 - **Probe scoring is heuristic**: Threshold tuning (`CPIP_DEFENSE_RATE_LIMIT`, `CPIP_DEFENSE_BLACKLIST_TTL`) trades false-positive rate against coverage. Localhost is always exempt to avoid lockout.
-- **Side-channel scope**: Classical primitives are constant-time via `cryptography`. The PQ Kyber variant adds per-session NTT twiddle perturbation as a partial side-channel countermeasure; full side-channel hardening is out of scope.
-- **CLKF hardening (v5.1.1+)**: Diagnostic endpoints block SSRF to RFC 1918/loopback/link-local/metadata ranges. Port scans capped at 20 ports. All mutating `/cpip/*` endpoints require HMAC auth by default (`CPIP_RPC_AUTH=1`). `deploy.sh` configures iptables with INPUT DROP policy and explicit allowlists. The default `CHANGE_ME_COFFEE_BLEND_2024` COVERT_KEY is rejected and auto-generated.
+- **Side-channel scope**: Classical primitives use `cryptography`. The custom KEM's NTT perturbation is not a substitute for constant-time implementation or independent side-channel review.
+- **CLKF hardening (v5.1.1+)**: Diagnostic endpoints block SSRF to RFC 1918/loopback/link-local/metadata ranges. Port scans capped at 20 ports. All mutating `/cpip/*` endpoints require HMAC auth by default (`CPIP_RPC_AUTH=1`). `deploy-pi.sh` configures iptables with INPUT DROP policy and explicit allowlists. The default `CHANGE_ME_COFFEE_BLEND_2024` COVERT_KEY is rejected and auto-generated.
 
 ---
 
@@ -467,7 +468,7 @@ All configuration is via environment variables; no config files are required. No
 
 ## 18. Conclusion
 
-CPIP takes an April Fools' RFC and returns it as a serious, deployable, multi-transport mesh with hybrid post-quantum security and active defense. The joke is the cover; the cover is the protocol. By staying syntactically faithful to HTCPCP, CPIP gains a cover-traffic advantage that more obviously-military protocols cannot claim, while its hybrid ECDH + Kyber KEM, FIPS-aligned classical surface, and runtime-togglable defense posture make it suitable for edge, wilderness, and contested-environment deployment. The system is public-domain, single-file, and operable from a Raspberry Pi to a Kubernetes cluster.
+CPIP implements HTCPCP/HTCPCP-TEA with mesh messaging, a classical E2EE path, provider APIs, and runtime-configurable defenses. The optional custom KEM catalog is experimental and is not currently negotiated by mesh E2EE. Hardware and external-service features require their real backends; the provider API reports availability rather than treating draft designs as deployed capability.
 
 ---
 
@@ -491,8 +492,9 @@ cpip                   CLI client (bash)
 cpip.1                 CLI man page (roff)
 cpip_tui.py            Terminal UI (OpenTUI, 12 pages)
 b4dm4n_cw.py           Cipher Workbench CLI v2.0
-inf1del_kyber.py       1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-pyproject.toml         Package metadata (name: cpip, v5.1.1)
+inf1del_kyber.py       NumPy custom KEM backend (standard sizes + experimental ranks)
+pure_mlkem.py          Standard-library-only custom KEM backend
+pyproject.toml         Package metadata (name: cpip, v7.0.0)
 Dockerfile / docker-compose.yml
 deploy.sh / deploy-pi.sh / cluster.sh
 test_crypto.py / test_cpip.py
@@ -505,4 +507,4 @@ pi-apps/               install, uninstall, credits, description, icon-64.png
 
 ## Appendix C — License
 
-This is free and unencumbered software released into the public domain. See `LICENSE` for details. The classical cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant. The hybrid KEM combines ECDH P-256 with 1nf1D3L's Kyber (non-FIPS ML-KEM-768).
+This is free and unencumbered software released into the public domain. See `LICENSE` for details. The custom 1nf1D3L KEM is non-FIPS, experimental, and distinct from standardized ML-KEM. The optional hybrid KEM API is not currently part of mesh E2EE.

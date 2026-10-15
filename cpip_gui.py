@@ -4,6 +4,7 @@
 import base64
 import os
 import secrets
+import stat
 from pathlib import Path
 from tkinter import (
     Tk,
@@ -27,6 +28,7 @@ KEY_LENGTH = 32
 ERROR_COLOR = "#ff6b6b"
 SUCCESS_COLOR = "#51cf66"
 INFO_COLOR = "#4dabf7"
+ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 
 def generate_secure_key():
@@ -34,7 +36,7 @@ def generate_secure_key():
     return base64.b64encode(secrets.token_bytes(KEY_LENGTH)).decode()
 
 
-def save_key_to_env(key: str, env_file: str = ".env"):
+def save_key_to_env(key: str, env_file: str | Path = ENV_FILE):
     """Save the key to environment file."""
     env_path = Path(env_file)
     
@@ -56,6 +58,10 @@ def save_key_to_env(key: str, env_file: str = ".env"):
     
     with open(env_path, 'w') as f:
         f.writelines(lines)
+    try:
+        env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
     
     # Also set the actual environment variable
     os.environ['CPIP_COVERT_KEY'] = key
@@ -67,11 +73,9 @@ def validate_key(key: str) -> tuple[bool, str]:
         return False, "Key cannot be empty"
     
     try:
-        decoded = base64.b64decode(key)
-        if len(decoded) < 16:
-            return False, "Key must be at least 16 bytes"
-        if len(decoded) > 64:
-            return False, "Key cannot be longer than 64 bytes when encoded"
+        decoded = base64.b64decode(key, validate=True)
+        if len(decoded) != KEY_LENGTH:
+            return False, f"Key must decode to exactly {KEY_LENGTH} bytes"
     except Exception:
         return False, "Key must be valid base64"
     
@@ -167,7 +171,7 @@ class CovertKeyManagerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("CPIP Covert Key Manager v6.0.3")
+        self.root.title("CPIP Covert Key Manager v7.0.0")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         
         self.root.resizable(False, False)
@@ -355,7 +359,7 @@ class CovertKeyManagerGUI:
             return os.environ['CPIP_COVERT_KEY']
         
         # Try .env file
-        env_path = Path('.env')
+        env_path = ENV_FILE
         if env_path.exists():
             with open(env_path, 'r') as f:
                 for line in f:
@@ -403,15 +407,13 @@ class CovertKeyManagerGUI:
             return
         
         os.environ['CPIP_COVERT_KEY'] = key
-        print(f"CPIP_COVERT_KEY applied: {key[:8]}...{key[-8:] if len(key) > 16 else ''}")
-        
-        self.update_status("Key applied to current session", SUCCESS_COLOR)
+        self.update_status("Key set for future child processes", SUCCESS_COLOR)
         
         # Show helpful information
         messagebox.showinfo(
             "Info",
-            "Key applied to current session.\n\n"
-            "Note: Server processes must be restarted to use the new key."
+            "Key set in this GUI process. A CPIP server started from this environment will use it.\n\n"
+            "An already-running server must be restarted."
         )
     
     def save_key(self):

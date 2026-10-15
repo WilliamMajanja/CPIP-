@@ -1,22 +1,24 @@
 # Security Policy
 
-[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)]()
 [![Crypto](https://img.shields.io/badge/crypto-AES--256--GCM%20%7C%20ECDH%20%7C%20Kyber-success.svg)]()
 [![FIPS](https://img.shields.io/badge/FIPS-197%20%7C%20186--4%20%7C%20180--4-blue.svg)]()
 [![Anti-Palantir](https://img.shields.io/badge/Anti--Palantir-Traffic%20Analysis%20%7C%20Mix%20Net%20%7C%20Chaff-red.svg)]()
 [![Anti-Stingray](https://img.shields.io/badge/Anti--Stingray-IMSI%20Catcher%20Detection-red.svg)]()
 [![Anti-Surveillance](https://img.shields.io/badge/Anti--Surveillance-DPI%20%7C%20Obfuscation%20%7C%20Metadata%20Strip-red.svg)]()
 
-> **Cryptographic Primitives**: CPIP v5 uses FIPS-compliant cryptographic primitives
+> **Cryptographic Primitives**: CPIP v7 uses algorithms specified in FIPS standards
 > for classical operations: AES-256-GCM (FIPS 197), ECDSA/ECDH P-256 (FIPS 186-4),
 > HKDF-SHA256, and HMAC-SHA256. All constant-time operations use the `cryptography`
 > library. The `secrets` module replaces `random` for all security-relevant
 > randomness.
 >
-> **Post-Quantum KEM**: 1nf1D3L's Kyber (Non-FIPS ML-KEM-768 variant) is available
-> via `b4dm4n-cw` / `inf1del_kyber.py`. Parameters: n=256, k=3, q=3329, η₁=3, η₂=3,
-> du=10, dv=4, domain tag "1NF1D3L-KYBER-V1". Hybrid KEM: ECDH P-256 + 1nf1D3L Kyber.
-> **Not FIPS 203 compliant by design** — wider noise distribution (η=3), custom domain
+> **Post-Quantum KEM**: CPIP exposes ML-KEM-512/768/1024 parameter-size options and
+> experimental 1nf1D3L-2048/4096 ranks. The latter are not security-level claims. The bundled
+> implementation is custom and non-FIPS at all sizes; select the standard-library
+> backend with `CPIP_ML_KEM_BACKEND=stdlib` or use the optional NumPy-accelerated backend.
+> ML-KEM-768 is the default. Hybrid KEM: ECDH P-256 + the selected KEM size.
+> **Not FIPS 203 compliant by design** — custom η₁=3/η₂=2 parameters, domain
 > separation tags, NTT twiddle perturbation, coffee recipe binding. Suitable for
 > research, red-teaming, coffee protocols, and survival scenarios.
 >
@@ -25,8 +27,8 @@
 
 ## Cryptographic Architecture
 
-CPIP v5.1.1 uses a layered cryptographic architecture built on FIPS-compliant
-primitives, with optional post-quantum KEM layer, designed for hostile signal environments:
+CPIP v7.0.0 uses classical cryptographic algorithms specified by FIPS, with an optional
+custom non-FIPS KEM layer. This describes algorithm choices, not module validation.
 
 ### Encryption (CoffeeCipher v5 / AES-256-GCM)
 - **Cipher**: AES-256-GCM (FIPS 197) with 12-byte nonce and 16-byte authentication tag
@@ -44,13 +46,14 @@ primitives, with optional post-quantum KEM layer, designed for hostile signal en
 - **Backward compatibility**: Reads v1 and v2 Coffee Blend Cipher messages transparently
 
 ### End-to-End Encryption (E2EE)
-- **Hybrid KEM**: ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (Non-FIPS ML-KEM-768 variant)
+- **Hybrid KEM**: ECDH P-256 (FIPS 186-4) + configured 1nf1D3L KEM size (non-FIPS)
 - **Key derivation**: HKDF-SHA256 from combined shared secrets (domain tag `cpip-hybrid-kem-kyber-v1`)
 - **Hybrid guarantee**: Secure if EITHER classical ECDH OR PQ Kyber component holds
 
-### 1nf1D3L's Kyber (Non-FIPS Post-Quantum KEM)
-- **Variant**: ML-KEM-768 with 1nf1D3L modifications (η=3, custom domain tags, NTT perturbation)
-- **Parameters**: n=256, k=3, q=3329, η₁=3, η₂=3, du=10, dv=4
+### 1nf1D3L's KEM (Non-FIPS Post-Quantum KEM)
+- **Sizes**: ML-KEM-512/768/1024 parameter-size options (768 default); experimental 1nf1D3L-2048/4096 ranks are separate custom variants
+- **Variant**: Custom 1nf1D3L modifications (η₁=3 at all sizes, custom domain tags, NTT perturbation)
+- **Parameters**: n=256, q=3329; k=2/3/4, du=10/10/11, dv=4/4/5 for 512/768/1024
 - **Domain separation**: "1NF1D3L-KYBER-V1" on all hash/KDF inputs
 - **NTT twiddle perturbation**: Per-session random twiddle factors for side-channel resistance
 - **Coffee recipe binding**: Recipe string (espresso, cappuccino, etc.) mixed into KDF
@@ -121,7 +124,7 @@ CPIP can delegate cryptographic operations to a Hardware Security Module via PKC
 - **HTTP rate limiting**: 500 requests per 120 seconds per IP address
 - **Request size limit**: 64 KB maximum request body
 - **SSRF protection**: Diagnostic endpoints block RFC 1918, loopback, link-local, multicast, and cloud metadata addresses
-- **Firewall (iptables)**: `deploy.sh` configures INPUT DROP policy with explicit allowlists for CPIP ports (4180, 4181, 4191-4194) and ICMP rate-limiting (2/s)
+- **Firewall (iptables)**: `deploy-pi.sh` configures INPUT DROP policy with explicit allowlists for CPIP ports (4180, 4181, 4191-4194) and ICMP rate-limiting (2/s)
 - **Port scan limits**: Maximum 20 ports per scan request to prevent abuse
 - **Diagnostic endpoint auth**: `/cpip/diagnostics/{ping,ports,dns,traceroute}` require HMAC auth when `CPIP_RPC_AUTH=1`
 - **Security headers**:
@@ -204,14 +207,14 @@ CPIP is designed for operation in hostile signal environments:
 
 ## Minima / PiNet-OS Integration
 
-CPIP v5.1.1 serves as the primary cryptographic security provider for Minima nodes in the PiNet-OS edge computing stack:
+CPIP v7.0.0 integrates with Minima nodes in the PiNet-OS edge computing stack:
 
 | Integration Surface | CPIP Capability | Implementation |
 |---------------------|-----------------|----------------|
 | Data at rest | CoffeeCipher v5 (AES-256-GCM) | `backend/cpip_provider.py` (Python); `org.minima.utils.cpip.CoffeeCipher` (Java) |
 | Node identity | ECDSA P-256 challenge-response | `NodeIdentity` / `ECP256` (Python); `CPIPECDSA` (Java) |
 | RPC authentication | HMAC-SHA256 time-bounded tokens | `RpcToken` (Python); `CPIPECDSA.generateRpcToken` (Java) |
-| Key encapsulation | ECDH P-256 + 1nf1D3L Kyber (HybridKEM) | `CPIPKEM` (Java); HybridKEM (Python, server.py:1485) |
+| Key encapsulation | Optional standalone HybridKEM API; not active mesh E2EE | `CPIPKEM` (Java); HybridKEM (Python) |
 | Message signatures | ECDSA P-256 (replaces RSA) | `SignVerify` → `CPIPECDSA.sign/verify` (Java) |
 | API defense | ITF Defense (probe blocking, 418) | `CPIPSecurityMiddleware` (Python); `CoffeeProtocolProvider.defenseCheck` (Java) |
 | FIPS assurance | Power-on self-tests | `CPIPSelfTest` (Java); `run_fips_self_tests()` (Python) |
@@ -222,7 +225,7 @@ CPIP v5.1.1 serves as the primary cryptographic security provider for Minima nod
 
 **Key Management:** CPIP keys are derived from `CPIP_COVERT_KEY` via HKDF-SHA256 with domain separation (recipe: "minima"). Emergency key rotation via `POST /cpip/emergency {"action":"rotate_keys"}`.
 
-**Minima PQ Architecture:** Minima uses WOTS+ (FIPS 205 SPHINCS+ OTS, 128-bit PQ) for consensus signatures — this is NOT replaced by CPIP. CPIP adds Kyber (ML-KEM-768, non-FIPS) for optional PQ key exchange in the messaging/encryption layer. The two PQ approaches are complementary: WOTS+ for consensus, Kyber for transport encryption.
+**Minima PQ Architecture:** Minima uses WOTS+ for consensus signatures — this is not replaced by CPIP. CPIP exposes separate non-FIPS KEM options for experiments; they are not currently negotiated by the mesh E2EE transport.
 
 ## What CPIP Is NOT Designed For
 
@@ -286,6 +289,6 @@ CPIP includes built-in network diagnostic tools:
 - Understand that classical cryptographic operations use FIPS-compliant primitives
   via the `cryptography` library (constant-time ECDSA/ECDH P-256, AES-256-GCM,
   HKDF-SHA256, HMAC-SHA256). CPIP does not implement RSA-KEM.
-- **1nf1D3L's Kyber is NOT FIPS 203 validated** — it is a Non-FIPS ML-KEM-768 variant
+- **1nf1D3L's KEM is NOT FIPS 203 validated** — it is a custom non-FIPS variant at all supported sizes
   with wider noise (η=3), custom domain tags, and NTT perturbation. Use for research,
   red-teaming, coffee protocols, and survival — not for FIPS-required deployments.

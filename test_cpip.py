@@ -354,6 +354,7 @@ class TestCPIPServer(unittest.TestCase):
         self.assertIn("CPIP", body)
         # The dashboard page title has "Coffee Protocol" in it
         self.assertIn("Coffee", body)
+        self.assertIn("RFC Provider Status", body)
 
     def test_dashboard_brew_tab(self):
         with urllib.request.urlopen(f"{BASE}/dashboard") as r:
@@ -399,6 +400,16 @@ class TestCPIPServer(unittest.TestCase):
             headers = {k.lower(): v for k, v in r.headers.items()}
         self.assertIn("x-content-type-options", headers, 
                       f"Missing security headers. Got: {list(headers.keys())[:10]}")
+
+    def test_cli_uses_the_running_server_scheme_and_port(self):
+        env = os.environ.copy()
+        env.update({"CPIP_HOST": "127.0.0.1", "CPIP_PORT": str(TEST_PORT),
+                    "CPIP_SCHEME": "http", "CPIP_RPC_AUTH": "0"})
+        result = subprocess.run(["bash", "cpip", "status"], env=env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0,
+                         f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertIn("CPIP", result.stdout)
 
 
 if __name__ == "__main__":

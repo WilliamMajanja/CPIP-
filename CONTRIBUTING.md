@@ -1,6 +1,6 @@
 # Contributing to CPIP
 
-[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 [![Python 3.x](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)]()
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
@@ -36,7 +36,7 @@ participating, you are expected to uphold its terms.
 
 ## What We Do Not Accept
 
-- Pull requests that add external Python dependencies beyond the existing set (`cryptography`, `pqcrypto`, `numpy`, `opentui`)
+- Pull requests that add new mandatory runtime dependencies. Optional extras require justification and a working no-extra fallback where practical.
 - Changes that break RFC 2324 or RFC 7168 compliance
 - Removal of the 418 "I'm a teapot" defense
 
@@ -48,14 +48,18 @@ participating, you are expected to uphold its terms.
 4. Test your change with the `cpip` CLI.
 5. Submit a pull request.
 
+For the full optional cryptography test matrix, install `pip install -e '.[test]'` and run `pytest -q`. The default KEM path is standard-library-only; NumPy and `pqcrypto` are optional extras.
+
 ## Code Style
 
 - Python: follows the existing style in `server.py` (no formatter enforced,
   but be consistent with the surrounding code)
 - C: `gcc -O2 -Wall -pthread` clean, zero warnings
 - Bash: `set -euo pipefail`, `bash -n` clean
-- External dependencies: `cryptography`, `pqcrypto`, `numpy`, `opentui`. Python standard library otherwise.
-  for crypto. gcc + POSIX only for C code.
+- Required runtime dependency: `cryptography` for server crypto/TLS. The KEM-only
+  backend uses the Python standard library. Optional extras: `numpy` for KEM
+  acceleration (`.[pqc-accelerated]`), `pqcrypto` for standardized KEM/signature
+  backends (`.[pqc-standard]`), and `opentui` for the TUI. gcc + POSIX only for C.
 
 ## Commit Messages
 

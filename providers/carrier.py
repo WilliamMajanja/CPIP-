@@ -21,10 +21,11 @@ CARRIER_VZ_KEY = os.environ.get("CPIP_CARRIER_VZ_EDGE_KEY", "")
 class CarrierProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "carrier"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _events: list[dict] = []
     _webhook_registered = False
+    _webhook_url = ""
 
     WEBHOOK_HANDLERS = {
         "sim_swap": lambda e: ("THREAT_HIGH", f"SIM swap detected: {e.get('iccid','?')}"),
@@ -37,8 +38,12 @@ class CarrierProvider(BaseProvider):
         return bool(CARRIER_ATT_KEY or CARRIER_TMO_KEY or CARRIER_VZ_KEY)
 
     @classmethod
-    def register_webhook(cls) -> dict:
+    def register_webhook(cls, url: str = "") -> dict:
+        url = str(url or "").strip()
+        if url and not url.startswith(("https://", "http://")):
+            return {"error": "Webhook URL must use http:// or https://"}
         cls._webhook_registered = True
+        cls._webhook_url = url
         carriers = []
         if CARRIER_ATT_KEY:
             carriers.append("att")
@@ -46,10 +51,13 @@ class CarrierProvider(BaseProvider):
             carriers.append("tmo")
         if CARRIER_VZ_KEY:
             carriers.append("vz")
-        return {"registered": True, "carriers": carriers}
+        return {"registered": True, "url": url or None, "carriers": carriers,
+                "delivery": "local webhook receiver; carrier registration requires carrier credentials"}
 
     @classmethod
     def process_webhook_event(cls, body: dict) -> dict:
+        if not isinstance(body, dict):
+            return {"processed": False, "error": "Webhook body must be an object"}
         event_type = body.get("event", "")
         handler = cls.WEBHOOK_HANDLERS.get(event_type)
         if handler:
@@ -67,8 +75,9 @@ class CarrierProvider(BaseProvider):
     @classmethod
     def get_status(cls) -> dict[str, Any]:
         return {
-            "enabled": CARRIER_API_ENABLED,
-            "webhook_registered": cls._webhook_registered,
+                "enabled": CARRIER_API_ENABLED,
+                "webhook_registered": cls._webhook_registered,
+                "webhook_url": cls._webhook_url or None,
             "carriers": {
                 "att": bool(CARRIER_ATT_KEY),
                 "tmo": bool(CARRIER_TMO_KEY),

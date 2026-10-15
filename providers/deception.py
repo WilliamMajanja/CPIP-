@@ -20,7 +20,7 @@ HONEYPOT_COUNT = int(os.environ.get("CPIP_DECEPTION_HONEYPOT_COUNT", "3"))
 class DeceptionProvider(BaseProvider):
     TYPE = ProviderType.DECEPTION
     NAME = "deception"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _honeypots: list[dict] = []
     _honeypot_connections: list[dict] = []
@@ -64,7 +64,8 @@ class DeceptionProvider(BaseProvider):
     def _chaff_loop(cls):
         while cls._running:
             try:
-                cls._generate_chaff()
+                if DECEPTION_ENABLED:
+                    cls._generate_chaff()
             except Exception:
                 pass
             interval = {"low": 60, "medium": 30, "high": 10}.get(CHAFF_INTENSITY, 30)
@@ -94,6 +95,29 @@ class DeceptionProvider(BaseProvider):
                 "fingerprint": fingerprint,
                 "honeypot_id": secrets.choice(cls._honeypots)["id"] if cls._honeypots else "unknown",
             })
+
+    @classmethod
+    def set_chaff_intensity(cls, intensity: str) -> dict:
+        global CHAFF_INTENSITY
+        intensity = str(intensity or "").strip().lower()
+        if intensity not in ("low", "medium", "high"):
+            return {"error": f"Invalid intensity: {intensity}. Choose: low, medium, high"}
+        CHAFF_INTENSITY = intensity
+        logger.info("Chaff intensity set to %s", intensity)
+        return {"status": "chaff_intensity_set", "chaff_intensity": CHAFF_INTENSITY}
+
+    @classmethod
+    def set_honeypot(cls, enabled: bool) -> dict:
+        global DECEPTION_ENABLED
+        DECEPTION_ENABLED = bool(enabled)
+        cls._chaff_enabled = DECEPTION_ENABLED
+        if DECEPTION_ENABLED and cls._running:
+            if not cls._thread or not cls._thread.is_alive():
+                cls._thread = threading.Thread(target=cls._chaff_loop, daemon=True)
+                cls._thread.start()
+        logger.info("Honeypot/deception %s", "enabled" if DECEPTION_ENABLED else "disabled")
+        return {"status": "honeypot_enabled" if DECEPTION_ENABLED else "honeypot_disabled",
+                "enabled": DECEPTION_ENABLED}
 
     @classmethod
     def get_status(cls) -> dict[str, Any]:

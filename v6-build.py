@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CPIP v6 Build Manager — Project Faraday
+CPIP v7 Build Manager — Project Faraday
 ========================================
 Session restart point: run this to scan all discrepancies and auto-fix.
 
@@ -58,11 +58,12 @@ WORKSTREAMS = {
     3: {
         "name": "PQC-SUCI — Quantum-Resistant Identity",
         "rfc": "rfc-0003-pqc-suci.md",
-        "files": ["server.py", "providers/kem.py"],
+        "files": ["server.py", "providers/kem.py", "pure_mlkem.py", "inf1del_kyber.py", "b4dm4n_cw.py"],
         "classes": ["PQCIdentity"],
-        "env_vars": ["CPIP_PQC_IDENTITY", "CPIP_PQC_KEM"],
+        "env_vars": ["CPIP_PQC_IDENTITY", "CPIP_PQC_KEM", "CPIP_ML_KEM_SIZE",
+                      "CPIP_ML_KEM_BACKEND"],
         "cli_commands": ["cpip crypto pqc-status", "cpip crypto pqc-keys"],
-        "deps": ["pqcrypto>=0.6.0"],
+        "deps": ["standard library KEM backend; NumPy and pqcrypto optional"],
         "status": "not_started",
     },
     4: {
@@ -515,7 +516,7 @@ def scan_and_report(fix: bool = False, focus: int | None = None):
     version = get_version()
     git = check_git_status()
     print("=" * 72)
-    print(f"  CPIP v6 Build Manager — {version}")
+    print(f"  CPIP v7 Build Manager — {version}")
     print(f"  Branch: {git.get('branch', '?')}  |  Dirty: {git.get('dirty', '?')}")
     print(f"  Last: {git.get('last_commit', '?')}")
     print("=" * 72)
@@ -559,7 +560,7 @@ def scan_and_report(fix: bool = False, focus: int | None = None):
         print("\n  Fix pass complete. Re-run scan to verify.")
 
     if overall_pct == 100 and not focus:
-        print("\n  🎉 All workstreams complete! Ready for v6.0.0 release.")
+        print("\n  🎉 All workstreams complete! Ready for v7.0.0 release.")
     print(f"\n  Session restart point: python3 {Path(__file__).name}")
     print(f"  Retrigger discrepancy scan: python3 {Path(__file__).name}")
     print(f"  Auto-fix known issues:     python3 {Path(__file__).name} --fix")
@@ -570,7 +571,7 @@ def scan_and_report(fix: bool = False, focus: int | None = None):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="CPIP v6 Build Manager")
+    parser = argparse.ArgumentParser(description="CPIP v7 Build Manager")
     parser.add_argument("--fix", action="store_true", help="Auto-fix known discrepancies")
     parser.add_argument("--status", action="store_true", help="Quick build status")
     parser.add_argument("--workstream", type=int, help="Focus on specific workstream")

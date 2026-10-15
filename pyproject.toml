@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cpip"
-version = "6.0.3"
+version = "7.0.0"
 description = "Coffee Pot Internet Protocol — RFC 2324 + RFC 7168 + mesh network"
 readme = "README.md"
 license = {text = "Unlicense"}
@@ -22,16 +22,29 @@ classifiers = [
 dependencies = [
     "cryptography >= 42.0.0,<45.0.0; python_version < '3.12'",
     "cryptography >= 49.0.0; python_version >= '3.12'",
-    "numpy >= 1.26.0,<2.0.0; python_version < '3.12'",
-    "numpy >= 2.5.1; python_version >= '3.12'",
-    "pqcrypto >= 0.4.0",
 ]
 
 [project.optional-dependencies]
 tui = ["opentui >= 0.1.2"]
 cli = ["rich >= 15.0.0"]
 hsm = ["pkcs11 >= 1.0.4"]
-all = ["opentui>=0.1.2", "rich>=15.0.0", "pkcs11>=1.0.4"]
+pqc-accelerated = [
+    "numpy >= 1.26.0,<2.0.0; python_version < '3.12'",
+    "numpy >= 2.5.1; python_version >= '3.12'",
+]
+pqc-standard = ["pqcrypto >= 0.4.0"]
+test = [
+    "pytest >= 8.0.0",
+    "numpy >= 1.26.0,<2.0.0; python_version < '3.12'",
+    "numpy >= 2.5.1; python_version >= '3.12'",
+    "pqcrypto >= 0.4.0",
+]
+all = [
+    "opentui>=0.1.2", "rich>=15.0.0", "pkcs11>=1.0.4",
+    "numpy >= 1.26.0,<2.0.0; python_version < '3.12'",
+    "numpy >= 2.5.1; python_version >= '3.12'",
+    "pqcrypto >= 0.4.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/WilliamMajanja/CPIP-"
@@ -48,7 +61,7 @@ cpip-cw = "b4dm4n_cw:main"
 packages = {find = {include = ["providers", "providers.*"]}}
 py-modules = [
     "server", "cpip_gui", "cpip_tui", "b4dm4n_cw",
-    "inf1del_kyber",
+    "inf1del_kyber", "pure_mlkem",
 ]
 
 [tool.setuptools.package-data]

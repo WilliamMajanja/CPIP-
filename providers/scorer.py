@@ -23,7 +23,7 @@ THREAT_LABELS = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
 class Scorer(BaseProvider):
     TYPE = ProviderType.SCORER
     NAME = "scorer"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _events: list[dict[str, Any]] = []
     _lock = threading.Lock()
@@ -177,3 +177,20 @@ class Scorer(BaseProvider):
     @classmethod
     def get_history(cls, limit: int = 100) -> list[dict]:
         return cls._score_history[-limit:]
+
+    @classmethod
+    def get_baselines(cls) -> dict[str, Any]:
+        """Expose the cellular provider's learned baselines used by scoring."""
+        try:
+            from providers.cellular import CellularProvider
+            rows = CellularProvider.get_history(limit=500)
+        except Exception:
+            rows = []
+        cutoff = time.time() - max(1, SCORER_BASELINE_DAYS) * 86400
+        recent = [row for row in rows if row.get("last_seen", 0) >= cutoff]
+        return {
+            "days": SCORER_BASELINE_DAYS,
+            "count": len(recent),
+            "baselines": recent,
+            "source": "cellular baseline database",
+        }

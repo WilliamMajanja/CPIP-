@@ -35,7 +35,7 @@ STALKERWARE_DB_BUILTIN = json.dumps(STALKERWARE_SIGNATURES)
 class HygieneProvider(BaseProvider):
     TYPE = ProviderType.HYGIENE
     NAME = "hygiene"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _scan_results: dict[str, Any] = {}
     _last_scan = 0
@@ -126,6 +126,7 @@ class HygieneProvider(BaseProvider):
                 "open_diag": len(diag),
             },
         }
+        cls._last_scan = cls._scan_results["timestamp"]
         if processes:
             cls._alerts.append({"time": time.time(), "type": "stalkerware", "count": len(processes)})
         return cls._scan_results
@@ -142,8 +143,14 @@ class HygieneProvider(BaseProvider):
 
     @classmethod
     def quarantine(cls, process_name: str) -> dict:
+        process_name = str(process_name or "").strip()
+        if not process_name or "/" in process_name or "\x00" in process_name:
+            return {"error": "Provide a process name, not a path"}
+        detections = cls.scan_processes()
+        if not any(d.get("process") == process_name for d in detections):
+            return {"error": "Process was not identified by the stalkerware scanner"}
         try:
-            result = subprocess.run(["killall", "-STOP", process_name],
+            result = subprocess.run(["pkill", "-STOP", "-x", process_name],
                                     capture_output=True, text=True, timeout=5)
             return {"process": process_name, "action": "stopped", "result": result.returncode == 0}
         except Exception as e:

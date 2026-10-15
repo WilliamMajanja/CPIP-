@@ -40,8 +40,10 @@ services:
       CPIP_GPIO: "0"
       CPIP_COVERT_KEY: ""
       CPIP_RPC_AUTH: "1"
+      CPIP_PQC_KEM: "ml_kem_768"
+      CPIP_ML_KEM_BACKEND: "stdlib"
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4180/health')"]
+      test: ["CMD", "python3", "-c", "import ssl,urllib.request; urllib.request.urlopen('https://localhost:4180/health', context=ssl._create_unverified_context())"]
       interval: 30s
       timeout: 5s
       retries: 3

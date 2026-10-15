@@ -9,7 +9,7 @@
 | Component | `providers/<name>.py`, `server.py` |
 | Author / owner | |
 | Related CPIP-RFF / RFC-CR / CPIP-RFC | |
-| Version target | |
+| Version target | v7.0.0 |
 | Last reviewed | |
 
 ## Abstract

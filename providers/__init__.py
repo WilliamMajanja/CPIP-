@@ -4,7 +4,7 @@ from providers.kem import KEMProvider, PQC_KEM_REGISTRY, Kyber, get_pqc_kem, lis
 from providers.mesh import MeshTransportProvider, BondedMeshTransport, PQMesh
 from providers.dns import DNSProvider, CloudflareDoHProvider, GoogleDoHProvider, DNS_PROVIDERS
 from providers.cellular import CellularProvider, AntiStingrayV2
-from providers.sdr import SDRProvider, SpectrumDefense
+from providers.sdr import SDRProvider
 from providers.scorer import Scorer
 from providers.threat_intel import ThreatIntelProvider, GlobalIntelProvider
 from providers.hardware import HardwareProvider
@@ -25,6 +25,7 @@ from providers.evidence import EvidenceProvider
 from providers.circumvention import CircumventionProvider
 from providers.airgap import AirGapProvider
 from providers.hygiene import HygieneProvider
+from providers.surveillance_fp import SurveillanceFingerprintProvider
 
 registry = ProviderRegistry
 register = registry.register
@@ -36,7 +37,7 @@ __all__ = [
     "MeshTransportProvider", "BondedMeshTransport", "PQMesh",
     "DNSProvider", "CloudflareDoHProvider", "GoogleDoHProvider", "DNS_PROVIDERS",
     "CellularProvider", "AntiStingrayV2",
-    "SDRProvider", "SpectrumDefense",
+    "SDRProvider",
     "Scorer",
     "ThreatIntelProvider", "GlobalIntelProvider",
     "HardwareProvider",
@@ -57,4 +58,5 @@ __all__ = [
     "CircumventionProvider",
     "AirGapProvider",
     "HygieneProvider",
+    "SurveillanceFingerprintProvider",
 ]

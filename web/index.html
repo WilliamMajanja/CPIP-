@@ -214,6 +214,7 @@
     <div class="tab" data-tab="bond" onclick="switchTab('bond')">🔗 Bond</div>
     <div class="tab" data-tab="schedule" onclick="switchTab('schedule')">⏰ Schedule</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 History</div>
+    <div class="tab" data-tab="rfc" onclick="switchTab('rfc')">🧩 RFC Providers</div>
   </div>
 
   <div id="panel-brew" class="panel active">
@@ -222,7 +223,7 @@
       <div class="card"><h2>State</h2><div class="value" id="stateVal">—</div><div class="label" id="stateDet">Waiting</div><div style="margin-top:0.5rem;display:none" id="brewProgressWrap"><div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div id="brewProgressBar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--green));width:0%;transition:width 1s linear"></div></div><div style="font-size:0.6rem;color:var(--dim);margin-top:0.2rem" id="brewProgressLabel"></div></div></div>
       <div class="card"><h2>Brews</h2><div class="value" id="brewCount">0</div><div class="label">Total completed</div></div>
     </div>
-    <div class="card" style="margin-top:0.75rem">
+  <div class="card" style="margin-top:0.75rem">
       <h2>Quick Brew</h2>
       <div class="form-row">
         <select id="brewType">
@@ -897,7 +898,7 @@
     </div>
   </div>
 
-  <div id="panel-history" class="panel">
+<div id="panel-history" class="panel">
     <div class="card">
       <h2>Brew History</h2>
       <div class="form-row" style="margin-bottom:0.5rem">
@@ -921,6 +922,17 @@
     <h2>Live Events <span style="color:var(--dim);font-weight:400;font-size:0.6rem">(brew, mesh, covert)</span></h2>
     <div class="event-log" id="eventLog"><div style="color:var(--dim)">Waiting…</div></div>
   </div>
+
+<div id="panel-rfc" class="panel">
+  <div class="card">
+    <div class="form-row" style="align-items:center">
+      <h2 style="margin:0;flex:1">RFC Provider Status</h2>
+      <button class="btn secondary" onclick="refreshRFC()">↻ Refresh</button>
+    </div>
+    <p class="label" style="margin-top:0.5rem">Optional hardware and remote integrations report their live availability. Draft-only or unconfigured backends are marked unavailable.</p>
+  </div>
+  <div id="rfcProviders" class="grid" style="margin-top:0.75rem"></div>
+</div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -982,6 +994,48 @@ function switchTab(name) {{
   if (name === 'sync') {{ refreshSync(); }}
   if (name === 'bond') {{ refreshBond(); }}
   if (name === 'drops') {{ refreshDrops(); }}
+  if (name === 'rfc') {{ refreshRFC(); }}
+}}
+
+const RFC_STATUS_ENDPOINTS = [
+  ['RFC-0001 Cellular', '/cpip/cell/status'], ['RFC-0002 SDR', '/cpip/sdr/status'],
+  ['RFC-0003 PQC identity', '/cpip/crypto/pqc-status'], ['RFC-0004 Spectrum', '/cpip/radio/status'],
+  ['RFC-0005 SS7/Diameter', '/cpip/ss7/status'], ['RFC-0006 Scorer', '/cpip/scorer/status'],
+  ['RFC-0007/0026 Threat intel', '/cpip/intel/status'], ['RFC-0008 Hardware', '/cpip/hardware/status'],
+  ['RFC-0009 Sensors', '/cpip/sensors/status'], ['RFC-0010 Field ops', '/cpip/field/status'],
+  ['RFC-0011 Tamper', '/cpip/tamper/status'], ['RFC-0012 Deception', '/cpip/deception/status'],
+  ['RFC-0013 AI assessment', '/cpip/ai/status'], ['RFC-0014 Modem', '/cpip/modem/status'],
+  ['RFC-0015 OOB channels', '/cpip/ob-channel/status'], ['RFC-0016 Power', '/cpip/power/status'],
+  ['RFC-0017 EM-sec', '/cpip/emsec/status'], ['RFC-0018 Carrier', '/cpip/carrier/status'],
+  ['RFC-0019 PQ mesh', '/cpip/pq-mesh/status'], ['RFC-0020 Duress', '/cpip/duress/status'],
+  ['RFC-0021 Mesh security', '/cpip/mesh-security/status'], ['RFC-0022 Evidence', '/cpip/evidence/status'],
+  ['RFC-0023 Circumvention', '/cpip/circumvention/status'], ['RFC-0024 Airgap', '/cpip/airgap/status'],
+  ['RFC-0025 Device hygiene', '/cpip/hygiene/status']
+];
+
+async function refreshRFC() {{
+  const container = document.getElementById('rfcProviders');
+  if (!container) return;
+  container.replaceChildren();
+  const results = await Promise.all(RFC_STATUS_ENDPOINTS.map(async ([name, path]) => {{
+    const data = await api('GET', path);
+    return {{ name, path, data: data || {{ error: 'No response' }} }};
+  }}));
+  for (const item of results) {{
+    const card = document.createElement('div');
+    card.className = 'card';
+    const title = document.createElement('h2');
+    title.textContent = item.name;
+    const state = document.createElement('div');
+    state.className = 'label';
+    const enabled = item.data.enabled ?? item.data.available ?? item.data.running;
+    state.textContent = item.data.error ? 'Unavailable / error' : enabled === false ? 'Disabled or unavailable' : 'Status received';
+    const detail = document.createElement('pre');
+    detail.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;font-size:.7rem;max-height:14rem;overflow:auto;color:var(--dim)';
+    detail.textContent = JSON.stringify(item.data, null, 2);
+    card.append(title, state, detail);
+    container.append(card);
+  }}
 }}
 
 async function refresh() {{
@@ -1874,7 +1928,8 @@ async function wotVouch() {{
 async function refreshDNS() {{
   const r = await api('GET', '/cpip/dns');
   if (!r) return;
-  const records = r.records || [];
+  const entries = Object.values(r);
+  const records = Array.isArray(entries) ? entries : [];
   document.getElementById('dnsCount').textContent = records.length;
   document.getElementById('dnsStatus').textContent = records.length ? 'Active' : 'Empty';
   const el = document.getElementById('dnsRecords');
@@ -1896,7 +1951,7 @@ async function dnsRegister() {{
   if (!name) {{ showToast('Enter a .pot name'); return; }}
   const r = await api('POST', '/cpip/dns/register', {{ name }});
   const el = document.getElementById('dnsRegResult');
-  if (r && r.status === 'registered') {{ el.innerHTML = `<span style="color:var(--green)">✓ Registered ${{esc(r.name)}}</span>`; }}
+  if (r && r.name && !r.error) {{ el.innerHTML = `<span style="color:var(--green)">✓ Registered ${{esc(r.name)}}</span>`; }}
   else {{ el.innerHTML = `<span style="color:var(--danger)">${{esc(r?.error||'Failed')}}</span>`; }}
   document.getElementById('dnsRegName').value = '';
   refreshDNS();
@@ -1906,7 +1961,7 @@ async function dnsResolve() {{
   if (!name) {{ showToast('Enter a .pot name'); return; }}
   const r = await api('POST', '/cpip/dns/resolve', {{ name }});
   const el = document.getElementById('dnsResolveResult');
-  if (r && r.resolved) {{ el.innerHTML = `<span style="color:var(--green)">✓ ${{esc(r.name)}} → ${{esc(r.pot_id||'?')}}</span>`; }}
+  if (r && r.pot_id && !r.error) {{ el.innerHTML = `<span style="color:var(--green)">✓ ${{esc(r.name)}} → ${{esc(r.pot_id||'?')}}</span>`; }}
   else {{ el.innerHTML = `<span style="color:var(--danger)">✗ ${{esc(r?.error||'Not found')}}</span>`; }}
 }}
 async function dnsRemove() {{

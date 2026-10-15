@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import os
 import threading
@@ -20,19 +21,57 @@ MESH_DISAPPEAR_HOURS = int(os.environ.get("CPIP_MESH_DISAPPEAR_HOURS", "48"))
 class MeshSecurityProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "mesh_security"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _peers: dict[str, dict] = {}
     _nonces_seen: dict[str, set] = {}
+    _nonce_highwater: dict[str, int] = {}
     _alerts: list[dict] = []
     _lock = threading.Lock()
+    _running = False
+    _thread: threading.Thread | None = None
 
     @classmethod
     def is_available(cls) -> bool:
         return True
 
     @classmethod
+    def start(cls):
+        if cls._running:
+            return
+        cls._running = True
+        cls._thread = threading.Thread(target=cls._scan_loop, daemon=True)
+        cls._thread.start()
+
+    @classmethod
+    def stop(cls):
+        cls._running = False
+
+    @classmethod
+    def _scan_loop(cls):
+        while cls._running:
+            try:
+                for t in cls.scan_threats():
+                    cls._alerts.append({"time": time.time(), "detected": t})
+                if len(cls._alerts) > 100:
+                    cls._alerts = cls._alerts[-100:]
+            except Exception as e:
+                logger.debug("Mesh security scan error: %s", e)
+            time.sleep(60)
+
+    @classmethod
+    def _subnet24(cls, ip: str) -> str:
+        try:
+            address = ipaddress.ip_address(ip)
+            prefix = 24 if address.version == 4 else 64
+            return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
+        except ValueError:
+            return "unknown"
+
+    @classmethod
     def track_peer(cls, peer_id: str, ip: str, introducer: str = ""):
+        if not MESH_ATTACK_DETECT:
+            return
         now = time.time()
         with cls._lock:
             if peer_id not in cls._peers:
@@ -50,6 +89,8 @@ class MeshSecurityProvider(BaseProvider):
 
     @classmethod
     def check_nonce(cls, peer_id: str, nonce: int) -> bool:
+        if not MESH_ATTACK_DETECT:
+            return True
         with cls._lock:
             if peer_id not in cls._nonces_seen:
                 cls._nonces_seen[peer_id] = set()
@@ -61,33 +102,40 @@ class MeshSecurityProvider(BaseProvider):
                     "nonce": nonce,
                 })
                 return False
+            highest = cls._nonce_highwater.get(peer_id)
+            if highest is not None and nonce <= highest:
+                cls._alerts.append({"time": time.time(), "type": "out_of_order_nonce",
+                                    "peer": peer_id, "nonce": nonce, "highest": highest})
+                return False
             cls._nonces_seen[peer_id].add(nonce)
+            cls._nonce_highwater[peer_id] = nonce
             if len(cls._nonces_seen[peer_id]) > 1000:
-                cls._nonces_seen[peer_id] = set(list(cls._nonces_seen[peer_id])[-500:])
+                cls._nonces_seen[peer_id] = {highest}
             return True
 
     @classmethod
     def scan_threats(cls) -> list[dict]:
+        if not MESH_ATTACK_DETECT:
+            return []
         threats = []
         with cls._lock:
             now = time.time()
-            ip_counts: dict[str, int] = {}
-            ip_peers: dict[str, list[str]] = {}
+            subnet_counts: dict[str, int] = {}
+            subnet_peers: dict[str, list[str]] = {}
             for pid, info in cls._peers.items():
                 for ip in info.get("ips", set()):
-                    ip_counts[ip] = ip_counts.get(ip, 0) + 1
-                    if ip not in ip_peers:
-                        ip_peers[ip] = []
-                    ip_peers[ip].append(pid)
+                    subnet = cls._subnet24(ip)
+                    subnet_counts[subnet] = subnet_counts.get(subnet, 0) + 1
+                    subnet_peers.setdefault(subnet, []).append(pid)
 
-            for ip, count in ip_counts.items():
+            for subnet, count in subnet_counts.items():
                 if count > MESH_SYBIL_THRESHOLD:
                     threats.append({
                         "time": now,
                         "type": "sybil",
-                        "ip": ip,
+                        "subnet": subnet,
                         "peer_count": count,
-                        "peers": ip_peers[ip],
+                        "peers": subnet_peers[subnet],
                     })
 
             for pid, info in cls._peers.items():

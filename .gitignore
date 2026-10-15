@@ -28,6 +28,8 @@ Thumbs.db
 # Test artifacts
 server.log
 test_*
+!test_rfc_api.py
+!test_pure_mlkem.py
 *.pk
 *.sk
 *.hp

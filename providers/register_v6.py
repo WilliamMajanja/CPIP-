@@ -3,7 +3,7 @@ import logging
 
 from providers.registry import ProviderRegistry
 from providers.cellular import CellularProvider
-from providers.sdr import SDRProvider, SpectrumDefense
+from providers.sdr import SDRProvider
 from providers.scorer import Scorer
 from providers.threat_intel import ThreatIntelProvider
 from providers.hardware import HardwareProvider
@@ -24,13 +24,13 @@ from providers.evidence import EvidenceProvider
 from providers.circumvention import CircumventionProvider
 from providers.airgap import AirGapProvider
 from providers.hygiene import HygieneProvider
+from providers.surveillance_fp import SurveillanceFingerprintProvider
 
 logger = logging.getLogger(__name__)
 
 ALL_V6_PROVIDERS = [
     CellularProvider,
     SDRProvider,
-    SpectrumDefense,
     Scorer,
     ThreatIntelProvider,
     HardwareProvider,
@@ -51,6 +51,7 @@ ALL_V6_PROVIDERS = [
     CircumventionProvider,
     AirGapProvider,
     HygieneProvider,
+    SurveillanceFingerprintProvider,
 ]
 
 

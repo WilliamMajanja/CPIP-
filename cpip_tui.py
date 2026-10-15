@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v6.0.3"""
+"""CPIP Terminal UI — OpenTUI-based interactive client for CPIP v7.0.0"""
 
 import json
 import os
+import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -26,7 +27,9 @@ from opentui.hooks import use_keyboard, use_terminal_dimensions
 
 CPIP_HOST = os.environ.get("CPIP_HOST", "localhost")
 CPIP_PORT = int(os.environ.get("CPIP_PORT", "4180"))
-BASE_URL = f"http://{CPIP_HOST}:{CPIP_PORT}"
+CPIP_SCHEME = os.environ.get("CPIP_SCHEME", "http" if os.environ.get("CPIP_SSL") == "0" else "https")
+URL_HOST = f"[{CPIP_HOST}]" if ":" in CPIP_HOST and not CPIP_HOST.startswith("[") else CPIP_HOST
+BASE_URL = f"{CPIP_SCHEME}://{URL_HOST}:{CPIP_PORT}"
 COVERT_KEY = os.environ.get("CPIP_COVERT_KEY", "")
 
 
@@ -57,7 +60,10 @@ def api(method: str, path: str, data: dict | None = None) -> dict | None:
             )
         else:
             req = urllib.request.Request(url, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        context = None
+        if CPIP_SCHEME == "https" and CPIP_HOST in ("localhost", "127.0.0.1", "::1"):
+            context = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=5, context=context) as resp:
             return json.loads(resp.read().decode())
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
         return {"error": str(e)}
@@ -144,7 +150,7 @@ def Sidebar():
 
     return Box(
         Box(
-            Text(" CPIP v6.0.3 ", bold=True, fg="#0366d6"),
+            Text(" CPIP v7.0.0 ", bold=True, fg="#0366d6"),
             Text(" Coffee Protocol", fg="#888"),
             Spacer(height=1),
             *items,
@@ -201,7 +207,8 @@ def BrewPanel():
         try:
             req = urllib.request.Request(url, method="BREW",
                                          headers=headers)
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            context = ssl._create_unverified_context() if CPIP_SCHEME == "https" and CPIP_HOST in ("localhost", "127.0.0.1", "::1") else None
+            with urllib.request.urlopen(req, timeout=5, context=context) as resp:
                 result.set(resp.read().decode()[:200])
         except Exception as e:
             result.set(f"Error: {e}")
@@ -209,7 +216,8 @@ def BrewPanel():
     def when():
         try:
             req = urllib.request.Request(f"{BASE_URL}/", method="WHEN")
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            context = ssl._create_unverified_context() if CPIP_SCHEME == "https" and CPIP_HOST in ("localhost", "127.0.0.1", "::1") else None
+            with urllib.request.urlopen(req, timeout=5, context=context) as resp:
                 result.set(resp.read().decode()[:200])
         except Exception as e:
             result.set(f"Error: {e}")
@@ -453,6 +461,26 @@ def ConfigPanel():
 
 
 @component
+def ProvidersPanel():
+    providers = providers_data()
+    rows = [[p.get("type", "?"), p.get("name", "?"),
+             "available" if p.get("available") else "unavailable",
+             p.get("version", "?")] for p in providers]
+    return ScrollBox(
+        Box(
+            Text("RFC / Provider Integrations", bold=True, fg="#0366d6"),
+            Spacer(height=1),
+            Text("Optional hardware and remote services are reported unavailable when not configured.", fg="#888"),
+            Spacer(height=1),
+            TextTable(headers=["Type", "Provider", "State", "Version"], rows=rows,
+                      header_fg="#fff", header_bg="#0366d6") if rows else Text("No provider data — press [r] to refresh"),
+            padding=1,
+        ),
+        scroll_y=True,
+    )
+
+
+@component
 def SchedulePanel():
     data = schedule_data()
     schedules = data if isinstance(data, list) else data.get("schedules", []) if data else []
@@ -501,7 +529,7 @@ def HistoryPanel():
 def AboutPanel():
     return ScrollBox(
         Box(
-            Text("CPIP v6.0.3 — Coffee Pot Internet Protocol", bold=True),
+            Text("CPIP v7.0.0 — Coffee Pot Internet Protocol", bold=True),
             Spacer(height=1),
             Markdown(
                 "## Protocol Support\n"
@@ -515,7 +543,8 @@ def AboutPanel():
                 "## Cryptography\n"
                 "- AES-256-GCM (FIPS 197)\n"
                 "- ECDSA/ECDH P-256 (FIPS 186-4)\n"
-                "- HybridKEM: ECDH + Kyber\n\n"
+                "- ECDH P-256 + AES-256-GCM for active mesh E2EE\n"
+                "- Optional KEM catalog (not integrated into mesh E2EE)\n\n"
                 "## CLI Tools\n"
                 "- `cpip tui` — Terminal UI (OpenTUI)\n"
                 "- `b4dm4n-cw tui` — Crypto Workbench REPL\n\n"
@@ -545,6 +574,7 @@ PANELS = {
     "ecc": ECCPanel,
     "dns": DNSPanel,
     "config": ConfigPanel,
+    "providers": ProvidersPanel,
     "schedule": SchedulePanel,
     "history": HistoryPanel,
     "about": AboutPanel,

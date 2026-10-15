@@ -24,12 +24,19 @@ CPIP_THREAT_DHT_BOOTSTRAP = os.environ.get("CPIP_THREAT_DHT_BOOTSTRAP", "")
 class ThreatIntelProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "threat_intel"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _lock = threading.Lock()
     _sightings: dict[str, list[dict]] = {}
     _peer_reports: dict[str, list[dict]] = {}
     _alerts: list[dict] = []
+
+    @classmethod
+    def set_sharing_enabled(cls, enabled: bool) -> dict:
+        """Toggle local sharing at runtime; local sightings remain available."""
+        global SHARING_ENABLED
+        SHARING_ENABLED = bool(enabled)
+        return {"status": "sharing_updated", "enabled": SHARING_ENABLED}
 
     @classmethod
     def is_available(cls) -> bool:
@@ -98,6 +105,8 @@ class ThreatIntelProvider(BaseProvider):
         with cls._lock:
             return {
                 "enabled": SHARING_ENABLED,
+                "sharing_enabled": SHARING_ENABLED,
+                "bootstrap_nodes": [n.strip() for n in CPIP_THREAT_DHT_BOOTSTRAP.split(",") if n.strip()],
                 "sightings_count": sum(len(v) for v in cls._sightings.values()),
                 "unique_cells": len(cls._sightings),
                 "peer_reports": sum(len(v) for v in cls._peer_reports.values()),
@@ -143,4 +152,31 @@ class GlobalIntelProvider(ThreatIntelProvider):
                 "threat_sightings": threats,
                 "risk_score": min(1.0, threats / max(total, 1)) if total > 0 else 0,
                 "risk_label": "HIGH" if threats > 10 else "MEDIUM" if threats > 3 else "LOW" if threats > 0 else "NONE",
+            }
+
+    @classmethod
+    def verify_cell(cls, cell_id: str) -> dict:
+        """Verify a cell against community sightings (RFC-0007/0026).
+
+        Accepts a raw cell_id, an anonymized cell_hash, or a composite
+        'cell_id:mcc:mnc' string; the composite form is hashed with the
+        same salted scheme used for sharing before lookup.
+        """
+        parts = cell_id.split(":")
+        if len(parts) == 3:
+            anon = cls.anonymize(parts[0], parts[1], parts[2])
+        else:
+            anon = cell_id
+        with cls._lock:
+            sightings = cls._sightings.get(anon, [])
+            alerts = [a for a in cls._alerts if a.get("cell_hash") == anon]
+            recent = [s for s in sightings if s["timestamp"] > time.time() - 86400]
+            return {
+                "cell": cell_id,
+                "cell_hash": anon,
+                "known": bool(sightings),
+                "sightings_24h": len(recent),
+                "community_alert": alerts[-1] if alerts else None,
+                "verdict": ("KNOWN_THREAT" if len(recent) >= REQUIRE_PEERS
+                            else "KNOWN" if sightings else "UNKNOWN"),
             }

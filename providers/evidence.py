@@ -22,9 +22,9 @@ EVIDENCE_CHAIN = os.environ.get("CPIP_EVIDENCE_CHAIN", "ots")
 class EvidenceProvider(BaseProvider):
     TYPE = ProviderType.EVIDENCE
     NAME = "evidence"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
-    _evidence_dir = Path("/tmp/cpip_evidence")
+    _evidence_dir = Path(os.environ.get("CPIP_EVIDENCE_DIR", "/tmp/cpip_evidence"))
     _chain: list[dict] = []
     _lock = threading.Lock()
 
@@ -35,6 +35,13 @@ class EvidenceProvider(BaseProvider):
     @classmethod
     def start(cls):
         cls._evidence_dir.mkdir(parents=True, exist_ok=True)
+        entries = []
+        for path in cls._evidence_dir.glob("ev_*.json"):
+            try:
+                entries.append(json.loads(path.read_text()))
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Skipping unreadable evidence entry %s", path)
+        cls._chain = sorted(entries, key=lambda e: e.get("timestamp", 0))[-10000:]
 
     @classmethod
     def capture(cls, data: dict, label: str = "manual") -> dict:
@@ -45,48 +52,66 @@ class EvidenceProvider(BaseProvider):
             "label": label,
             "data": data,
         }
-        sha256 = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+        canonical_data = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
+        sha256 = hashlib.sha256(canonical_data).hexdigest()
         entry["sha256"] = sha256
-
-        prev_hash = cls._chain[-1]["sha256"] if cls._chain else "0" * 64
-        entry["prev_hash"] = prev_hash
+        entry["prev_hash"] = cls._chain[-1].get("chain_hash", cls._chain[-1].get("sha256", "0" * 64)) if cls._chain else "0" * 64
+        chain_material = json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()
+        entry["chain_hash"] = hashlib.sha256(chain_material).hexdigest()
 
         with cls._lock:
             cls._chain.append(entry)
-            if len(cls._chain) > 1000:
-                cls._chain = cls._chain[-1000:]
-
         fpath = cls._evidence_dir / f"{entry['id']}.json"
-        fpath.write_text(json.dumps(entry, indent=2))
+        temp_path = fpath.with_suffix(".json.tmp")
+        temp_path.write_text(json.dumps(entry, indent=2))
+        os.replace(temp_path, fpath)
         entry["path"] = str(fpath)
 
         if EVIDENCE_NOTARIZE:
-            cls._submit_hash(sha256)
+            cls._submit_hash(entry["chain_hash"])
 
         return entry
 
     @classmethod
-    def _submit_hash(cls, sha256: str):
+    def _submit_hash(cls, sha256: str) -> dict:
         chain_type = EVIDENCE_CHAIN
         try:
-            if chain_type == "bitcoin":
-                subprocess.run(
-                    ["bitcoin-cli", "sendrawtransaction",
-                     f"6a26{sha256}234fadea77a5e3c17b9876543210fedcba9876543210"],
-                    capture_output=True, timeout=10)
-            elif chain_type == "ots":
-                subprocess.run(["ots", "stamp", sha256], capture_output=True, timeout=30)
+            if chain_type != "ots":
+                return {"status": "unsupported", "chain": chain_type,
+                        "error": "Only OpenTimestamps submission is implemented"}
+            digest_path = cls._evidence_dir / f"{sha256}.sha256"
+            digest_path.write_text(sha256 + "\n")
+            result = subprocess.run(["ots", "stamp", str(digest_path)],
+                                    capture_output=True, text=True, timeout=30, check=False)
+            if result.returncode:
+                return {"status": "failed", "chain": chain_type,
+                        "error": result.stderr.strip() or "ots stamp failed"}
             logger.info("Evidence hash %s submitted to %s", sha256[:16], chain_type)
+            return {"status": "submitted", "chain": chain_type}
         except Exception as e:
             logger.debug("Notarize error: %s", e)
+            return {"status": "failed", "chain": chain_type, "error": str(e)}
 
     @classmethod
     def verify(cls, evidence_id: str) -> dict:
         for entry in cls._chain:
             if entry["id"] == evidence_id:
-                computed = hashlib.sha256(json.dumps(entry["data"], sort_keys=True).encode()).hexdigest()
-                return {"id": evidence_id, "valid": computed == entry["sha256"],
+                computed = hashlib.sha256(json.dumps(entry["data"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                chain_copy = {k: v for k, v in entry.items() if k not in ("chain_hash", "path", "notarized")}
+                computed_chain = hashlib.sha256(json.dumps(chain_copy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                valid = computed == entry["sha256"] and computed_chain == entry.get("chain_hash", computed_chain)
+                return {"id": evidence_id, "valid": valid,
                         "stored_hash": entry["sha256"], "computed_hash": computed}
+        return {"id": evidence_id, "error": "not_found"}
+
+    @classmethod
+    def notarize(cls, evidence_id: str) -> dict:
+        """Submit a single chain entry's hash for notarization (RFC-0022)."""
+        for entry in cls._chain:
+            if entry["id"] == evidence_id:
+                result = cls._submit_hash(entry.get("chain_hash", entry["sha256"]))
+                entry["notarized"] = result.get("status") == "submitted"
+                return {"id": evidence_id, **result, "sha256": entry["sha256"]}
         return {"id": evidence_id, "error": "not_found"}
 
     @classmethod
@@ -94,10 +119,19 @@ class EvidenceProvider(BaseProvider):
         count = 0
         for entry in cls._chain:
             if not entry.get("notarized"):
-                cls._submit_hash(entry["sha256"])
-                entry["notarized"] = True
-                count += 1
-        return {"notarized": count}
+                result = cls._submit_hash(entry.get("chain_hash", entry["sha256"]))
+                entry["notarized"] = result.get("status") == "submitted"
+                count += int(entry["notarized"])
+        return {"notarized": count, "requested": len(cls._chain)}
+
+    @classmethod
+    def get_chain(cls) -> dict:
+        return {"count": len(cls._chain), "chain": [
+            {"id": e.get("id"), "timestamp": e.get("timestamp"),
+             "label": e.get("label"), "sha256": e.get("sha256"),
+             "prev_hash": e.get("prev_hash"), "chain_hash": e.get("chain_hash"),
+             "notarized": e.get("notarized", False)} for e in cls._chain
+        ]}
 
     @classmethod
     def get_status(cls) -> dict[str, Any]:

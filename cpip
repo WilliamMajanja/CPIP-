@@ -19,7 +19,7 @@ die()   { err "$*"; exit 1; }
 # ── Temp File Handling with mktemp + trap cleanup (p.93-95) ──────────
 TMPDIR="${TMPDIR:-/tmp}"
 CPIP_TMP=""
-cleanup() { [ -n "$CPIP_TMP" ] && rm -rf "$CPIP_TMP"; }
+cleanup() { if [ -n "$CPIP_TMP" ]; then rm -rf "$CPIP_TMP"; fi; }
 trap cleanup EXIT
 mktmpdir() { CPIP_TMP=$(mktemp -d "${TMPDIR}/cpip.XXXXXX"); }
 
@@ -74,10 +74,25 @@ spinner() {
 
 CPIP_HOST="${CPIP_HOST:-localhost}"
 CPIP_PORT="${CPIP_PORT:-4180}"
+CPIP_SCHEME="${CPIP_SCHEME:-$( [ "${CPIP_SSL:-1}" = "0" ] && printf http || printf https )}"
+
+# The server creates a local self-signed certificate by default. Disable TLS
+# verification only for the default loopback endpoint; verify remote servers.
+curl() {
+    local arg
+    for arg in "$@"; do
+        if [[ "$CPIP_HOST" == "localhost" || "$CPIP_HOST" == "127.0.0.1" || "$CPIP_HOST" == "::1" ]] && \
+           [[ "$arg" == "$(base_url)"* ]]; then
+            command curl --insecure "$@"
+            return $?
+        fi
+    done
+    command curl "$@"
+}
 
 usage() {
 cat << 'HELP'
-CPIP v6.0-dev — Coffee Pot Internet Protocol CLI
+CPIP v7.0.0 — Coffee Pot Internet Protocol CLI
 RFC 2324 (HTCPCP) + RFC 7168 (HTCPCP-TEA) + Post-Quantum Crypto + Mesh + Covert + 418
 
 Usage:
@@ -149,8 +164,31 @@ Usage:
 
   # Post-Quantum Crypto
   cpip crypto pqc-status               Show PQC-SUCI identity status
-  cpip crypto pqc-keys                 List PQC keys
-  cpip crypto pq-mesh status        Post-Quantum mesh protocol status
+  cpip crypto pqc-keys                  Generate PQC identity keys
+  cpip crypto pq-mesh status            PQ-mesh configuration/capability status
+
+  # RFC provider extensions (hardware/services are optional)
+  cpip cell status|scan|history         Cellular scan and learned baseline
+  cpip sdr status|scan|spectrum         Software-defined radio status and scan
+  cpip radio hop status|sequence set    Spectrum hopping configuration
+  cpip assess status|explain|now        Threat scoring and assessment
+  cpip intel status|map|risk-score      Crowdsourced threat intelligence
+  cpip hardware status|test <pin>       GPIO capability and output test
+  cpip sensors status|log|calibrate     Ambient sensor status
+  cpip field status|radio-silence       Field operations controls
+  cpip tamper status|log|test           Tamper event chain
+  cpip deception status|honeypot        Deception mode status and toggle
+  cpip modem status|fw-check|cve-scan   Modem firmware audit
+  cpip ss7 status|log                   SS7/Diameter monitoring status
+  cpip ob-channel list|send             Out-of-band channel capability
+  cpip power status|log                 Power monitoring data
+  cpip em-sec scan|faraday-test         EM-security checks
+  cpip carrier status|register-webhook  Carrier integration status
+  cpip duress status|test|panic-delete  Duress controls
+  cpip evidence status|chain|verify     Forensic evidence chain
+  cpip circumvention status|mode         Circumvention mode status
+  cpip airgap status|qr-send             Air-gap encoding and channel status
+  cpip hygiene status|scan              Device hygiene checks
 
   # ITF (In The Face) — active network defense
   cpip itf status                       Full defense posture
@@ -208,10 +246,15 @@ Usage:
 Environment:
   CPIP_HOST   Server hostname (default: localhost)
   CPIP_PORT   Server port     (default: 4180)
+  CPIP_SCHEME http|https (default follows CPIP_SSL; local self-signed TLS is accepted)
 HELP
 }
 
-base_url() { echo "http://${CPIP_HOST}:${CPIP_PORT}"; }
+base_url() {
+    local host="$CPIP_HOST"
+    if [[ "$host" == *:* && "$host" != \[*\] ]]; then host="[$host]"; fi
+    echo "${CPIP_SCHEME}://${host}:${CPIP_PORT}"
+}
 
 cpip_hmac() {
     local method="$1" path="$2"

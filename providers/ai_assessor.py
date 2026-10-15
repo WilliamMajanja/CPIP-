@@ -23,7 +23,7 @@ AI_TTS = os.environ.get("CPIP_AI_TTS", "none")
 class AIAssessorProvider(BaseProvider):
     TYPE = ProviderType.INTELLIGENCE
     NAME = "ai_assessor"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _assessments: list[dict] = []
 
@@ -35,6 +35,11 @@ class AIAssessorProvider(BaseProvider):
 
     @classmethod
     def assess(cls, threat_events: list[dict], score: float, location: str = "") -> dict:
+        if not AI_ASSESSOR_ENABLED:
+            return {"error": "AI assessor is disabled (set CPIP_AI_ASSESSOR=1)"}
+        if not isinstance(threat_events, list):
+            return {"error": "events must be a list"}
+        score = min(1.0, max(0.0, float(score)))
         prompt = cls._build_prompt(threat_events, score, location)
         if AI_MODE == "local":
             result = cls._query_local(prompt)
@@ -74,7 +79,13 @@ class AIAssessorProvider(BaseProvider):
                 ["llama-cli", "-m", AI_LLAMA_MODEL, "-p", prompt, "--temp", "0.2", "-n", "512"],
                 capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
-                return json.loads(result.stdout)
+                output = result.stdout.strip()
+                try:
+                    return json.loads(output)
+                except json.JSONDecodeError:
+                    start, end = output.find("{"), output.rfind("}")
+                    if start >= 0 and end > start:
+                        return json.loads(output[start:end + 1])
         except Exception as e:
             logger.debug("Local LLM error: %s", e)
         return {"summary": "Local LLM unavailable", "severity": "unknown", "actions": []}
@@ -106,4 +117,11 @@ class AIAssessorProvider(BaseProvider):
             "available": cls.is_available(),
             "assessments_count": len(cls._assessments),
             "last_assessment": cls._assessments[-1] if cls._assessments else None,
+        }
+
+    @classmethod
+    def get_summary(cls) -> dict[str, Any]:
+        return {
+            "summary": cls._assessments[-1] if cls._assessments else None,
+            "assessment_count": len(cls._assessments),
         }

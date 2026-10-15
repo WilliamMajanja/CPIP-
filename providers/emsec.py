@@ -17,12 +17,13 @@ EMSEC_ENABLED = os.environ.get("CPIP_EMSEC", "0") == "1"
 EMSEC_FARADAY_INTERVAL = int(os.environ.get("CPIP_EMSEC_FARADAY_TEST_INTERVAL", "3600"))
 EMSEC_FARADAY_RX_GAIN = int(os.environ.get("CPIP_EMSEC_FARADAY_RX_GAIN", "10"))
 EMSEC_TIMING_JITTER = int(os.environ.get("CPIP_EMSEC_TIMING_JITTER_MS", "50"))
+EMSEC_ALLOW_TX = os.environ.get("CPIP_EMSEC_ALLOW_TX", "0") == "1"
 
 
 class EMSecProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "emsec"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _running = False
     _faraday_intact = True
@@ -44,6 +45,8 @@ class EMSecProvider(BaseProvider):
     def _faraday_check_loop(cls):
         while cls._running:
             time.sleep(EMSEC_FARADAY_INTERVAL)
+            if not EMSEC_ALLOW_TX:
+                continue
             try:
                 cls._test_faraday()
             except Exception as e:
@@ -51,6 +54,8 @@ class EMSecProvider(BaseProvider):
 
     @classmethod
     def _test_faraday(cls):
+        if not EMSEC_ALLOW_TX:
+            return {"error": "Faraday test transmit is disabled; set CPIP_EMSEC_ALLOW_TX=1 for an explicit test"}
         try:
             result = subprocess.run(
                 ["rpitx", "-m", "RF", "-f", "433.92e6", "-i", "/dev/urandom", "-l", "1"],
@@ -109,5 +114,6 @@ class EMSecProvider(BaseProvider):
             "running": cls._running,
             "faraday_intact": cls._faraday_intact,
             "timing_jitter_ms": EMSEC_TIMING_JITTER,
+            "transmit_enabled": EMSEC_ALLOW_TX,
             "alerts": cls._alerts[-5:] if cls._alerts else [],
         }

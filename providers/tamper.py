@@ -20,11 +20,14 @@ TAMPER_RTC_CHECK = os.environ.get("CPIP_TAMPER_RTC_CHECK", "1") == "1"
 class TamperProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "tamper"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _events: list[dict] = []
     _lock = threading.Lock()
-    _last_rtc_time = time.time()
+    _running = False
+    _thread: threading.Thread | None = None
+    _last_wall_time = time.time()
+    _last_monotonic = time.monotonic()
 
     @classmethod
     def is_available(cls) -> bool:
@@ -32,34 +35,59 @@ class TamperProvider(BaseProvider):
 
     @classmethod
     def start(cls):
-        if TAMPER_RTC_CHECK:
-            cls._last_rtc_time = time.time()
+        if cls._running:
+            return
+        cls._running = True
+        cls._last_wall_time = time.time()
+        cls._last_monotonic = time.monotonic()
+        cls._thread = threading.Thread(target=cls._monitor_loop, daemon=True)
+        cls._thread.start()
         logger.info("TamperProvider started")
 
     @classmethod
+    def stop(cls):
+        cls._running = False
+
+    @classmethod
+    def _monitor_loop(cls):
+        while cls._running:
+            try:
+                cls.check_rtc()
+            except Exception as exc:
+                logger.debug("Tamper monitor: %s", exc)
+            time.sleep(10)
+
+    @classmethod
     def report_event(cls, event_type: str, severity: str, message: str):
-        entry = {
-            "time": time.time(),
-            "type": event_type,
-            "severity": severity,
-            "message": message,
-            "hash": hashlib.sha256(f"{time.time()}:{event_type}:{message}".encode()).hexdigest()[:16],
-        }
         with cls._lock:
+            previous = cls._events[-1]["hash"] if cls._events else "0" * 64
+            entry = {
+                "time": time.time(),
+                "type": event_type,
+                "severity": severity,
+                "message": message,
+                "previous_hash": previous,
+            }
+            entry["hash"] = hashlib.sha256(
+                json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
             cls._events.append(entry)
-            if len(cls._events) > 100:
-                cls._events = cls._events[-100:]
         if severity in ("critical", "high"):
             logger.warning("TAMPER: %s — %s", event_type, message)
+        return entry
 
     @classmethod
     def check_rtc(cls) -> dict | None:
         if not TAMPER_RTC_CHECK:
             return None
         try:
-            now = time.time()
-            drift = now - cls._last_rtc_time
-            cls._last_rtc_time = now
+            now_wall = time.time()
+            now_mono = time.monotonic()
+            wall_delta = now_wall - cls._last_wall_time
+            mono_delta = now_mono - cls._last_monotonic
+            drift = wall_delta - mono_delta
+            cls._last_wall_time = now_wall
+            cls._last_monotonic = now_mono
             if drift < -60:
                 cls.report_event("rtc_rollback", "critical",
                                  f"RTC rolled back by {-drift:.0f}s (possible forensic tamper)")
@@ -79,6 +107,7 @@ class TamperProvider(BaseProvider):
                 "case_pin": TAMPER_CASE_PIN,
                 "usb_monitor": TAMPER_USB_MONITOR,
                 "rtc_check": TAMPER_RTC_CHECK,
+                "running": cls._running,
                 "events_total": len(cls._events),
                 "recent": cls._events[-10:] if cls._events else [],
             }

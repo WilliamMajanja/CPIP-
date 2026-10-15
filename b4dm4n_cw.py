@@ -37,7 +37,45 @@ try:
 except ImportError:
     HAS_RICH = False
 
-from inf1del_kyber import Inf1delKyber, _init_tables
+try:
+    from inf1del_kyber import Inf1delKyber, _init_tables
+except ImportError:
+    # Keep the raw KEM CLI usable without NumPy. The standard-library backend
+    # implements the same explicitly non-FIPS custom wire variant.
+    from pure_mlkem import keygen as _stdlib_keygen
+    from pure_mlkem import encaps as _stdlib_encaps
+    from pure_mlkem import decaps as _stdlib_decaps
+
+    class Inf1delKyber:
+        @classmethod
+        def keygen(cls, recipe="espresso", size=768):
+            return _stdlib_keygen(size=size, recipe=recipe)
+
+        @classmethod
+        def encaps(cls, public_key, recipe="espresso", size=768):
+            return _stdlib_encaps(public_key, size=size, recipe=recipe)
+
+        @classmethod
+        def decaps(cls, secret_key, ciphertext, recipe="espresso", size=768):
+            return _stdlib_decaps(secret_key, ciphertext, size=size, recipe=recipe)
+
+        @classmethod
+        def hybrid_keygen(cls, ecc_seed=None, recipe="espresso", size=768):
+            from server import DSA_ML_KEM
+            return DSA_ML_KEM(size).hybrid_keygen(ecc_seed)
+
+        @classmethod
+        def hybrid_encapsulate(cls, hybrid_public_key, recipe="espresso", size=768):
+            from server import DSA_ML_KEM
+            return DSA_ML_KEM(size).hybrid_encapsulate(hybrid_public_key)
+
+        @classmethod
+        def hybrid_decapsulate(cls, hybrid_secret_key, ciphertext, recipe="espresso", size=768):
+            from server import DSA_ML_KEM
+            return DSA_ML_KEM(size).hybrid_decapsulate(hybrid_secret_key, ciphertext)
+
+    def _init_tables():
+        return None
 
 _is_tty = sys.stdout.isatty()
 console = Console() if HAS_RICH else None
@@ -185,8 +223,8 @@ def _get_kem_registry():
 
     _KEM_REGISTRY = {
         "inf1del-kyber": {
-            "class": None, "name": "1nf1D3L Kyber (Custom ML-KEM-768)",
-            "level": "~192-bit classical", "pq": True, "custom": True,
+            "class": None, "name": "1nf1D3L custom KEM (default size 768)",
+            "level": "experimental; no security level claim", "pq": True, "custom": True,
             "pk": 1184, "sk": 2400, "ct": 1120, "ss": 32,
             "ops": Inf1delKyber,
         },
@@ -194,6 +232,9 @@ def _get_kem_registry():
 
     try:
         from providers.kem import PQC_KEM_REGISTRY, get_pqc_kem, list_pqc_kems
+        # Populate the lazy ML-KEM-512/768/1024 provider registry before
+        # enumerating algorithms (including the stdlib-only fallback).
+        list_pqc_kems()
         for alg_name in PQC_KEM_REGISTRY:
             try:
                 kem_provider = get_pqc_kem(alg_name)
@@ -243,6 +284,9 @@ def _resolve_kem(name):
         "inf1del": "inf1del-kyber", "kyber": "inf1del-kyber",
         "1nf1del": "inf1del-kyber", "custom": "inf1del-kyber",
         "mlkem512": "ml_kem_512", "mlkem768": "ml_kem_768", "mlkem1024": "ml_kem_1024",
+        "ml-kem-512": "ml_kem_512", "ml-kem-768": "ml_kem_768", "ml-kem-1024": "ml_kem_1024",
+        "1nf1d3l-kem-2048": "1nf1d3l_kem_2048", "1nf1d3l-kem-4096": "1nf1d3l_kem_4096",
+        "inf1del-kem-2048": "1nf1d3l_kem_2048", "inf1del-kem-4096": "1nf1d3l_kem_4096",
         "hqc128": "hqc_128", "hqc192": "hqc_192", "hqc256": "hqc_256",
         "mc3488": "mceliece348864", "mc4608": "mceliece460896",
         "mc6688": "mceliece6688128", "mc6960": "mceliece6960119",
@@ -921,15 +965,15 @@ def cmd_info(args):
 
     _out("""
   ╔═══════════════════════════════════════════════════════════════╗
-  ║            1nf1D3L Kyber — Crypto Parameters                ║
+  ║         1nf1D3L KEM — Crypto Parameters                     ║
   ╠═══════════════════════════════════════════════════════════════╣
-  ║  Variant:        ML-KEM-768 (Non-FIPS, 1nf1D3L mods)        ║
-  ║  Security:       NIST Level 3 (~192-bit classical)          ║
+  ║  Variant:        Custom KEM; default parameter size 768     ║
+  ║  Security:       Experimental; no level claim               ║
   ║  Lattice:        Module-LWE over R_q = Z_q[X]/(X^256 + 1)  ║
   ║  Modulus q:      3329 (NTT-friendly)                        ║
   ║  Dimension n:    256                                        ║
-  ║  Module rank k:  3                                          ║
-  ║  Noise:          eta1=3, eta2=3 (wider than FIPS)           ║
+  ║  Module rank k:  3 (default; custom 8/16 also supported)    ║
+  ║  Noise:          eta1=3, eta2=2 (custom parameters)         ║
   ║  Domain tag:     1NF1D3L-KYBER-V1                          ║
   ║                                                             ║
   ║  Sizes:                                                    ║
@@ -937,11 +981,10 @@ def cmd_info(args):
   ║    CT: 1120 bytes | SS: 32 bytes                           ║
   ║                                                             ║
   ║  Security Properties:                                       ║
-  ║    [x] IND-CCA2 (re-encapsulation check)                   ║
-  ║    [x] Post-quantum (CRQC-resistant)                       ║
-  ║    [x] Side-channel resistant (NTT twiddle perturbation)   ║
-  ║    [x] Domain separated (cross-protocol attack prevention)  ║
-  ║    [x] Recipe-bound (per-coffee domain separation)          ║
+  ║    [x] Re-encapsulation check (not a formal proof)          ║
+  ║    [ ] Independently analyzed / constant-time                ║
+  ║    [x] Domain separated                                     ║
+  ║    [x] Recipe-bound                                         ║
   ║    [-] NOT FIPS 203 compliant (by design)                   ║
   ╚═══════════════════════════════════════════════════════════════╝""", style="cyan")
 

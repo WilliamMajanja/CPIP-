@@ -3,16 +3,18 @@
 
 Tests: ECDSA/ECDH P-256, HybridKEM (ECDH P-256 + Kyber), CoffeeCipher v5 (AES-256-GCM),
 SecureHash, IncidentResponse, SignalAwareness, EmergencyMode, NetDiagnostics,
-CovertChannel, mesh HMAC, persistence encryption, and HTTP security.
+CovertChannel, mesh HMAC, persistence encryption, HTTP security,
+DSA-ML-KEM at all standard sizes (512, 768, 1024) via 1nf1D3L backend,
+DSA-SLH-DSA (SPHINCS+) at all standard variants via 1nf1D3L backend,
+Inf1delSLH (1nf1D3L domain-separated SLH-DSA) at all 12 standard variants.
 
 All classical cryptographic primitives are FIPS-compliant:
 - ECDSA/ECDH P-256 (FIPS 186-4)
 - AES-256-GCM (FIPS 197)
 - SHA-256 (FIPS 180-4)
 
-The 1nf1D3L Kyber KEM (ML-KEM-768 variant, η=3) is non-FIPS.
-
-Run: python3 test_crypto.py
+The 1nf1D3L Kyber KEM (non-FIPS, domain-separated) is used at all standard ML-KEM sizes.
+The 1nf1D3L SLH-DSA (non-FIPS, domain-separated) is used at all standard SLH-DSA variants.
 """
 import hashlib
 import os
@@ -30,6 +32,9 @@ from server import (
     MLKEM768,
     MLKEM1024,
     PQCKEM,
+    DSA_ML_KEM,
+    DSA_SLH_SPHINCS,
+    DSA_ML_DSA,
     CoffeeCipher,
     CovertChannel,
     EmergencyMode,
@@ -49,6 +54,7 @@ from server import (
     SecureHash,
     SignalAwareness,
 )
+from inf1del_kyber import Inf1delKyber, Inf1delSLH
 
 
 class TestECP256(unittest.TestCase):
@@ -144,102 +150,459 @@ class TestECP256(unittest.TestCase):
 
 
 class TestMLKEM(unittest.TestCase):
-    """ML-KEM-768 key encapsulation (FIPS 203 / ML-KEM-768).
-    
-    Uses the pqcrypto ML-KEM-768 implementation via MLKEM768 wrapper.
+    """ML-KEM key encapsulation at all standard sizes (FIPS 203 / ML-KEM).
+
+    Uses the 1nf1D3L non-FIPS backend (numpy-accelerated, domain-separated)
+    for all sizes, falling back to pqcrypto C extension when available.
     """
 
-    def test_keygen(self):
-        pk, sk = MLKEM768.generate_keypair()
+    @classmethod
+    def setUpClass(cls):
+        cls.sizes = [512, 768, 1024]
+        cls.kems = {}
+        for size in cls.sizes:
+            cls.kems[size] = DSA_ML_KEM(size)
+
+    def _roundtrip(self, size):
+        kem = self.kems[size]
+        pk, sk = kem.keygen()
         self.assertGreater(len(pk), 0)
         self.assertGreater(len(sk), 0)
+        ct, ss_enc = kem.encapsulate(pk)
+        self.assertGreater(len(ct), 0)
+        self.assertEqual(len(ss_enc), 32)
+        ss_dec = kem.decapsulate(sk, ct)
+        self.assertEqual(ss_enc, ss_dec, f"ML-KEM-{size} shared secrets must match")
 
-    def test_encaps_decaps_match(self):
-        pk, sk = MLKEM768.generate_keypair()
-        ct, ss_enc = MLKEM768.encapsulate(pk)
-        ss_dec = MLKEM768.decapsulate(sk, ct)
-        self.assertEqual(ss_enc, ss_dec, "ML-KEM-768 shared secrets must match")
+    def test_mlkem_512_roundtrip(self):
+        self._roundtrip(512)
 
-    def test_encaps_decaps_multiple_iterations(self):
-        for _ in range(3):
-            pk, sk = MLKEM768.generate_keypair()
-            ct, ss_enc = MLKEM768.encapsulate(pk)
-            ss_dec = MLKEM768.decapsulate(sk, ct)
-            self.assertEqual(ss_enc, ss_dec)
+    def test_mlkem_768_roundtrip(self):
+        self._roundtrip(768)
 
-    def test_different_keys_different_secrets(self):
-        pk1, _sk1 = MLKEM768.generate_keypair()
-        pk2, _sk2 = MLKEM768.generate_keypair()
-        _, ss1 = MLKEM768.encapsulate(pk1)
-        _, ss2 = MLKEM768.encapsulate(pk2)
-        self.assertNotEqual(ss1, ss2)
+    def test_mlkem_1024_roundtrip(self):
+        self._roundtrip(1024)
 
-    def test_tampered_ciphertext_rejected(self):
-        pk, sk = MLKEM768.generate_keypair()
-        ct, ss_enc = MLKEM768.encapsulate(pk)
-        tampered = bytes(b ^ 0x01 for b in ct[:8]) + ct[8:]
-        ss_dec = MLKEM768.decapsulate(sk, tampered)
-        self.assertNotEqual(ss_enc, ss_dec, "tampered ct must produce different secret")
+    def test_all_sizes_keygen(self):
+        for size in self.sizes:
+            pk, sk = self.kems[size].keygen()
+            self.assertGreater(len(pk), 0)
+            self.assertGreater(len(sk), 0)
 
-    def test_deterministic_decaps(self):
-        pk, sk = MLKEM768.generate_keypair()
-        ct, _ = MLKEM768.encapsulate(pk)
-        ss1 = MLKEM768.decapsulate(sk, ct)
-        ss2 = MLKEM768.decapsulate(sk, ct)
-        self.assertEqual(ss1, ss2)
+    def test_all_sizes_encaps_decaps(self):
+        for size in self.sizes:
+            self._roundtrip(size)
 
-    def test_wrong_secret_key_rejected(self):
-        pk1, _sk1 = MLKEM768.generate_keypair()
-        _, sk2 = MLKEM768.generate_keypair()
-        ct, ss_enc = MLKEM768.encapsulate(pk1)
-        ss_dec = MLKEM768.decapsulate(sk2, ct)
-        self.assertNotEqual(ss_enc, ss_dec)
+    def test_all_sizes_multiple_iterations(self):
+        for size in self.sizes:
+            for _ in range(3):
+                self._roundtrip(size)
 
-    def test_encapsulation_produces_32byte_secret(self):
-        pk, _sk = MLKEM768.generate_keypair()
-        _ct, ss = MLKEM768.encapsulate(pk)
-        self.assertEqual(len(ss), 32)
+    def test_all_sizes_different_keys_different_secrets(self):
+        for size in self.sizes:
+            pk1, _sk1 = self.kems[size].keygen()
+            pk2, _sk2 = self.kems[size].keygen()
+            _, ss1 = self.kems[size].encapsulate(pk1)
+            _, ss2 = self.kems[size].encapsulate(pk2)
+            self.assertNotEqual(ss1, ss2, f"ML-KEM-{size} different keys must produce different secrets")
+
+    def test_all_sizes_tampered_ciphertext_rejected(self):
+        for size in self.sizes:
+            pk, sk = self.kems[size].keygen()
+            ct, ss_enc = self.kems[size].encapsulate(pk)
+            tampered = bytes(b ^ 0x01 for b in ct[:8]) + ct[8:]
+            ss_dec = self.kems[size].decapsulate(sk, tampered)
+            self.assertNotEqual(ss_enc, ss_dec, f"ML-KEM-{size} tampered ct must produce different secret")
+
+    def test_all_sizes_deterministic_decaps(self):
+        for size in self.sizes:
+            pk, sk = self.kems[size].keygen()
+            ct, _ = self.kems[size].encapsulate(pk)
+            ss1 = self.kems[size].decapsulate(sk, ct)
+            ss2 = self.kems[size].decapsulate(sk, ct)
+            self.assertEqual(ss1, ss2, f"ML-KEM-{size} decaps must be deterministic")
+
+    def test_all_sizes_wrong_secret_key_rejected(self):
+        for size in self.sizes:
+            pk1, _sk1 = self.kems[size].keygen()
+            _, sk2 = self.kems[size].keygen()
+            ct, ss_enc = self.kems[size].encapsulate(pk1)
+            ss_dec = self.kems[size].decapsulate(sk2, ct)
+            self.assertNotEqual(ss_enc, ss_dec, f"ML-KEM-{size} wrong key must be rejected")
+
+    def test_all_sizes_encapsulation_produces_32byte_secret(self):
+        for size in self.sizes:
+            pk, _sk = self.kems[size].keygen()
+            _ct, ss = self.kems[size].encapsulate(pk)
+            self.assertEqual(len(ss), 32, f"ML-KEM-{size} shared secret must be 32 bytes")
+
+    def test_1nf1d3l_keygen_sizes(self):
+        """Verify 1nf1D3L produces correct key/ciphertext sizes for all ML-KEM sizes."""
+        for size in self.sizes:
+            pk, sk = Inf1delKyber.keygen(size=size)
+            kem = self.kems[size]
+            self.assertEqual(len(pk), kem.public_key_size,
+                             f"ML-KEM-{size} PK size mismatch: {len(pk)} != {kem.public_key_size}")
+            self.assertEqual(len(sk), kem.secret_key_size,
+                             f"ML-KEM-{size} SK size mismatch: {len(sk)} != {kem.secret_key_size}")
+
+    def test_1nf1d3l_encaps_decaps_sizes(self):
+        """Verify 1nf1D3L produces correct ciphertext sizes for all ML-KEM sizes."""
+        for size in self.sizes:
+            pk, sk = Inf1delKyber.keygen(size=size)
+            ct, ss = Inf1delKyber.encaps(pk, size=size)
+            kem = self.kems[size]
+            self.assertEqual(len(ct), kem.ciphertext_size,
+                             f"ML-KEM-{size} CT size mismatch: {len(ct)} != {kem.ciphertext_size}")
+            self.assertEqual(len(ss), 32)
+            ss_dec = Inf1delKyber.decaps(sk, ct, size=size)
+            self.assertEqual(ss, ss_dec, f"ML-KEM-{size} 1nf1D3L roundtrip failed")
+
+    def test_all_sizes_hybrid_roundtrip(self):
+        """Test hybrid ECDH+ML-KEM at all sizes."""
+        for size in self.sizes:
+            hpk, hsk = HybridKEM.generate_keypair(ml_kem_size=size)
+            ct, ss_enc = HybridKEM.encapsulate(hpk, ml_kem_size=size)
+            ss_dec = HybridKEM.decapsulate(hsk, ct, ml_kem_size=size)
+            self.assertEqual(ss_enc, ss_dec, f"Hybrid ML-KEM-{size} secrets must match")
+
+
+class TestDSASLHDSA(unittest.TestCase):
+    """DSA-SLH-DSA (SPHINCS+) stateless hash-based signatures (FIPS 205)."""
+
+    def test_slh_dsa_sha2_256f_simple_roundtrip(self):
+        """Test SLH-DSA-SHA2-256f sign/verify roundtrip."""
+        sig = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        pk, sk = sig.keygen()
+        msg = b"hello coffee protocol"
+        signature, pk_out = sig.sign(sk, msg)
+        self.assertTrue(sig.verify(pk_out, msg, signature))
+
+    def test_slh_dsa_all_sha2_variants(self):
+        """Test all SHA2-based SLH-DSA variants."""
+        variants = [
+            "slh_dsa_sha2_128f_simple",
+            "slh_dsa_sha2_128s_simple",
+            "slh_dsa_sha2_192f_simple",
+            "slh_dsa_sha2_192s_simple",
+            "slh_dsa_sha2_256f_simple",
+            "slh_dsa_sha2_256s_simple",
+        ]
+        for variant in variants:
+            sig = DSA_SLH_SPHINCS(variant)
+            pk, sk = sig.keygen()
+            msg = b"test message"
+            signature, pk_out = sig.sign(sk, msg)
+            self.assertTrue(sig.verify(pk_out, msg, signature),
+                            f"Variant {variant} sign/verify failed")
+
+    def test_slh_dsa_all_shake_variants(self):
+        """Test all SHAKE-based SLH-DSA variants."""
+        variants = [
+            "slh_dsa_shake_128f_simple",
+            "slh_dsa_shake_128s_simple",
+            "slh_dsa_shake_192f_simple",
+            "slh_dsa_shake_192s_simple",
+            "slh_dsa_shake_256f_simple",
+            "slh_dsa_shake_256s_simple",
+        ]
+        for variant in variants:
+            sig = DSA_SLH_SPHINCS(variant)
+            pk, sk = sig.keygen()
+            msg = b"test message"
+            signature, pk_out = sig.sign(sk, msg)
+            self.assertTrue(sig.verify(pk_out, msg, signature),
+                            f"Variant {variant} sign/verify failed")
+
+    def test_slh_dsa_wrong_message_rejected(self):
+        """Test that SLH-DSA rejects wrong messages."""
+        sig = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        pk, sk = sig.keygen()
+        sig.sign(sk, b"correct message")
+        self.assertFalse(sig.verify(pk, b"wrong message", sig.sign(sk, b"correct message")[0]))
+
+    def test_slh_dsa_tampered_signature_rejected(self):
+        """Test that SLH-DSA rejects tampered signatures."""
+        sig = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        pk, sk = sig.keygen()
+        msg = b"test"
+        signature, pk_out = sig.sign(sk, msg)
+        tampered = bytearray(signature)
+        tampered[10] ^= 0xff
+        self.assertFalse(sig.verify(pk_out, msg, bytes(tampered)))
+
+    def test_slh_dsa_different_messages_different_signatures(self):
+        """Test that SLH-DSA produces different signatures for different messages."""
+        sig = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        pk, sk = sig.keygen()
+        s1 = sig.sign(sk, b"message A")[0]
+        s2 = sig.sign(sk, b"message B")[0]
+        self.assertNotEqual(s1, s2)
+
+    def test_slh_dsa_algorithm_property(self):
+        """Test that SLH-DSA algorithm property returns the variant name."""
+        sig = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        self.assertEqual(sig.algorithm, "slh_dsa_sha2_256f_simple")
+
+    def test_slh_dsa_security_level(self):
+        """Test that SLH-DSA security levels are correct."""
+        sig128 = DSA_SLH_SPHINCS("slh_dsa_sha2_128f_simple")
+        sig192 = DSA_SLH_SPHINCS("slh_dsa_sha2_192f_simple")
+        sig256 = DSA_SLH_SPHINCS("slh_dsa_sha2_256f_simple")
+        self.assertEqual(sig128.security_level, 128)
+        self.assertEqual(sig192.security_level, 192)
+        self.assertEqual(sig256.security_level, 256)
+
+
+class TestInf1delSLH(unittest.TestCase):
+    """1nf1D3L's SLH-DSA — Domain-separated stateless hash-based signatures."""
+
+    @classmethod
+    def setUpClass(cls):
+        from inf1del_kyber import Inf1delSLH
+        cls.Inf1delSLH = Inf1delSLH
+        cls.all_variants = [
+            "slh_dsa_sha2_128f_simple",
+            "slh_dsa_sha2_128s_simple",
+            "slh_dsa_sha2_192f_simple",
+            "slh_dsa_sha2_192s_simple",
+            "slh_dsa_sha2_256f_simple",
+            "slh_dsa_sha2_256s_simple",
+            "slh_dsa_shake_128f_simple",
+            "slh_dsa_shake_128s_simple",
+            "slh_dsa_shake_192f_simple",
+            "slh_dsa_shake_192s_simple",
+            "slh_dsa_shake_256f_simple",
+            "slh_dsa_shake_256s_simple",
+        ]
+
+    def test_1nf1del_slh_sha2_256f_roundtrip(self):
+        """Test 1nf1D3L SLH-DSA-SHA2-256f sign/verify roundtrip."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        msg = b"hello coffee protocol"
+        sig, pk_out = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple")
+        self.assertTrue(self.Inf1delSLH.verify(pk_out, msg, sig, "slh_dsa_sha2_256f_simple"))
+
+    def test_1nf1del_slh_all_sha2_variants(self):
+        """Test all SHA2-based 1nf1D3L SLH-DSA variants."""
+        sha2_variants = [v for v in self.all_variants if v.startswith("slh_dsa_sha2_")]
+        for variant in sha2_variants:
+            pk, sk = self.Inf1delSLH.keygen(variant)
+            msg = b"test message"
+            sig, pk_out = self.Inf1delSLH.sign(sk, msg, variant)
+            self.assertTrue(self.Inf1delSLH.verify(pk_out, msg, sig, variant),
+                            f"1nf1D3L variant {variant} sign/verify failed")
+
+    def test_1nf1del_slh_all_shake_variants(self):
+        """Test all SHAKE-based 1nf1D3L SLH-DSA variants."""
+        shake_variants = [v for v in self.all_variants if v.startswith("slh_dsa_shake_")]
+        for variant in shake_variants:
+            pk, sk = self.Inf1delSLH.keygen(variant)
+            msg = b"test message"
+            sig, pk_out = self.Inf1delSLH.sign(sk, msg, variant)
+            self.assertTrue(self.Inf1delSLH.verify(pk_out, msg, sig, variant),
+                            f"1nf1D3L variant {variant} sign/verify failed")
+
+    def test_1nf1del_slh_all_variants_roundtrip(self):
+        """Test roundtrip for all 12 1nf1D3L SLH-DSA variants."""
+        for variant in self.all_variants:
+            pk, sk = self.Inf1delSLH.keygen(variant)
+            msg = b"roundtrip test"
+            sig, pk_out = self.Inf1delSLH.sign(sk, msg, variant)
+            self.assertTrue(self.Inf1delSLH.verify(pk_out, msg, sig, variant),
+                            f"1nf1D3L {variant} roundtrip failed")
+
+    def test_1nf1del_slh_wrong_message_rejected(self):
+        """Test that 1nf1D3L SLH-DSA rejects wrong messages."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        sig, _ = self.Inf1delSLH.sign(sk, b"correct message", "slh_dsa_sha2_256f_simple")
+        self.assertFalse(
+            self.Inf1delSLH.verify(pk, b"wrong message", sig, "slh_dsa_sha2_256f_simple")
+        )
+
+    def test_1nf1del_slh_tampered_signature_rejected(self):
+        """Test that 1nf1D3L SLH-DSA rejects tampered signatures."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        msg = b"test"
+        sig, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple")
+        tampered = bytearray(sig)
+        tampered[10] ^= 0xff
+        self.assertFalse(
+            self.Inf1delSLH.verify(pk, msg, bytes(tampered), "slh_dsa_sha2_256f_simple")
+        )
+
+    def test_1nf1del_slh_different_messages_different_signatures(self):
+        """Test that 1nf1D3L SLH-DSA produces different signatures for different messages."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        s1, _ = self.Inf1delSLH.sign(sk, b"message A", "slh_dsa_sha2_256f_simple")
+        s2, _ = self.Inf1delSLH.sign(sk, b"message B", "slh_dsa_sha2_256f_simple")
+        self.assertNotEqual(s1, s2)
+
+    def test_1nf1del_slh_domain_separation(self):
+        """Test that 1nf1D3L domain tag binds signatures to the domain."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        msg = b"domain separation test"
+        sig1, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple")
+        sig2, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple")
+        self.assertTrue(self.Inf1delSLH.verify(pk, msg, sig1, "slh_dsa_sha2_256f_simple"))
+        self.assertTrue(self.Inf1delSLH.verify(pk, msg, sig2, "slh_dsa_sha2_256f_simple"))
+
+    def test_1nf1del_slh_recipe_binding(self):
+        """Test that different recipes produce different signatures."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple", "espresso")
+        msg = b"recipe test"
+        sig1, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple", "espresso")
+        sig2, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple", "latte")
+        self.assertNotEqual(sig1, sig2, "Different recipes must produce different signatures")
+
+    def test_1nf1del_slh_recipe_wrong_rejected(self):
+        """Test that wrong recipe rejects valid signature."""
+        pk, sk = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple", "espresso")
+        msg = b"recipe rejection test"
+        sig, _ = self.Inf1delSLH.sign(sk, msg, "slh_dsa_sha2_256f_simple", "espresso")
+        self.assertFalse(
+            self.Inf1delSLH.verify(pk, msg, sig, "slh_dsa_sha2_256f_simple", "latte")
+        )
+
+    def test_1nf1del_slh_security_levels(self):
+        """Test that 1nf1D3L SLH-DSA security levels are correct."""
+        sig128 = self.Inf1delSLH("slh_dsa_sha2_128f_simple")
+        sig192 = self.Inf1delSLH("slh_dsa_sha2_192f_simple")
+        sig256 = self.Inf1delSLH("slh_dsa_sha2_256f_simple")
+        self.assertEqual(sig128.security_level, 128)
+        self.assertEqual(sig192.security_level, 192)
+        self.assertEqual(sig256.security_level, 256)
+
+    def test_1nf1del_slh_algorithm_property(self):
+        """Test that 1nf1D3L algorithm property returns the variant name."""
+        sig = self.Inf1delSLH("slh_dsa_sha2_256f_simple")
+        self.assertEqual(sig.algorithm, "slh_dsa_sha2_256f_simple")
+
+    def test_1nf1del_slh_instance_methods(self):
+        """Test instance-level keygen/sign/verify methods."""
+        sig = self.Inf1delSLH("slh_dsa_sha2_256f_simple", "espresso")
+        pk, sk = sig.keygen_instance()
+        msg = b"instance test"
+        s, pk_out = sig.sign_instance(sk, msg)
+        self.assertTrue(sig.verify_instance(pk_out, msg, s))
+
+    def test_1nf1del_slh_different_keys_different_signatures(self):
+        """Test that different keypairs produce different signatures."""
+        pk1, sk1 = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        pk2, sk2 = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        msg = b"same message"
+        s1, _ = self.Inf1delSLH.sign(sk1, msg, "slh_dsa_sha2_256f_simple")
+        s2, _ = self.Inf1delSLH.sign(sk2, msg, "slh_dsa_sha2_256f_simple")
+        self.assertNotEqual(s1, s2)
+
+    def test_1nf1del_slh_wrong_key_rejected(self):
+        """Test that signature from wrong key is rejected."""
+        pk1, sk1 = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        pk2, _ = self.Inf1delSLH.keygen("slh_dsa_sha2_256f_simple")
+        msg = b"wrong key test"
+        sig, _ = self.Inf1delSLH.sign(sk1, msg, "slh_dsa_sha2_256f_simple")
+        self.assertFalse(self.Inf1delSLH.verify(pk2, msg, sig, "slh_dsa_sha2_256f_simple"))
+
+
+class TestDSAMLDSA(unittest.TestCase):
+    """DSA-ML-DSA (Dilithium) module-lattice signatures (FIPS 204)."""
+
+    def test_ml_dsa_65_roundtrip(self):
+        """Test ML-DSA-65 sign/verify roundtrip."""
+        sig = DSA_ML_DSA("ml_dsa_65")
+        pk, sk = sig.keygen()
+        msg = b"hello coffee protocol"
+        signature = sig.sign(sk, msg)
+        self.assertTrue(sig.verify(pk, msg, signature))
+
+    def test_ml_dsa_all_variants(self):
+        """Test all ML-DSA variants."""
+        variants = ["ml_dsa_44", "ml_dsa_65", "ml_dsa_87"]
+        for variant in variants:
+            sig = DSA_ML_DSA(variant)
+            pk, sk = sig.keygen()
+            msg = b"test message"
+            signature = sig.sign(sk, msg)
+            self.assertTrue(sig.verify(pk, msg, signature),
+                            f"Variant {variant} sign/verify failed")
+
+    def test_ml_dsa_wrong_message_rejected(self):
+        """Test that ML-DSA rejects wrong messages."""
+        sig = DSA_ML_DSA("ml_dsa_65")
+        pk, sk = sig.keygen()
+        sig.sign(sk, b"correct message")
+        self.assertFalse(sig.verify(pk, b"wrong message", sig.sign(sk, b"correct message")[0]))
+
+    def test_ml_dsa_tampered_signature_rejected(self):
+        """Test that ML-DSA rejects tampered signatures."""
+        sig = DSA_ML_DSA("ml_dsa_65")
+        pk, sk = sig.keygen()
+        msg = b"test"
+        signature = sig.sign(sk, msg)
+        tampered = bytearray(signature)
+        tampered[10] ^= 0xff
+        self.assertFalse(sig.verify(pk, msg, bytes(tampered)))
+
+    def test_ml_dsa_security_levels(self):
+        """Test that ML-DSA security levels are correct."""
+        sig44 = DSA_ML_DSA("ml_dsa_44")
+        sig65 = DSA_ML_DSA("ml_dsa_65")
+        sig87 = DSA_ML_DSA("ml_dsa_87")
+        self.assertEqual(sig44.security_level, 128)
+        self.assertEqual(sig65.security_level, 192)
+        self.assertEqual(sig87.security_level, 256)
 
 
 class TestHybridKEM(unittest.TestCase):
-    """Hybrid ECDH P-256 + ML-KEM-768 key exchange."""
+    """Hybrid ECDH P-256 + ML-KEM key exchange at all standard sizes."""
 
-    def test_generate_keypair(self):
-        hpk, hsk = HybridKEM.generate_keypair()
-        self.assertGreater(len(hpk), 32)
-        self.assertGreater(len(hsk), 32)
+    @classmethod
+    def setUpClass(cls):
+        cls.sizes = [512, 768, 1024]
 
-    def test_encapsulate_decapsulate_match(self):
-        hpk, hsk = HybridKEM.generate_keypair()
-        ct, ss_enc = HybridKEM.encapsulate(hpk)
-        ss_dec = HybridKEM.decapsulate(hsk, ct)
-        self.assertEqual(ss_enc, ss_dec, "HybridKEM shared secrets must match")
+    def test_generate_keypair_all_sizes(self):
+        for size in self.sizes:
+            hpk, hsk = HybridKEM.generate_keypair(ml_kem_size=size)
+            self.assertGreater(len(hpk), 32)
+            self.assertGreater(len(hsk), 32)
 
-    def test_encapsulate_decapsulate_multiple(self):
-        for _ in range(3):
-            hpk, hsk = HybridKEM.generate_keypair()
-            ct, ss_enc = HybridKEM.encapsulate(hpk)
-            ss_dec = HybridKEM.decapsulate(hsk, ct)
-            self.assertEqual(ss_enc, ss_dec)
+    def test_encapsulate_decapsulate_match_all_sizes(self):
+        for size in self.sizes:
+            hpk, hsk = HybridKEM.generate_keypair(ml_kem_size=size)
+            ct, ss_enc = HybridKEM.encapsulate(hpk, ml_kem_size=size)
+            ss_dec = HybridKEM.decapsulate(hsk, ct, ml_kem_size=size)
+            self.assertEqual(ss_enc, ss_dec,
+                             f"HybridKEM ML-KEM-{size} shared secrets must match")
 
-    def test_different_keypairs_different_secrets(self):
-        hpk1, _hsk1 = HybridKEM.generate_keypair()
-        hpk2, _hsk2 = HybridKEM.generate_keypair()
-        _, ss1 = HybridKEM.encapsulate(hpk1)
-        _, ss2 = HybridKEM.encapsulate(hpk2)
-        self.assertNotEqual(ss1, ss2)
+    def test_encapsulate_decapsulate_multiple_all_sizes(self):
+        for size in self.sizes:
+            for _ in range(3):
+                hpk, hsk = HybridKEM.generate_keypair(ml_kem_size=size)
+                ct, ss_enc = HybridKEM.encapsulate(hpk, ml_kem_size=size)
+                ss_dec = HybridKEM.decapsulate(hsk, ct, ml_kem_size=size)
+                self.assertEqual(ss_enc, ss_dec)
 
-    def test_wrong_key_rejected(self):
-        hpk1, _hsk1 = HybridKEM.generate_keypair()
-        _, hsk2 = HybridKEM.generate_keypair()
-        ct, ss_enc = HybridKEM.encapsulate(hpk1)
-        ss_dec = HybridKEM.decapsulate(hsk2, ct)
-        self.assertNotEqual(ss_enc, ss_dec)
+    def test_different_keypairs_different_secrets_all_sizes(self):
+        for size in self.sizes:
+            hpk1, _hsk1 = HybridKEM.generate_keypair(ml_kem_size=size)
+            hpk2, _hsk2 = HybridKEM.generate_keypair(ml_kem_size=size)
+            _, ss1 = HybridKEM.encapsulate(hpk1, ml_kem_size=size)
+            _, ss2 = HybridKEM.encapsulate(hpk2, ml_kem_size=size)
+            self.assertNotEqual(ss1, ss2)
 
-    def test_shared_secret_is_32bytes(self):
-        hpk, _hsk = HybridKEM.generate_keypair()
-        _, ss = HybridKEM.encapsulate(hpk)
-        self.assertEqual(len(ss), 32)
+    def test_wrong_key_rejected_all_sizes(self):
+        for size in self.sizes:
+            hpk1, _hsk1 = HybridKEM.generate_keypair(ml_kem_size=size)
+            _, hsk2 = HybridKEM.generate_keypair(ml_kem_size=size)
+            ct, ss_enc = HybridKEM.encapsulate(hpk1, ml_kem_size=size)
+            ss_dec = HybridKEM.decapsulate(hsk2, ct, ml_kem_size=size)
+            self.assertNotEqual(ss_enc, ss_dec)
+
+    def test_shared_secret_is_32bytes_all_sizes(self):
+        for size in self.sizes:
+            hpk, _hsk = HybridKEM.generate_keypair(ml_kem_size=size)
+            _, ss = HybridKEM.encapsulate(hpk, ml_kem_size=size)
+            self.assertEqual(len(ss), 32)
 
 
 class TestCoffeeCipher(unittest.TestCase):

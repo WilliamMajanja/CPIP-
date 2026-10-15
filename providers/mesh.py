@@ -7,7 +7,8 @@ from typing import Any, Callable
 from providers.base import BaseProvider, ProviderType
 from providers.registry import ProviderRegistry
 
-PQ_MESH_ENABLED = os.environ.get("CPIP_PQ_MESH", "1") == "1"
+PQ_MESH_MODE = os.environ.get("CPIP_PQ_MESH", "0").strip().lower()
+PQ_MESH_ENABLED = PQ_MESH_MODE in ("1", "true", "yes", "enforce")
 PQ_MESH_KEM = os.environ.get("CPIP_PQ_MESH_KEM", "ml_kem_768")
 PQ_MESH_SIG = os.environ.get("CPIP_PQ_MESH_SIG", "dilithium2")
 
@@ -16,14 +17,25 @@ class PQMesh:
     """Post-quantum mesh protocol using hybrid KEM + signing."""
 
     NAME = "pq_mesh"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
     ENABLED = PQ_MESH_ENABLED
+    ENFORCE = PQ_MESH_MODE == "enforce"
     KEM_ALGORITHM = PQ_MESH_KEM
     SIG_ALGORITHM = PQ_MESH_SIG
 
     @classmethod
     def is_available(cls) -> bool:
         return cls.ENABLED
+
+    @classmethod
+    def set_enforce(cls, enabled: bool) -> dict:
+        """Do not claim mesh-wide enforcement until transport negotiation exists."""
+        if enabled:
+            return {"error": "PQ mesh enforcement is not implemented in the active mesh transport",
+                    "enforce": False, "supported": False}
+        cls.ENFORCE = False
+        return {"status": "pq_mesh_enforcement_disabled", "enforce": False,
+                "supported": False}
 
     @classmethod
     def get_kem(cls) -> str:
@@ -37,9 +49,13 @@ class PQMesh:
     def get_status(cls) -> dict[str, Any]:
         return {
             "enabled": cls.ENABLED,
+            "enforce": cls.ENFORCE,
             "kem": cls.KEM_ALGORITHM,
             "sig": cls.SIG_ALGORITHM,
-            "pq_mesh_active": cls.ENABLED,
+            "pq_mesh_active": False,
+            "configured": cls.ENABLED,
+            "enforcement_supported": False,
+            "mode": PQ_MESH_MODE,
         }
 
 

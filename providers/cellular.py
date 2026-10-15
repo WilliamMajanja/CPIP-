@@ -19,7 +19,7 @@ CELL_TA_ANALYSIS = os.environ.get("CPIP_CELL_TA_ANALYSIS", "1") == "1"
 CELL_GPS_CORRELATE = os.environ.get("CPIP_CELL_GPS_CORRELATE", "1") == "1"
 CELL_SIGNAL_DELTA = int(os.environ.get("CPIP_CELL_SIGNAL_DELTA", "25"))
 CELL_BASELINE_DB = os.environ.get("CPIP_CELL_BASELINE_DB", "/tmp/cpip_cell_baseline.db")
-CELL_SCAN_INTERVAL = int(os.environ.get("CPIP_CELL_SCAN_INTERVAL", "30"))
+CELL_SCAN_INTERVAL = max(1, int(os.environ.get("CPIP_CELL_SCAN_INTERVAL", "30")))
 
 # 2G RAT names that indicate no encryption (GSM, GPRS, EDGE)
 RAT_2G_NAMES = {"GSM", "GSM_COMPACT", "GPRS", "EDGE", "1XRTT", "EVDO0", "EVDOA", "EVDOB"}
@@ -33,11 +33,19 @@ RAT_ORDER = {"5G_NR": 5, "5G_NSA": 5, "5G": 5, "LTE": 4, "LTE_CA": 4, "LTE_ADVAN
              "GSM": 2, "GSM_COMPACT": 2, "GPRS": 2, "EDGE": 2,
              "1XRTT": 2, "EVDO0": 2, "EVDOA": 2, "EVDOB": 2}
 
+# Threat severity levels (RFC-0001 / RFC-0006)
+THREAT_NONE = 0
+THREAT_LOW = 1
+THREAT_MEDIUM = 2
+THREAT_HIGH = 3
+THREAT_CRITICAL = 4
+THREAT_LABELS = ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
 
 class CellularProvider(BaseProvider):
     TYPE = ProviderType.CELLULAR
     NAME = "cellular"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _instance: ClassVar[CellularProvider | None] = None
     _lock = threading.Lock()
@@ -57,10 +65,6 @@ class CellularProvider(BaseProvider):
     _mm = None
     _paging_count = 0
     _stk_commands: list[dict[str, Any]] = []
-    _stealth_mode = False
-    _mm = None
-    _paging_count = 0
-    _stk_commands: list[dict[str, Any]] = []
 
     @classmethod
     def is_available(cls) -> bool:
@@ -70,7 +74,8 @@ class CellularProvider(BaseProvider):
             obj = bus.get("org.freedesktop.ModemManager1")
             return bool(obj.GetManagedObjects())
         except Exception:
-            return False
+            import shutil
+            return shutil.which("mmcli") is not None
 
     @classmethod
     def _get_mm(cls):
@@ -181,6 +186,10 @@ class CellularProvider(BaseProvider):
 
             cls._read_gps(modems_iface)
             cls._update_baseline()
+            try:
+                cls._collect_neighbors()
+            except Exception as e:
+                logger.debug("Neighbor collection error: %s", e)
             break
 
     @classmethod
@@ -286,6 +295,116 @@ class CellularProvider(BaseProvider):
         return {}
 
     @classmethod
+    def _collect_neighbors(cls) -> None:
+        """Query ModemManager CellInfo for serving + neighbor cells and run
+        ghost-tower / neighbor-consistency checks (RFC-0001)."""
+        if not cls._serving.get("cell_id"):
+            return
+        neighbors: list[dict[str, Any]] = []
+        try:
+            mm = cls._get_mm()
+            modems = mm.GetManagedObjects()
+            for path, interfaces in modems.items():
+                cell_info = interfaces.get("org.freedesktop.ModemManager1.Modem.Modem3gpp.CellInfo")
+                if not cell_info:
+                    continue
+                lst = cell_info.get("List", []) if isinstance(cell_info, dict) else []
+                if isinstance(lst, list):
+                    for entry in lst:
+                        if not isinstance(entry, dict):
+                            continue
+                        n = {"mcc": entry.get("Mcc", ""), "mnc": entry.get("Mnc", "")}
+                        rat = entry.get("Type", "")
+                        if rat == "lte":
+                            lte = entry.get("Lte", {}) or {}
+                            n.update({
+                                "rat": "LTE", "cell_id": lte.get("Ci", ""),
+                                "lac": lte.get("Tac", ""), "tac": lte.get("Tac", ""),
+                                "rsrp": lte.get("Rsrp"), "rsrq": lte.get("Rsrq"),
+                                "timing_advance": lte.get("TimingAdvance", -1),
+                            })
+                        elif rat == "nr5g":
+                            nr = entry.get("Nr5g", {}) or {}
+                            n.update({
+                                "rat": "5G_NR", "cell_id": nr.get("Ci", ""),
+                                "tac": nr.get("Tac", ""),
+                                "ss_rsrp": nr.get("Rsrp"), "ss_rsrq": nr.get("Rsrq"),
+                            })
+                        elif rat == "gsm":
+                            gsm = entry.get("Gsm", {}) or {}
+                            n.update({
+                                "rat": "GSM", "cell_id": gsm.get("Ci", ""),
+                                "lac": gsm.get("Lac", ""),
+                            })
+                        elif rat == "umts":
+                            utran = entry.get("Utran", {}) or {}
+                            n.update({
+                                "rat": "UMTS", "cell_id": utran.get("Ci", ""),
+                                "lac": utran.get("Lac", ""),
+                            })
+                        if n.get("cell_id") is not None and n.get("cell_id") != "":
+                            neighbors.append(n)
+                break
+        except Exception as e:
+            logger.debug("CellInfo error: %s", e)
+            return
+
+        cls._neighbors = neighbors
+        serving_id = cls._serving.get("cell_id")
+        if serving_id:
+            # Cache neighbor list per serving cell for consistency checks
+            try:
+                db = sqlite3.connect(CELL_BASELINE_DB)
+                db.execute("""
+                    INSERT INTO neighbor_cache (cell_id, mcc, mnc, lac, neighbor_list, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cell_id, mcc, mnc) DO UPDATE SET
+                        neighbor_list = excluded.neighbor_list,
+                        last_seen = excluded.last_seen
+                """, (serving_id, cls._serving.get("mcc", ""), cls._serving.get("mnc", ""),
+                      cls._serving.get("lac", ""),
+                      json.dumps([n.get("cell_id") for n in neighbors]), time.time()))
+                db.commit()
+                db.close()
+            except Exception as e:
+                logger.debug("Neighbor cache write error: %s", e)
+
+    @classmethod
+    def check_neighbor_consistency(cls) -> list[dict[str, Any]]:
+        """Flag neighbor-list inconsistency / ghost towers not seen before."""
+        findings: list[dict[str, Any]] = []
+        if not cls._serving.get("cell_id") or not cls._neighbors:
+            return findings
+        serving_id = cls._serving["cell_id"]
+        try:
+            db = sqlite3.connect(CELL_BASELINE_DB)
+            row = db.execute(
+                "SELECT neighbor_list FROM neighbor_cache WHERE cell_id=? AND mcc=? AND mnc=?",
+                (serving_id, cls._serving.get("mcc", ""), cls._serving.get("mnc", ""))
+            ).fetchone()
+            db.close()
+            known = set(json.loads(row[0])) if row and row[0] else set()
+        except Exception:
+            known = set()
+        observed = {n.get("cell_id") for n in cls._neighbors}
+        for n in cls._neighbors:
+            cid = n.get("cell_id")
+            if cid and cid not in known:
+                findings.append({
+                    "type": "ghost_tower",
+                    "cell_id": cid, "rat": n.get("rat"),
+                    "detail": "Neighbor cell never seen before — possible fake tower",
+                    "threat": THREAT_LOW,
+                })
+        if known and observed and len(observed) < len(known) * 0.5:
+            findings.append({
+                "type": "neighbor_disappearance",
+                "detail": "Serving cell neighbor list shrank sharply — possible forced reselection",
+                "threat": THREAT_MEDIUM,
+            })
+        return findings
+
+    @classmethod
     def _analyze_threats(cls, ts: float):
         s = cls._serving
         if not s.get("cell_id"):
@@ -295,8 +414,10 @@ class CellularProvider(BaseProvider):
 
         # 1. TA=0 anomaly
         if CELL_TA_ANALYSIS and s.get("timing_advance") == 0:
-            threats.append(("Timing Advance=0 (fake tower proximity)", THREAT_HIGH,
-                            f"TA=0 with no cell site at GPS {cls._gps}"))
+            # TA=0 is legitimate for a nearby serving site; without a tower
+            # database it is only a weak indicator and must not be called high.
+            threats.append(("Timing Advance=0 (proximity indicator)", THREAT_LOW,
+                            f"TA=0 at GPS {cls._gps}; requires independent corroboration"))
 
         # 2. RAT downgrade chain
         rat = (s.get("rat") or "").upper()
@@ -330,8 +451,8 @@ class CellularProvider(BaseProvider):
 
         # 5. RAT degradation / 2G forced downgrade
         if RAT_2G_NAMES.intersection({rat}):
-            threats.append(("RAT is 2G — no encryption (forced downgrade)", THREAT_HIGH,
-                            "Device on unencrypted 2G network — IMSI catcher likely"))
+            threats.append(("RAT is 2G — legacy network", THREAT_MEDIUM,
+                            "2G lacks modern air-interface protections; confirm whether downgrade was forced"))
         elif prev_rat and rat and prev_rat in RAT_ORDER and rat in RAT_ORDER:
             diff = RAT_ORDER[prev_rat] - RAT_ORDER[rat]
             if diff >= 2:
@@ -342,6 +463,7 @@ class CellularProvider(BaseProvider):
                                 "Minor RAT shift — may be normal roaming"))
 
         # 6. Cell ID sequence analysis (IMSI catchers often use sequential IDs)
+        cell_id = s.get("cell_id")
         if cell_id and cls._last_cell and cls._last_cell != cell_id:
             try:
                 last_num = int(cls._last_cell, 16) if cls._last_cell else 0
@@ -398,10 +520,26 @@ class CellularProvider(BaseProvider):
         cls._threat_level = max_t
         if threat >= THREAT_HIGH:
             logger.warning("   CELLULAR ALERT: %s — %s", message, detail)
+        try:
+            from providers.scorer import Scorer
+            heuristic = "cellular_ta_zero" if "Timing Advance=0" in message else "cellular_signal_jump" if "Signal strength" in message else "cellular_rat_downgrade" if "downgrade" in message.lower() or "2G" in message else "cellular_stationary_change" if "stationary" in message.lower() else "cellular_anomaly"
+            Scorer.ingest("cellular", heuristic, min(1.0, threat / THREAT_CRITICAL), message)
+        except Exception:
+            pass
 
     @classmethod
     def scan_now(cls) -> dict:
         cls._scan_cellular()
+        return cls.get_status()
+
+    @classmethod
+    def scan(cls) -> dict:
+        """Immediate multi-generation scan (RFC-0001). Returns full status."""
+        cls._scan_cellular()
+        try:
+            cls._collect_neighbors()
+        except Exception as e:
+            logger.debug("Neighbor collection error: %s", e)
         return cls.get_status()
 
     @classmethod
@@ -456,7 +594,7 @@ class AntiStingrayV2(CellularProvider):
     """V2 anti-stingray with multi-generation cellular scan capabilities."""
 
     NAME = "cellular_v2"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     @classmethod
     def scan_generation(cls, gen: int) -> dict[str, Any]:
@@ -468,7 +606,7 @@ class AntiStingrayV2(CellularProvider):
 
     @classmethod
     def get_signal_delta(cls) -> float:
-        return float(os.environ.get("CPIP_CELL_SIGNAL_DELTA", "3.0"))
+        return float(os.environ.get("CPIP_CELL_SIGNAL_DELTA", "25"))
 
     @classmethod
     def get_baseline_db(cls) -> str:
@@ -645,7 +783,7 @@ class AntiStingrayV2(CellularProvider):
     @classmethod
     def enable_network_level_defense(cls) -> dict[str, Any]:
         """Enable network-level protections: VPN enforcement, DNS filtering, cert pinning."""
-        result: dict[str, Any] = {" vpn_enabled": False, "dns_filtering": False, "cert_pinning": False}
+        result: dict[str, Any] = {"vpn_enabled": False, "dns_filtering": False, "cert_pinning": False}
 
         try:
             import subprocess
@@ -687,6 +825,7 @@ class AntiStingrayV2(CellularProvider):
             "threat_label": THREAT_LABELS[cls._threat_level],
             "serving": dict(cls._serving) if cls._serving else None,
             "baseline": dict(cls._baseline) if cls._baseline else None,
+            "neighbors": list(cls._neighbors),
             "gps": dict(cls._gps) if cls._gps else None,
             "scan_count": cls._scan_count,
             "recent_alerts": recent,
@@ -694,5 +833,6 @@ class AntiStingrayV2(CellularProvider):
             "stealth_mode": cls._stealth_mode,
             "rf_fingerprint": fp,
             "network_defense": net_defense,
+            "neighbor_findings": cls.check_neighbor_consistency(),
             "rat_2g_names": list(RAT_2G_NAMES),
         }

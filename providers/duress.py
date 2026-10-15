@@ -21,7 +21,7 @@ DURESS_PANIC_PIN = int(os.environ.get("CPIP_DURESS_PANIC_DELETE_PIN", "26"))
 class DuressProvider(BaseProvider):
     TYPE = ProviderType.SECURITY
     NAME = "duress"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _duress_active = False
     _duress_triggered_at = 0
@@ -30,6 +30,15 @@ class DuressProvider(BaseProvider):
     @classmethod
     def is_available(cls) -> bool:
         return True
+
+    @classmethod
+    def set_code(cls, phrase: str) -> dict:
+        """Set the duress passphrase at runtime (RFC-0020)."""
+        global DURESS_CODE
+        if not isinstance(phrase, str) or not phrase.strip():
+            return {"error": "Invalid duress phrase"}
+        DURESS_CODE = phrase.strip()
+        return {"status": "duress_code_set", "length": len(DURESS_CODE)}
 
     @classmethod
     def check_command(cls, command: str) -> bool:

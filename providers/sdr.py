@@ -37,7 +37,7 @@ class SDRBackend(Enum):
 class SDRProvider(BaseProvider):
     TYPE = ProviderType.SDR
     NAME = "sdr"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _instance: ClassVar[SDRProvider | None] = None
     _running = False
@@ -284,6 +284,7 @@ class SpectrumDefense:
     HOP_INTERVAL = int(os.environ.get("CPIP_RADIO_HOP_INTERVAL", "30"))
     BURST_ENABLED = os.environ.get("CPIP_RADIO_BURST", "1") == "1"
     BURST_DURATION = int(os.environ.get("CPIP_RADIO_BURST_DURATION", "50"))
+    BURST_TX_ENABLED = os.environ.get("CPIP_RADIO_BURST_TX", "0") == "1"
     JAMMER_THRESHOLD = int(os.environ.get("CPIP_RADIO_JAMMER_THRESHOLD", "-40"))
     JAMMER_COOLDOWN = int(os.environ.get("CPIP_RADIO_JAMMER_COOLDOWN", "60"))
 
@@ -341,6 +342,9 @@ class SpectrumDefense:
         """Spread-spectrum burst TX (<100ms, >500kHz bandwidth) to defeat
         direction-finding (RFC-0004). Falls back to simulation without HW."""
         freq = cls.HOP_SEQ[cls._current_channel]
+        if not cls.BURST_TX_ENABLED:
+            logger.info("RF burst TX disabled; selected %d Hz channel without transmitting", freq)
+            return
         try:
             import random
             bw = 0.5e6 + random.random() * 0.5e6
@@ -442,6 +446,7 @@ class SpectrumDefense:
             "current_freq": cls.HOP_SEQ[cls._current_channel] if cls.HOP_SEQ else None,
             "jammer_detected": cls._jammer_detected,
             "burst_enabled": cls.BURST_ENABLED,
+            "burst_tx_enabled": cls.BURST_TX_ENABLED,
             "burst_duration_ms": cls.BURST_DURATION,
             "bursts_sent": cls._bursts_sent,
             "towers": len(cls._tower_db),

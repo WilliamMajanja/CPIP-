@@ -22,7 +22,7 @@ AIRGAP_NFC_DEVICE = os.environ.get("CPIP_AIRGAP_NFC_DEVICE", "")
 class AirGapProvider(BaseProvider):
     TYPE = ProviderType.RADIO
     NAME = "airgap"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _messages_sent = 0
     _messages_received = 0
@@ -45,40 +45,42 @@ class AirGapProvider(BaseProvider):
     @classmethod
     def qr_send(cls, data: str) -> dict:
         import base64
-        import struct
-        chunks = [data[i:i + 2953] for i in range(0, len(data), 2953)]
+        if not isinstance(data, str) or not data:
+            return {"error": "QR payload must be a non-empty string"}
+        chunks = [data[i:i + 2000] for i in range(0, len(data), 2000)]
         if len(chunks) > 1:
-            return {"chunks": len(chunks), "total_bytes": len(data), "note": "Animated QR sequence"}
+            return {"chunks": len(chunks), "total_bytes": len(data),
+                    "frames": [base64.b64encode(c.encode()).decode() for c in chunks],
+                    "status": "encoded", "note": "Display each frame in order; framing metadata is required by the receiver"}
         qr_data = base64.b64encode(data.encode()).decode()
-        return {"qr_data_length": len(qr_data), "chunks": 1}
+        result = {"qr_data": qr_data, "qr_data_length": len(qr_data), "chunks": 1,
+                  "status": "encoded"}
+        try:
+            import qrcode
+            import io
+            import base64 as b64
+            image = qrcode.make(qr_data)
+            output = io.BytesIO()
+            image.save(output, format="PNG")
+            result["png_base64"] = b64.b64encode(output.getvalue()).decode()
+            result["status"] = "ready_to_display"
+        except ImportError:
+            result["display_backend"] = "unavailable; install the optional qrcode package to create a QR image"
+        return result
 
     @classmethod
     def audio_tx(cls, message: str) -> dict:
         if not AIRGAP_AUDIO_DEVICE:
             return {"error": "No audio device configured"}
-        try:
-            import numpy as np
-            sample_rate = 44100
-            duration = len(message) * 0.1
-            t = np.linspace(0, duration, int(sample_rate * duration))
-            signal = np.sin(2 * np.pi * 1300 * t)
-            for i, char in enumerate(message.upper()):
-                mark = {True: 1200, False: 2200}.get(i % 2 == 0, 1800)
-                seg = t[i * int(sample_rate * 0.1):(i + 1) * int(sample_rate * 0.1)]
-                signal[i * int(sample_rate * 0.1):(i + 1) * int(sample_rate * 0.1)] = np.sin(2 * np.pi * mark * seg[:len(seg)])
-            signal = (signal * 32767).astype(np.int16)
-            if b"\x00" * 4:  # placeholder for actual audio playback
-                pass
-            return {"message": message[:20], "duration_s": round(duration, 2), "status": "transmitted"}
-        except Exception as e:
-            return {"error": str(e)}
+        return {"error": "Audio transmit backend is not implemented; no audio was emitted",
+                "device": AIRGAP_AUDIO_DEVICE, "transmitted": False}
 
     @classmethod
     def nfc_pair(cls, peer: str) -> dict:
         if not AIRGAP_NFC_DEVICE:
             return {"error": "No NFC device configured"}
-        key = secrets.token_hex(16)
-        return {"peer": peer, "key": key, "channel": "nfc", "status": "paired"}
+        return {"error": "NFC pairing backend is not implemented; no key was exchanged",
+                "peer": peer, "paired": False}
 
     @classmethod
     def get_status(cls) -> dict[str, Any]:

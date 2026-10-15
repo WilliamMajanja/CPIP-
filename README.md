@@ -2,8 +2,8 @@
 
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://python.org)
-[![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy.sh)
-[![Version](https://img.shields.io/badge/version-6.0.3-blue.svg)]()
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux%20%7C%20Raspberry%20Pi-blue.svg)](deploy-pi.sh)
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/WilliamMajanja/CPIP-/ci.yml?branch=master)](https://github.com/WilliamMajanja/CPIP-/actions)
 [![RFC 2324](https://img.shields.io/badge/RFC-2324-green.svg)](https://datatracker.ietf.org/doc/html/rfc2324)
 [![RFC 7168](https://img.shields.io/badge/RFC-7168-green.svg)](https://datatracker.ietf.org/doc/html/rfc7168)
@@ -53,6 +53,8 @@ The Hyper Text Coffee Pot Control Protocol (HTCPCP) was published as the humorou
 
 CPIP implements the full HTCPCP specification and extends it into a multi-transport mesh communication system with active network defense. The protocol operates over four transport layers — LAN, satellite, radio (LoRa/TNC), and mobile broadband — with end-to-end encryption, store-and-forward messaging, and covert channels. All HTCPCP brew requests and responses double as cover traffic for encrypted mesh messages.
 
+The documents in `specs/` are draft RFC proposals. Their provider routes expose implemented/configured capabilities, but hardware-, carrier-, and third-party-service features remain unavailable until their real backends are installed and enabled. The dashboard's **RFC Providers** tab shows live provider state; it does not treat a draft or simulation as a deployed capability.
+
 ## Features
 
 - **HTCPCP/HTCPCP-TEA** — RFC 2324 and RFC 7168 (BREW, WHEN, PROPFIND, OPTIONS)
@@ -67,9 +69,9 @@ CPIP implements the full HTCPCP specification and extends it into a multi-transp
 - **IP blacklist management** — Rate-limited exponential ban duration
 - **CoffeeCipher v5 (AES-256-GCM)** — FIPS 197 authenticated encryption with HKDF-SHA256 key derivation
 - **ECDSA/ECDH P-256** — FIPS 186-4 signatures and key exchange
-- **HybridKEM** — ECDH P-256 + Kyber (ML-KEM-768) hybrid key exchange; secure if either component holds
-- **Post-quantum KEM** — 1nf1D3L's Kyber ML-KEM-768 variant via b4dm4n-cw CLI (non-FIPS, η=3)
-- **Hybrid PQ+Classical** — ECDH P-256 + 1nf1D3L Kyber combined key exchange via HKDF-SHA256
+- **HybridKEM API** — ECDH P-256 combined with a selected KEM size; this API is separate from the active mesh E2EE transport
+- **Post-quantum KEM** — Standard parameter-size options 512/768/1024; default 768. Experimental 1nf1D3L-2048/4096 ranks are separately named and are not security-level claims. A standard-library-only backend is available (`CPIP_ML_KEM_BACKEND=stdlib`); bundled variants are non-FIPS.
+- **Optional hybrid KEM API** — ECDH P-256 + selected KEM backend; separate from active mesh E2EE
 - **SHA-256 domain-separated hashing** — Tamper-evident audit chain
 - **ECDSA/ECDH P-256** — FIPS 186-4 end-to-end encryption, address book, port hopping
 - **Incident response** — Auto-detection, severity alerts, auto-mitigation
@@ -125,6 +127,17 @@ make -C radio
 # Enable all transports
 CPIP_SAT=1 CPIP_RADIO=1 CPIP_MOBILE=1 ./server.py
 ```
+
+### Optional KEM backends
+
+The built-in KEM backend uses only the Python standard library. Install an optional extra for acceleration or an alternative implementation:
+
+```bash
+pip install -e '.[pqc-accelerated]'  # NumPy-accelerated 1nf1D3L backend
+pip install -e '.[pqc-standard]'     # pqcrypto standard KEM backend (512/768/1024 only)
+```
+
+Use `CPIP_ML_KEM_BACKEND=stdlib` to force the dependency-free KEM implementation.
 
 ### Using the CLI
 
@@ -241,8 +254,9 @@ CPIP includes a single-page application dashboard served at `/dashboard` with tw
 | **🔗 Bond** | Bandwidth bonding status, aggregate BW, link table with color-coded latency/loss, toggle/probe |
 | **⏰ Schedule** | Schedule brews in X seconds or at datetime, daily recurring, beverage icons, list/delete |
 | **📜 History** | Brew history with beverage icons, time/additions/duration, filter (9 beverages), clear |
+| **🧩 RFC Providers** | Live capability and configuration status for the RFC extension providers |
 
-The 21 tabs are organized into 7 logical groups: Core (Brew, Mesh, Covert), Security (ITF, Crypto, IR), Defense (Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, Net Neutrality), Network (Signal, Diag), Identity (WoT, DNS), Comms (Groups, Sync, Drops), Infra (Bond, Schedule, History). The tab bar is scrollable and supports keyboard shortcuts (Ctrl+1–9).
+The 22 tabs are organized into 8 logical groups: Core (Brew, Mesh, Covert), Security (ITF, Crypto, IR), Defense (Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, Net Neutrality), Network (Signal, Diag), Identity (WoT, DNS), Comms (Groups, Sync, Drops), Infra (Bond, Schedule, History), Integrations (RFC Providers). The tab bar is scrollable and supports keyboard shortcuts (Ctrl+1–9).
 
 The defense groups (Anti-ISP, Anti-Stingray, Anti-Surveillance, Anti-Palantir, Net Neutrality) each have dedicated tabs with per-vector toggles reachable via API or dashboard.
 
@@ -350,27 +364,27 @@ All cryptographic primitives use FIPS-compliant algorithms via the `cryptography
 
 ### 1nf1D3L's Kyber KEM (Post-Quantum, Non-FIPS)
 
-Available via the `b4dm4n-cw` CLI (`inf1del_kyber.py`):
+The provider registry supports ML-KEM-512/768/1024 plus experimental `1nf1d3l_kem_2048` and `1nf1d3l_kem_4096`. The latter are custom module-rank experiments, not standardized ML-KEM security levels. The built-in standard-library backend can be selected with `CPIP_ML_KEM_BACKEND=stdlib`; the NumPy implementation remains available as the accelerated backend.
 
-- Variant: Non-FIPS ML-KEM-768 with 1nf1D3L modifications
-- Parameters: n=256, k=3, q=3329, eta1=3, eta2=3, du=10, dv=4
+- Variant: Non-FIPS 1nf1D3L parameters at 512/768/1024 sizes; default size is 768. Experimental custom K=8/K=16 ranks are separately named 2048/4096.
+- Parameters: n=256, q=3329, eta1=3, eta2=2; standard-size k=2/3/4, experimental k=8/16
 - Domain tag: "1NF1D3L-KYBER-V1" on all hash/KDF inputs
 - Wider noise: eta=3 (vs FIPS eta=2) for enhanced concrete security
 - NTT twiddle perturbation: Per-session random twiddle factors for side-channel resistance
 - Coffee recipe binding: Recipe string mixed into KDF
 - Key confirmation: Re-encapsulation check (implicit rejection via KDF with z)
-- Sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B
+- ML-KEM-768 sizes: PK=1184B, SK=2400B, CT=1120B, SS=32B; other sizes use their corresponding parameter sizes
 - CLI: `./b4dm4n_cw.py {keygen,encaps,decaps,bench,info,tui,coffee}` (positional
   pubkey for `encaps`; positional privkey + ciphertext for `decaps`)
 
 ### HybridKEM (Classical + Post-Quantum)
 
-CPIP's hybrid key exchange combines ECDH P-256 with 1nf1D3L's Kyber (ML-KEM-768):
+CPIP's optional hybrid KEM API combines ECDH P-256 with a configured KEM (768 by default; experimental 1nf1D3L ranks 2048/4096 are nonstandard):
 
-- ECDH P-256 (FIPS 186-4) + 1nf1D3L Kyber (non-FIPS ML-KEM-768)
+- ECDH P-256 (FIPS 186-4) + selected non-FIPS bundled KEM
 - Key derivation: HKDF-SHA256 from combined ECDH + Kyber shared secrets
   (domain tag `cpip-hybrid-kem-kyber-v1`)
-- Secure if EITHER classical ECDH OR PQ Kyber component holds
+- This composition has no independent security proof; extended ranks are experimental
 - Sizes: PK~1251B, SK~2432B, CT~1187B, SS=32B
 - Implemented in `server.HybridKEM` (server.py:1485)
 - CLI: select hybrid via `-a hybrid` (alias for `hybrid-ecdh-kyber`), e.g.
@@ -389,7 +403,7 @@ Domain-separated hashing for audit chain and identity; SHA3-256 for Kyber KDF/H.
 
 v4 format with AES-256-GCM encryption and HMAC integrity verification. v1/v2 backward-compatible load.
 
-Classical primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant. 1nf1D3L's Kyber is not FIPS 203 validated — it is a non-FIPS ML-KEM-768 variant intended for research and experimental use. CPIP does not implement RSA-KEM; the hybrid KEM uses ECDH P-256 + Kyber.
+Classical primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256) are FIPS-compliant. The bundled KEM variants are not FIPS 203 validated and are intended for research and experimental use. The pure-Python backend has no third-party KEM dependencies; the accelerated backend requires NumPy. CPIP does not implement RSA-KEM.
 
 ## TLS/SSL
 
@@ -427,7 +441,7 @@ When SSL is active, CPIP adds Strict-Transport-Security, X-Content-Type-Options,
 
 ```bash
 # Full deployment (run as root)
-sudo ./deploy.sh
+sudo ./deploy-pi.sh
 
 # Manual installation
 sudo mkdir -p /opt/cpip
@@ -450,7 +464,7 @@ Copy the `pi-apps/` directory to `~/.local/share/pi-apps/apps/Coffee-Protocol/` 
 
 ```ini
 [Unit]
-Description=CPIP v5.1.1 — Coffee Pot Internet Protocol
+Description=CPIP v7.0.0 — Coffee Pot Internet Protocol
 After=network.target
 
 [Service]
@@ -479,8 +493,8 @@ Produces `radio_if` — a standalone binary with zero external dependencies.
 
 ## Kubernetes
 
-CPIP includes Kubernetes manifests for self-hosting. The bundled `k8s/deployment.yaml`
-targets v5.1.1 labels and `image: cpip:5.1.1`.
+CPIP includes Kubernetes manifests for self-hosting, labeled for v7.0.0
+and `image: cpip:7.0.0`.
 
 ### Quick Deploy
 
@@ -498,7 +512,7 @@ kubectl apply -f k8s/
 | **ConfigMap** | Environment variables (device, ports, mesh, SSL) |
 | **Secret** | Sensitive keys (CPIP_COVERT_KEY) |
 | **Deployment** | Single replica with health/readiness/startup probes |
-| **Service** | ClusterIP exposing HTTP (4180), mesh UDP (4191/4195/4196) |
+| **Service** | ClusterIP exposing HTTPS (4180 by default), optional HTTP redirect (4181), and mesh UDP (4191/4195/4196) |
 | **Ingress** | nginx Ingress with TLS passthrough |
 | **NetworkPolicy** | Restrict ingress/egress to CPIP ports only |
 | **PVC** | 1Gi persistent volume for mesh data |
@@ -518,10 +532,10 @@ Key settings:
 ### Docker Build
 
 ```bash
-docker build -t cpip:5.1.1 .
+docker build -t cpip:7.0.0 .
 docker run -p 4180:4180 -p 4181:4181 -p 4191:4191/udp \
   -e CPIP_SSL=1 -e CPIP_SSL_AUTO=1 -e CPIP_HTTP_REDIRECT=1 \
-  cpip:5.1.1
+  cpip:7.0.0
 ```
 
 ### Access
@@ -609,6 +623,19 @@ All configuration is via environment variables. No configuration files are requi
 | `CPIP_RADIO_POWER` | `17` | Transmit power (dBm) |
 | `CPIP_RADIO_DEVICE` | `/dev/spidev0.0` | TNC serial device |
 | `CPIP_RADIO_BAUD` | `115200` | TNC serial baud rate |
+| `CPIP_RADIO_HOP_SEQ` | `915000000,916000000,917000000` | Spectrum hop channels (Hz) |
+| `CPIP_RADIO_HOP_INTERVAL` | `30` | Channel rotation interval (seconds) |
+| `CPIP_RADIO_BURST_TX` | `0` | Explicitly allow RF burst transmissions; off by default |
+
+Starting the spectrum hop controller does not transmit bursts unless `CPIP_RADIO_BURST_TX=1` is set.
+
+### EM-Sec / Faraday Test
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CPIP_EMSEC` | `0` | Enable EM-security monitoring |
+| `CPIP_EMSEC_ALLOW_TX` | `0` | Allow explicit Faraday-test RF transmissions; off by default |
+| `CPIP_EMSEC_FARADAY_TEST_INTERVAL` | `3600` | Receive/test interval (seconds) |
 
 ### Mobile Broadband
 
@@ -760,6 +787,10 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `CPIP_RPC_AUTH` | `1` | Require HMAC-SHA256 time-bounded tokens (header `X-CPIP-HMAC`) on mutating `/cpip/*` endpoints |
 | `CPIP_RPC_AUTH_SKEW` | `300` | Max clock skew (seconds) for RPC auth tokens |
 | `CPIP_DEFENSE_ENABLED` | `1` | Master gate for ITF probe blocking / blacklisting. Set `0` to disable defense |
+| `CPIP_ML_KEM_SIZE` | `768` | Default KEM parameter size: `512`, `768`, `1024`, or experimental `2048`/`4096` |
+| `CPIP_ML_KEM_BACKEND` | `auto` | Backend: `auto`, `stdlib` (no third-party KEM deps), `numpy`, `inf1del`, or `pqcrypto` |
+| `CPIP_PQC_IDENTITY` | `hybrid` | Identity mode: `hybrid`, `1` (KEM-only), or `0` (legacy ECDH) |
+| `CPIP_PQC_KEM` | `ml_kem_768` | Identity KEM: standardized-size IDs or experimental `1nf1d3l_kem_2048`/`1nf1d3l_kem_4096` |
 
 ### HTTP Security
 
@@ -919,6 +950,25 @@ All countermeasures default to **on** and are individually togglable at runtime 
 | `GET` | `/cpip/diagnostics/traceroute` | Traceroute |
 | `GET` | `/cpip/diagnostics/interfaces` | Network interfaces |
 
+### RFC Provider API (optional backends)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/cpip/providers` | Provider capabilities and availability |
+| `GET` | `/cpip/crypto/pqc-status` | Configured KEM size/backend; 512/768/1024 and experimental 1nf1D3L-2048/4096 |
+| `POST` | `/cpip/crypto/pqc-keys` | Generate identity keys (private material stays server-side) |
+| `POST` | `/cpip/crypto/pqc-handshake` | KEM handshake test |
+| `GET` / `POST` | `/cpip/cell/status`, `/cpip/cell/scan` | Cellular observations and scan |
+| `GET` / `POST` | `/cpip/sdr/status`, `/cpip/sdr/scan` | SDR capability and passive scan |
+| `GET` | `/cpip/scorer/status`, `/cpip/scorer/explain` | Threat score and contributing signals |
+| `GET` / `POST` | `/cpip/intel/status`, `/cpip/intel/share` | Local/peer threat intelligence and opt-in share toggle |
+| `GET` / `POST` | `/cpip/hardware/status`, `/cpip/sensors/status`, `/cpip/tamper/status` | Physical adapter capability/state |
+| `GET` | `/cpip/field/status`, `/cpip/deception/status`, `/cpip/duress/status` | Local operational-mode status |
+| `GET` / `POST` | `/cpip/evidence/status`, `/cpip/evidence/verify` | Evidence-chain status and local verification |
+| `GET` | `/cpip/modem/status`, `/cpip/ss7/status`, `/cpip/carrier/status` | Optional cellular/external service status |
+
+These providers are draft/optional integrations. A registered route does not imply the required modem, SDR, GPIO, carrier account, remote service, or other backend is installed. Mutating `/cpip/*` requests require `X-CPIP-HMAC` when `CPIP_RPC_AUTH=1`.
+
 ### Defense API Actions
 
 | Action | Payload | Description |
@@ -995,7 +1045,7 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 │  ┌──────────────────┐  ┌──────────────────┐                  │
 │  │  Crypto Engine   │  │ Incident Response│                  │
 │  │ (AES-256-GCM,    │  │ (auto-detect,    │                  │
-│  │  ECDH+Kyber)     │  │  alert, mitigate)│                  │
+│  │  ECDH P-256)     │  │  alert, mitigate)│                  │
 │  └──────────────────┘  └──────────────────┘                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -1009,11 +1059,12 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 ├── cpip_tui.py            # Terminal UI (OpenTUI) — 12 pages
 ├── b4dm4n_cw.py           # Cipher Workbench CLI v2.0
 ├── b4dm4n-cw-commands.txt # b4dm4n-cw command reference
-├── inf1del_kyber.py       # 1nf1D3L Kyber ML-KEM-768 (numpy-accelerated)
-├── pyproject.toml         # Package metadata (name: cpip, v5.1.1)
+├── inf1del_kyber.py       # NumPy-accelerated custom ML-KEM-512/768/1024 backend
+├── pure_mlkem.py          # Standard-library-only custom ML-KEM-size backend
+├── pyproject.toml         # Package metadata (name: cpip, v7.0.0)
 ├── Dockerfile             # Docker image (Alpine, SSL-enabled)
 ├── docker-compose.yml      # Single-service compose with volumes + limits
-├── deploy.sh              # Raspberry Pi deployment script (systemd)
+├── deploy-pi.sh           # Raspberry Pi deployment script (systemd)
 ├── deploy-pi.sh           # Pi fleet deployer (scan/flash/provision/connect)
 ├── cluster.sh             # Local multi-node cluster launcher
 ├── test_crypto.py         # Cryptographic unit tests (pytest)
@@ -1048,23 +1099,23 @@ Unknown `feature` names return HTTP 400. Toggling the master switch on any defen
 
 ## Minima / PiNet-OS Integration
 
-CPIP v5.1.1 serves as the primary cryptographic security provider for Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
+CPIP v7.0.0 integrates with Minima blockchain nodes in the [PiNet-OS](https://github.com/WilliamMajanja/Minima-PiNet-Os) edge computing stack:
 
 | Integration Surface | CPIP Capability |
 |---------------------|-----------------|
 | Data at rest | CoffeeCipher v5 (AES-256-GCM + HKDF-SHA256) |
 | Node identity | ECDSA P-256 challenge-response authentication |
 | RPC authentication | HMAC-SHA256 time-bounded tokens (replaces Basic Auth) |
-| Key encapsulation | HybridKEM — ECDH P-256 + 1nf1D3L Kyber (PQ hybrid) |
+| Key encapsulation | Optional standalone hybrid KEM API; not negotiated by active mesh E2EE |
 | Message signatures | ECDSA P-256 (replaces RSA in Maxima messaging) |
 | API defense | ITF Defense (probe blocking, pentest detection, IP blacklisting) |
 | FIPS assurance | Power-on self-tests (AES-GCM, HMAC, HKDF, ECDSA, ECDH) |
 
-**Deployment:** CPIP runs as a sidecar container (`cpip:5.1.1`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
+**Deployment:** CPIP can run as a sidecar container (`cpip:7.0.0`, port 4180) in the Minima k3s DaemonSet and as a dedicated `cpip.service` systemd unit.
 
 **Configuration:** `CPIP_ENABLED=1`, `CPIP_RECIPE=minima`, `CPIP_RPC_AUTH=1`, `CPIP_DEFENSE_ENABLED=1`. See [SECURITY.md](SECURITY.md) § Minima Integration for full details.
 
-**PQ Complementarity:** Minima uses WOTS+ (FIPS 205, 128-bit PQ) for consensus signatures. CPIP adds Kyber (non-FIPS ML-KEM-768) for transport encryption. The two approaches are complementary — WOTS+ for consensus, Kyber for key exchange.
+**PQ Complementarity:** Minima uses WOTS+ for consensus signatures. CPIP exposes separate non-FIPS KEM options for experiments; the configured KEM is not currently negotiated by the mesh E2EE transport.
 
 ## Specification and Request Records
 
@@ -1078,4 +1129,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This is free and unencumbered software released into the public domain. See [LICENSE](LICENSE) for details.
 
-The CoffeeCipher v5 uses FIPS-compliant cryptographic primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256). The hybrid KEM combines ECDH P-256 with 1nf1D3L's Kyber (non-FIPS ML-KEM-768).
+The CoffeeCipher v5 uses established classical primitives (AES-256-GCM, ECDSA/ECDH P-256, HKDF-SHA256, HMAC-SHA256). The optional hybrid KEM API combines ECDH P-256 with the configured custom KEM; the custom variants are non-FIPS and require independent review.

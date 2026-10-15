@@ -21,11 +21,12 @@ OB_FAILOVER = os.environ.get("CPIP_OB_FAILOVER", "1") == "1"
 class OBChannelProvider(BaseProvider):
     TYPE = ProviderType.RADIO
     NAME = "ob_channel"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _channels: dict[str, bool] = {"bt": False, "nfc": False, "audio": False, "lifi": False}
     _messages_sent = 0
     _messages_received = 0
+    _selected = ""
 
     CHANNELS = [
         {"name": "bt", "desc": "Bluetooth Mesh", "bitrate": "10Kbps", "range": "10m"},
@@ -45,9 +46,26 @@ class OBChannelProvider(BaseProvider):
         }
         if not available.get(channel, False):
             return {"error": f"Channel {channel} not enabled"}
-        cls._messages_sent += 1
-        logger.info("OB %s → %s: %d bytes", channel, peer, len(message))
-        return {"channel": channel, "peer": peer, "sent": True, "bytes": len(message)}
+        return {"error": f"Channel {channel} is enabled but has no configured transport backend",
+                "channel": channel, "peer": peer, "sent": False}
+
+    @classmethod
+    def select(cls, name: str) -> dict:
+        name = str(name or "").strip().lower()
+        if name not in {c["name"] for c in cls.CHANNELS}:
+            return {"error": f"Unknown channel: {name}"}
+        cls._selected = name
+        return {"status": "channel_selected", "channel": name,
+                "enabled": next(c["enabled"] for c in cls.list_channels() if c["name"] == name)}
+
+    @classmethod
+    def test(cls, name: str) -> dict:
+        name = str(name or cls._selected).strip().lower()
+        channel = next((c for c in cls.list_channels() if c["name"] == name), None)
+        if channel is None:
+            return {"error": f"Unknown channel: {name}"}
+        return {"channel": name, "enabled": channel["enabled"], "available": False,
+                "error": "No channel backend is installed"}
 
     @classmethod
     def receive(cls, channel: str) -> dict | None:
@@ -72,4 +90,5 @@ class OBChannelProvider(BaseProvider):
             "messages_sent": cls._messages_sent,
             "messages_received": cls._messages_received,
             "failover": OB_FAILOVER,
+            "selected": cls._selected or None,
         }

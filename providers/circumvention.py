@@ -8,6 +8,8 @@ import random
 import secrets
 import threading
 import time
+import re
+import base64
 from typing import Any, ClassVar
 
 from providers.base import BaseProvider, ProviderType
@@ -25,7 +27,7 @@ SUPPORTED_MODES = ["https", "dns", "quic", "meek", "snowflake", "obfs4"]
 class CircumventionProvider(BaseProvider):
     TYPE = ProviderType.CIRCUMVENTION
     NAME = "circumvention"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _active_mode = CIRCUMVENTION_MODE
     _running = False
@@ -53,7 +55,7 @@ class CircumventionProvider(BaseProvider):
             return cls._wrap_dns(data)
         elif mode == "quic":
             return cls._wrap_quic(data)
-        return data
+        raise NotImplementedError(f"Transport mode {mode!r} requires an external pluggable-transport backend")
 
     @classmethod
     def _wrap_https(cls, data: bytes) -> bytes:
@@ -72,14 +74,16 @@ class CircumventionProvider(BaseProvider):
         )
         for k, v in cls.HTTP_HEADERS.items():
             http += f"{k}: {v}\r\n"
-        http += f"\r\n".encode()
-        return http + padded
+        return http.encode() + b"\r\n" + padded
 
     @classmethod
     def _wrap_dns(cls, data: bytes) -> bytes:
-        encoded = data.hex()
-        domain = f"{encoded[:63]}.{CIRCUMVENTION_FRONT}"
-        return json.dumps({"dns_query": domain, "type": "TXT"}).encode()
+        encoded = base64.b32encode(data).decode("ascii").rstrip("=").lower()
+        labels = [encoded[i:i + 50] for i in range(0, len(encoded), 50)] or ["0"]
+        queries = [f"{index:x}-{label}.{CIRCUMVENTION_FRONT}"
+                   for index, label in enumerate(labels)]
+        return json.dumps({"dns_queries": queries, "type": "TXT",
+                           "encoding": "base32", "count": len(queries)}).encode()
 
     @classmethod
     def _wrap_quic(cls, data: bytes) -> bytes:
@@ -99,6 +103,19 @@ class CircumventionProvider(BaseProvider):
             return {"error": f"Unsupported mode: {mode}. Choose: {SUPPORTED_MODES}"}
         cls._active_mode = mode
         return {"status": "mode_changed", "mode": mode}
+
+    @classmethod
+    def set_front_domain(cls, domain: str) -> dict:
+        """Set the domain-fronting target (RFC-0023)."""
+        global CIRCUMVENTION_FRONT
+        domain = str(domain or "").strip().lower()
+        if not domain or len(domain) > 253 or not re.fullmatch(
+            r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", domain
+        ):
+            return {"error": f"Invalid front domain: {domain}"}
+        CIRCUMVENTION_FRONT = domain
+        logger.info("Circumvention front domain set to %s", domain)
+        return {"status": "front_domain_set", "front_domain": CIRCUMVENTION_FRONT}
 
     @classmethod
     def get_status(cls) -> dict[str, Any]:

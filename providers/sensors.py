@@ -22,7 +22,7 @@ SENSOR_THERMAL = os.environ.get("CPIP_SENSOR_THERMAL", "0") == "1"
 class SensorProvider(BaseProvider):
     TYPE = ProviderType.SENSOR
     NAME = "sensors"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _running = False
     _thread: threading.Thread | None = None
@@ -30,6 +30,7 @@ class SensorProvider(BaseProvider):
     _readings: dict[str, Any] = {}
     _alerts: list[dict] = []
     _scorer_callback = None
+    _calibration: dict[str, Any] = {}
 
     @classmethod
     def is_available(cls) -> bool:
@@ -169,6 +170,13 @@ class SensorProvider(BaseProvider):
 
     @classmethod
     def calibrate(cls) -> dict:
-        cls._readings = {}
-        cls._alerts.clear()
-        return {"status": "calibrated"}
+        cls._read_all()
+        with cls._lock:
+            cls._calibration = dict(cls._readings)
+        return {"status": "calibrated", "timestamp": cls._calibration.get("timestamp"),
+                "sensors": [k for k in cls._calibration if k != "timestamp"]}
+
+    @classmethod
+    def get_log(cls) -> list[dict]:
+        with cls._lock:
+            return list(cls._alerts)

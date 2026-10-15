@@ -6,6 +6,8 @@ import os
 import subprocess
 import threading
 import time
+from pathlib import Path
+from urllib.parse import urlencode
 from typing import Any, ClassVar
 
 from providers.base import BaseProvider, ProviderType
@@ -20,11 +22,12 @@ MODEM_NVD_API_KEY = os.environ.get("CPIP_MODEM_NVD_API_KEY", "")
 class ModemProvider(BaseProvider):
     TYPE = ProviderType.MODEM
     NAME = "modem"
-    VERSION = "6.0.3"
+    VERSION = "7.0.0"
 
     _fw_info: dict = {}
     _fw_history: list[dict] = []
     _cve_results: list[dict] = []
+    _last_revision = ""
 
     @classmethod
     def is_available(cls) -> bool:
@@ -53,6 +56,7 @@ class ModemProvider(BaseProvider):
                     "hardware": hw.get("revision", ""),
                     "equipment_id": modem.get("equipment-id", "")[:8] + "...",
                 }
+                cls._record_firmware(cls._fw_info)
             else:
                 r2 = subprocess.run(["mmcli", "-m", "0", "-S"],
                                     capture_output=True, text=True, timeout=3)
@@ -61,6 +65,22 @@ class ModemProvider(BaseProvider):
         except Exception:
             pass
         return cls._fw_info
+
+    @classmethod
+    def _record_firmware(cls, info: dict) -> None:
+        revision = str(info.get("revision", ""))
+        if not revision:
+            return
+        now = time.time()
+        if cls._last_revision and revision != cls._last_revision:
+            cls._fw_history.append({"time": now, "previous": cls._last_revision,
+                                    "revision": revision,
+                                    "possible_rollback": revision < cls._last_revision})
+            cls._fw_history[:] = cls._fw_history[-100:]
+        elif not cls._fw_history or cls._fw_history[-1].get("revision") != revision:
+            cls._fw_history.append({"time": now, "revision": revision,
+                                    "possible_rollback": False})
+        cls._last_revision = revision
 
     @classmethod
     def check_firmware_integrity(cls) -> dict:
@@ -75,20 +95,27 @@ class ModemProvider(BaseProvider):
                     return {"status": "verified", "expected": known, "actual": info.get("revision", "")}
             except Exception:
                 pass
+        latest = cls._fw_history[-1] if cls._fw_history else {}
+        if latest.get("possible_rollback"):
+            return {"status": "rollback_suspected", "firmware": info, "history": cls.get_fw_history()}
         return {"status": "unknown", "firmware": info}
 
     @classmethod
     def scan_cves(cls) -> list[dict]:
-        if not MODEM_NVD_API_KEY:
-            return [{"error": "No NVD API key configured"}]
         info = cls.get_firmware_info()
         model = info.get("model", "")
         if not model:
             return []
         try:
             import urllib.request
-            url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={model}&apiKey={MODEM_NVD_API_KEY}"
-            with urllib.request.urlopen(url, timeout=15) as resp:
+            query = {"keywordSearch": model}
+            if MODEM_NVD_API_KEY:
+                query["apiKey"] = MODEM_NVD_API_KEY
+            req = urllib.request.Request(
+                "https://services.nvd.nist.gov/rest/json/cves/2.0?" + urlencode(query),
+                headers={"User-Agent": "CPIP/6.0 modem-firmware-audit"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read())
                 vulns = data.get("vulnerabilities", [])
                 cls._cve_results = [
@@ -107,3 +134,7 @@ class ModemProvider(BaseProvider):
             "cves_found": len(cls._cve_results),
             "cves": cls._cve_results[:5] if cls._cve_results else [],
         }
+
+    @classmethod
+    def get_fw_history(cls) -> list[dict]:
+        return list(cls._fw_history)
