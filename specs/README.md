@@ -62,6 +62,12 @@ baseline; use the RFF template for future requests.
 | CPIP-RFC-0025 | Anti-stalkerware | [spec](rfc-0025-anti-stalkerware.md) |
 | CPIP-RFC-0026 | Threat intelligence correlation | [spec](rfc-0026-global-threat-intel.md) |
 
+## Implemented change requests
+
+| ID | Change | Record |
+| --- | --- | --- |
+| RFC-CR-0001 | Correct RFC 7168 metadata URL | [change record](rfc-cr-0001-rfc7168-url.md) |
+
 ## Citation correction
 
 The baseline CPIP v6.0.3 metadata at commit `df93a5258a0d9e5297d30bd6b630f299969ec8bb`
