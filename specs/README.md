@@ -26,12 +26,12 @@ results. Do not use a `Verified` label for an untested proposal.
 
 ## Current proposal inventory
 
-At CPIP commit `df93a5258a0d9e5297d30bd6b630f299969ec8bb`, the numbered proposal
-files below identify themselves as `Draft` and target v6.0.0. Package metadata
-at that same commit reports CPIP v6.0.3. Treat these as proposed design records,
-not as proof that corresponding behavior is present in the release. No numbered
-RFF records existed in this snapshot; use the new RFF template for future
-feature requests.
+At baseline CPIP commit `df93a5258a0d9e5297d30bd6b630f299969ec8bb`, the numbered
+proposal files below identified themselves as `Draft` and targeted v6.0.0 while
+package metadata reported CPIP v6.0.3. This documentation update adds request
+templates but does not change those proposal statuses or assert that their
+behavior is implemented. No numbered feature-request records existed in that
+baseline; use the RFF template for future requests.
 
 | ID | Topic | Record |
 | --- | --- | --- |
