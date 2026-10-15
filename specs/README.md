@@ -64,6 +64,7 @@ baseline; use the RFF template for future requests.
 
 ## Citation correction
 
-The v6.0.3 `pyproject.toml` points its RFC-7168 project URL at RFC 2168. The
-correct canonical URL is <https://www.rfc-editor.org/rfc/rfc7168>. This source
-correction is separate from the protocol design records above.
+The baseline CPIP v6.0.3 metadata at commit `df93a5258a0d9e5297d30bd6b630f299969ec8bb`
+pointed its RFC-7168 project URL at RFC 2168. The documentation update corrected
+that link to <https://www.rfc-editor.org/rfc/rfc7168>. This citation correction
+does not change or validate the protocol design records above.
