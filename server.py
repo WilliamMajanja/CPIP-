@@ -334,11 +334,7 @@ BOND_LOSS_THRESHOLD = float(os.environ.get("CPIP_BOND_LOSS", "0.2"))
 BOND_LATENCY_WINDOW = int(os.environ.get("CPIP_BOND_LAT_WIN", "10"))
 
 CPIP_VERSION = "7.0.0"
-<<<<<<< HEAD
 CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + RFC 6969 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding + Palantir + IP Spoofing)"
-=======
-CPIP_PROTOCOL = f"CPIP/{CPIP_VERSION} (RFC 2324 + RFC 7168 + Mesh + Multi-Transport + PQ-Crypto + Anti-ISP + Anti-Stingray + Anti-DPI + Net-Neutrality + Multi-Link Bonding)"
->>>>>>> 15ee305 (Release v7.0.0)
 _START_TIME = time.time()
 
 
