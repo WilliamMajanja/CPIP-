@@ -23,6 +23,7 @@ import math
 import os
 import sys
 import time
+import struct
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -1277,6 +1278,43 @@ def cmd_interactive(args):
             _out(f"  Unknown command: {cmd}. Type 'help' for commands.", style="red")
 
 
+
+def cmd_ascii(args):
+    h = CmdHandler(args)
+    h._banner()
+    try:
+        from PIL import Image
+    except Exception:
+        h._err("Pillow not installed. Install with: pip install Pillow")
+        return
+    infile = args.input
+    try:
+        img = Image.open(infile)
+    except Exception as e:
+        h._err(f"Failed to open image: {e}")
+        return
+    width = args.width or 100
+    height = args.height
+    img = img.convert('L')
+    if height is None:
+        w, h = img.size
+        height = int(h * width * 0.55 / w)
+    img = img.resize((width, height))
+    chars = args.chars or '@%#*+=-:. '
+    pixels = img.getdata()
+    out = []
+    for i, p in enumerate(pixels):
+        if i % width == 0 and i != 0:
+            out.append('\n')
+        out.append(chars[int(p * (len(chars) - 1) / 255)])
+    result = ''.join(out)
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(result)
+        h._ok(f"ASCII art written to {args.output}")
+    else:
+        print(result)
+
 def main():
     _init_tables()
 
@@ -1405,6 +1443,14 @@ Examples:
 
     p = sub.add_parser("coffee", help="Display Coffee Protocol art")
     p.set_defaults(func=cmd_coffee)
+
+    p = sub.add_parser("ascii", help="Convert image to ASCII art")
+    p.add_argument("input", help="Input image file")
+    p.add_argument("-w", "--width", type=int, help="Output width (default: 100)")
+    p.add_argument("--height", type=int, help="Output height")
+    p.add_argument("-c", "--chars", help="Character set (default: @%%#*+=-:. )")
+    p.add_argument("-o", "--output", help="Output file")
+    p.set_defaults(func=cmd_ascii)
 
     args = parser.parse_args()
     args.func(args)
