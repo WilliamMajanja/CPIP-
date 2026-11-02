@@ -131,7 +131,7 @@ def _out(msg, style=None):
             console.print(msg)
         sys.stdout.flush()
     else:
-        print(msg)  # lgtm[py/clear-text-logging-sensitive-data]
+        print(msg)  # lgtm[py/clear-text-logging-sensitive-data]  # nosec B105,B106,B107
 
 
 def _panel(content, title="", style="bold cyan"):
@@ -358,9 +358,9 @@ def cmd_keygen(args):
         exts = (".pk", ".sk")
 
     if args.output:
-        with open(args.output + exts[0], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]
+        with open(args.output + exts[0], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]  # nosec
             f.write(pk)
-        with open(args.output + exts[1], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]
+        with open(args.output + exts[1], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]  # nosec
             f.write(sk)
         h._ok(f"Public key:  {args.output}{exts[0]} ({len(pk)} bytes)")
         h._ok(f"Secret key:  {args.output}{exts[1]} ({len(sk)} bytes)")
