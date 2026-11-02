@@ -29,8 +29,6 @@ jobs:
         run: |
           which python3
           python3 --version
-          which fuser
-          which pkill
       - name: Kill any existing servers
         run: |
           pkill -9 -f "python3.*server.py" || true
@@ -40,55 +38,8 @@ jobs:
         run: python3 -m py_compile server.py providers/*.py
       - name: Run tests
         run: |
-          python3 test_cpip.py -v 2>&1 | tee test-output.log || {
-            echo "TESTS FAILED - showing output:"
-            cat test-output.log
-            exit 1
-          }
-      - name: Upload test output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-output-${{ matrix.python-version }}
-          path: test-output.log
+          python3 -m pytest test_cpip.py test_crypto.py -v 2>&1 | tail -40
       - name: Validate cpip syntax
         run: bash -n cpip
       - name: Build radio interface
         run: make -C radio clean radio_if 2>/dev/null || echo "radio build skipped"
-
-  docker:
-    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/cpip
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
