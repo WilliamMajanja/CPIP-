@@ -142,8 +142,12 @@ def _out(msg, style=None):
         except Exception:
             pass
         try:
-            import logging as _logging
-            _logging.getLogger('b4dm4n_cw').info(s)
+            import logging
+            lowered_log = s.lower()
+            if ("secret key" in lowered_log) or ("sk (base64)" in lowered_log) or ("private key" in lowered_log) or len(re.findall(r'[0-9a-fA-F]{32,}', s)) > 0:
+                logging.getLogger('b4dm4n_cw').info('[REDACTED: sensitive key material]')
+            else:
+                logging.getLogger('b4dm4n_cw').info(s)
         except Exception:
             pass
         return
