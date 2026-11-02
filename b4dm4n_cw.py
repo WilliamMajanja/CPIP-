@@ -432,7 +432,7 @@ def cmd_encaps(args):
         _out(_hexdump(ct))
 
     _out(f"\n  Shared Secret ({len(ss)} bytes):", style="bold green")
-    _out(f"  {ss.hex()}")
+    _out(f"  {_fingerprint(ss)}")
     h._info(f"Fingerprint: {_fingerprint(ss)}")
 
     if h.b64:
@@ -467,9 +467,8 @@ def cmd_decaps(args):
     elapsed = (time.perf_counter() - start) * 1000
 
     _out(f"\n  Shared Secret ({len(ss)} bytes):", style="bold green")
-    _out(f"  {ss.hex()}")
+    _out(f"  {_fingerprint(ss)}")
     h._info(f"Fingerprint: {_fingerprint(ss)}")
-    h._ok(f"Decaps time: {elapsed:.2f} ms")
 
     if h.b64:
         _out(f"\n  SS (base64): {base64.b64encode(ss).decode()}")
