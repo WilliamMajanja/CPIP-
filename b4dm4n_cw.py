@@ -1331,6 +1331,92 @@ def cmd_interactive(args):
 
 
 
+
+
+def cmd_slhsign(args):
+    h = CmdHandler(args)
+    h._banner()
+    try:
+        from inf1del_kyber import Inf1delSLH
+    except Exception as e:
+        h._err(f"Inf1delSLH not available: {e}")
+        return
+    variant = args.variant or "slh_dsa_sha2_256f_simple"
+    recipe = h.recipe or "espresso"
+    if args.generate:
+        try:
+            pk, sk = Inf1delSLH.keygen(variant, recipe)
+            if args.output:
+                with open(args.output + ".slh.pk", "wb") as f:
+                    f.write(pk)
+                with open(args.output + ".slh.sk", "wb") as f:
+                    f.write(sk)
+                h._ok(f"SLH-DSA PK: {args.output}.slh.pk ({len(pk)} bytes)")
+                h._ok(f"SLH-DSA SK: {args.output}.slh.sk ({len(sk)} bytes)")
+            else:
+                _out(f"\n  Public Key ({len(pk)} bytes):", style="bold")
+                _out(_hexdump(pk))
+                _out(f"\n  Secret Key ({len(sk)} bytes):", style="bold")
+                _out(_hexdump(sk))
+            h._info(f"Variant: {variant}, Recipe: {recipe}")
+        except Exception as e:
+            h._err(f"SLH-DSA keygen failed: {e}")
+        return
+    if not args.sk or not args.file:
+        h._err("Provide --sk and file to sign (or use --generate)")
+        return
+    try:
+        with open(args.sk, "rb") as f:
+            sk = f.read()
+        with open(args.file, "rb") as f:
+            data = f.read()
+        sig, pk = Inf1delSLH.sign(sk, data, variant, recipe)
+        if args.output:
+            with open(args.output, "wb") as f:
+                f.write(sig)
+            h._ok(f"Signature: {args.output} ({len(sig)} bytes)")
+            with open(args.output + ".pub", "wb") as f:
+                f.write(pk)
+            h._ok(f"Public key: {args.output}.pub ({len(pk)} bytes)")
+        else:
+            _out(f"\n  Signature ({len(sig)} bytes):", style="bold")
+            _out(_hexdump(sig))
+        h._info(f"Variant: {variant}, Recipe: {recipe}")
+    except Exception as e:
+        h._err(f"SLH-DSA sign failed: {e}")
+
+
+def cmd_slhverify(args):
+    h = CmdHandler(args)
+    h._banner()
+    try:
+        from inf1del_kyber import Inf1delSLH
+    except Exception as e:
+        h._err(f"Inf1delSLH not available: {e}")
+        return
+    variant = args.variant or "slh_dsa_sha2_256f_simple"
+    recipe = h.recipe or "espresso"
+    try:
+        with open(args.pubkey, "rb") as f:
+            pk = f.read()
+        with open(args.signature, "rb") as f:
+            sig = f.read()
+        if args.file:
+            with open(args.file, "rb") as f:
+                data = f.read()
+        elif args.string:
+            data = args.string.encode()
+        else:
+            h._err("Provide file or --string")
+            return
+        ok = Inf1delSLH.verify(pk, data, sig, variant, recipe)
+        if ok:
+            h._ok("Signature valid")
+        else:
+            h._err("Signature invalid")
+    except Exception as e:
+        h._err(f"SLH-DSA verify failed: {e}")
+
 def cmd_ascii(args):
     h = CmdHandler(args)
     h._banner()
@@ -1503,6 +1589,22 @@ Examples:
     p.add_argument("-c", "--chars", help="Character set (default: @%%#*+=-:. )")
     p.add_argument("-o", "--output", help="Output file")
     p.set_defaults(func=cmd_ascii)
+
+    p = sub.add_parser("slh-sign", help="SLH-DSA (SPHINCS+) sign with 1nf1D3L domain separation")
+    p.add_argument("file", nargs="?", help="File to sign")
+    p.add_argument("--sk", help="Secret key file")
+    p.add_argument("--variant", default="slh_dsa_sha2_256f_simple", help="SLH-DSA variant")
+    p.add_argument("--generate", action="store_true", help="Generate SLH-DSA keypair")
+    p.add_argument("-o", "--output", help="Output prefix/file")
+    p.set_defaults(func=cmd_slhsign)
+
+    p = sub.add_parser("slh-verify", help="SLH-DSA verify")
+    p.add_argument("signature", help="Signature file")
+    p.add_argument("pubkey", help="Public key file")
+    p.add_argument("file", nargs="?", help="File to verify")
+    p.add_argument("-s", "--string", help="String to verify")
+    p.add_argument("--variant", default="slh_dsa_sha2_256f_simple", help="SLH-DSA variant")
+    p.set_defaults(func=cmd_slhverify)
 
     args = parser.parse_args()
     args.func(args)
