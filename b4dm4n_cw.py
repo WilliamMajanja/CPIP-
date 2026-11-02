@@ -371,15 +371,26 @@ def cmd_keygen(args):
         sk_path = args.output + exts[1]
         with open(pk_path, "wb") as f:
             f.write(pk)
-        fd = os.open(sk_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        import tempfile
+        tmpfd, tmppath = tempfile.mkstemp(prefix='.sk.', dir=os.path.dirname(sk_path) or '.', text=False)
         try:
-            os.write(fd, sk)
+            os.write(tmpfd, sk)
+            os.close(tmpfd)
+            tmpfd = -1
+            os.chmod(tmppath, 0o600)
+            os.replace(tmppath, sk_path)
+            tmppath = None
         finally:
-            os.close(fd)
-        try:
-            os.chmod(sk_path, 0o600)
-        except Exception:
-            pass
+            if tmpfd != -1:
+                try:
+                    os.close(tmpfd)
+                except Exception:
+                    pass
+            if tmppath and os.path.exists(tmppath):
+                try:
+                    os.unlink(tmppath)
+                except Exception:
+                    pass
         h._ok(f"Public key:  {pk_path} ({len(pk)} bytes)")
         h._ok(f"Secret key:  {sk_path} ({len(sk)} bytes)")
     else:
