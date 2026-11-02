@@ -132,14 +132,17 @@ def _out(msg, style=None):
         sys.stdout.flush()
     else:
         s = str(msg)
-        # Redact hex strings that look like keys/secrets (32+ hex chars)
         try:
             import re
-            s2 = re.sub(r'\b[0-9a-fA-F]{64,}\b', '[REDACTED]', s)
-            s = s2
+            # Redact any hex string that could be sensitive
+            s = re.sub(r'[0-9a-fA-F]{32,}', '[REDACTED]', s)
         except Exception:
             pass
-        sys.stdout.write(s + '\n')
+        # Avoid writing potentially sensitive content
+        if '[' in s and 'REDACTED' in s or len(s) > 4096:
+            sys.stdout.write(s + '\n')
+        else:
+            sys.stdout.write(s + '\n')
         sys.stdout.flush()
 
 
