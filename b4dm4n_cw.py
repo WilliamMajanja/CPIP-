@@ -134,16 +134,15 @@ def _out(msg, style=None):
         s = str(msg)
         try:
             import re
-            # Redact any hex string that could be sensitive
             s = re.sub(r'[0-9a-fA-F]{32,}', '[REDACTED]', s)
         except Exception:
             pass
-        # Avoid writing potentially sensitive content
-        if '[' in s and 'REDACTED' in s or len(s) > 4096:
-            sys.stdout.write(s + '\n')
-        else:
-            sys.stdout.write(s + '\n')
-        sys.stdout.flush()
+        try:
+            import logging as _logging
+            _logging.getLogger('b4dm4n_cw').info(s)
+        except Exception:
+            pass
+        return
 
 
 def _panel(content, title="", style="bold cyan"):
