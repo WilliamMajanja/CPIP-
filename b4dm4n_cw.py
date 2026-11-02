@@ -135,7 +135,14 @@ def _out(msg, style=None):
         try:
             import re
             lowered = s.lower()
-            if ("secret key" in lowered) or ("sk (base64)" in lowered) or ("private key" in lowered):
+            sensitive_markers = (
+                "secret key", "private key", "sk (base64)", "sk:", "secret:",
+                "ciphertext", "shared secret", "hybrid_secret_key"
+            )
+            looks_sensitive = any(m in lowered for m in sensitive_markers)
+            looks_sensitive = looks_sensitive or bool(re.search(r'[0-9a-fA-F]{32,}', s))
+            looks_sensitive = looks_sensitive or bool(re.search(r'[A-Za-z0-9+/=]{64,}', s))
+            if looks_sensitive:
                 s = "[REDACTED: sensitive key material]"
             else:
                 s = re.sub(r'[0-9a-fA-F]{32,}', '[REDACTED]', s)
@@ -144,7 +151,14 @@ def _out(msg, style=None):
         try:
             import logging
             lowered_log = s.lower()
-            if ("secret key" in lowered_log) or ("sk (base64)" in lowered_log) or ("private key" in lowered_log) or len(re.findall(r'[0-9a-fA-F]{32,}', s)) > 0:
+            sensitive_markers = (
+                "secret key", "private key", "sk (base64)", "sk:", "secret:",
+                "ciphertext", "shared secret", "hybrid_secret_key"
+            )
+            looks_sensitive = any(m in lowered_log for m in sensitive_markers)
+            looks_sensitive = looks_sensitive or bool(re.search(r'[0-9a-fA-F]{32,}', s))
+            looks_sensitive = looks_sensitive or bool(re.search(r'[A-Za-z0-9+/=]{64,}', s))
+            if looks_sensitive:
                 logging.getLogger('b4dm4n_cw').info('[REDACTED: sensitive key material]')
             else:
                 logging.getLogger('b4dm4n_cw').info(s)
