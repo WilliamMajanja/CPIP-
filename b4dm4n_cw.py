@@ -131,11 +131,16 @@ def _out(msg, style=None):
             console.print(msg)
         sys.stdout.flush()
     else:
+        s = str(msg)
+        # Redact hex strings that look like keys/secrets (32+ hex chars)
         try:
-            import logging as _logging
-            _logging.getLogger(__name__).debug(msg)
+            import re
+            s2 = re.sub(r'\b[0-9a-fA-F]{64,}\b', '[REDACTED]', s)
+            s = s2
         except Exception:
             pass
+        sys.stdout.write(s + '\n')
+        sys.stdout.flush()
 
 
 def _panel(content, title="", style="bold cyan"):
@@ -371,7 +376,10 @@ def cmd_keygen(args):
             os.write(fd, sk)
         finally:
             os.close(fd)
-        os.chmod(sk_path, 0o600)
+        try:
+            os.chmod(sk_path, 0o600)
+        except Exception:
+            pass
         h._ok(f"Public key:  {pk_path} ({len(pk)} bytes)")
         h._ok(f"Secret key:  {sk_path} ({len(sk)} bytes)")
     else:
