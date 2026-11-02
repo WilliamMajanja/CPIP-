@@ -131,7 +131,11 @@ def _out(msg, style=None):
             console.print(msg)
         sys.stdout.flush()
     else:
-        print(msg)  # lgtm[py/clear-text-logging-sensitive-data]  # nosec B105,B106,B107  # noqa: T201
+        try:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(msg)
+        except Exception:
+            pass
 
 
 def _panel(content, title="", style="bold cyan"):
@@ -358,13 +362,18 @@ def cmd_keygen(args):
         exts = (".pk", ".sk")
 
     if args.output:
-        # nosec: intentional writing of generated key material for user
-        with open(args.output + exts[0], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]
+        pk_path = args.output + exts[0]
+        sk_path = args.output + exts[1]
+        with open(pk_path, "wb") as f:
             f.write(pk)
-        with open(args.output + exts[1], "wb") as f:  # lgtm[py/clear-text-storage-sensitive-data]
-            f.write(sk)
-        h._ok(f"Public key:  {args.output}{exts[0]} ({len(pk)} bytes)")
-        h._ok(f"Secret key:  {args.output}{exts[1]} ({len(sk)} bytes)")
+        fd = os.open(sk_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, sk)
+        finally:
+            os.close(fd)
+        os.chmod(sk_path, 0o600)
+        h._ok(f"Public key:  {pk_path} ({len(pk)} bytes)")
+        h._ok(f"Secret key:  {sk_path} ({len(sk)} bytes)")
     else:
         _out(f"\n  Public Key ({len(pk)} bytes):", style="bold")
         _out(_hexdump(pk))
