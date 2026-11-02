@@ -133,11 +133,11 @@ def _out(msg, style=None):
     else:
         s = str(msg)
         try:
+            import re
             lowered = s.lower()
-            if ("secret key" in lowered) or ("sk" in lowered and "base64" in lowered) or ("private key" in lowered):
+            if ("secret key" in lowered) or ("sk (base64)" in lowered) or ("private key" in lowered):
                 s = "[REDACTED: sensitive key material]"
             else:
-                import re
                 s = re.sub(r'[0-9a-fA-F]{32,}', '[REDACTED]', s)
         except Exception:
             pass
